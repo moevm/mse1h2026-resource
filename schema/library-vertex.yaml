@@ -1,0 +1,120 @@
+vertex_type: "Library"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:library:{ecosystem}:{name}@{version}"
+    examples:
+      - "urn:library:npm:express@4.18.2"
+      - "urn:library:pypi:fastapi@0.104.1"
+      - "urn:library:maven:io.opentelemetry:opentelemetry-api@1.32.0"
+
+  name:
+    type: string
+    sources:
+      otel: "InstrumentationScope.name / telemetry.sdk.name"
+      sbom_cyclonedx: "components[].name"
+      sbom_spdx: "packages[].name"
+      gitlab: "dependency_scanning → dependency.name"
+      terraform: "provider name in required_providers"
+
+  version:
+    type: string
+    format: "SemVer preferred"
+    sources:
+      otel: "InstrumentationScope.version / telemetry.sdk.version"
+      sbom_cyclonedx: "components[].version"
+      sbom_spdx: "packages[].versionInfo"
+
+  ecosystem:
+    type: enum
+    values: ["npm", "pypi", "maven", "gradle", "nuget", "go", "cargo",
+             "rubygems", "terraform-provider", "docker", "helm", "apt", "rpm"]
+
+  purl:
+    type: string
+    format: "pkg:{ecosystem}/{namespace}/{name}@{version}"
+    sources:
+      sbom_cyclonedx: "components[].purl"
+      sbom_spdx: "packages[].externalRefs[] (PURL)"
+
+  library_type:
+    type: enum
+    values: ["runtime_dependency", "dev_dependency", "instrumentation_library",
+             "sdk", "framework", "infrastructure_provider", "os_package"]
+
+  language:
+    type: string
+    sources:
+      otel: "process.runtime.name → inferred"
+    examples: ["javascript", "python", "java", "go", "rust"]
+
+  license:
+    type: string
+    sources:
+      sbom_cyclonedx: "components[].licenses[].license.id"
+      sbom_spdx: "packages[].licenseConcluded"
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  usage_count:
+    key: "library.usage_count"
+    type: integer
+    derivation: "count of edges (dependson) from Service to this Library"
+
+  span_count:
+    key: "library.span_count"
+    type: integer
+    unit: "spans"
+    sources:
+      otel: "count(spans where InstrumentationScope.name == this.name)"
+
+  span_error_rate:
+    key: "library.span_error_rate"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+
+  vulnerability_count:
+    key: "library.vulnerability_count"
+    type: integer
+    sources:
+      sbom_cyclonedx: "vulnerabilities[] count"
+      gitlab: "dependency_scanning → vulnerabilities count"
+
+  vulnerability_max_severity:
+    key: "library.vulnerability_max_severity"
+    type: enum
+    values: ["none", "low", "medium", "high", "critical"]
+
+  latest_available_version:
+    key: "library.latest_available_version"
+    type: string
+
+  is_outdated:
+    key: "library.is_outdated"
+    type: boolean
+    derivation: "version < latest_available_version"
+
+  is_deprecated:
+    key: "library.is_deprecated"
+    type: boolean
+
+  transitive_depth:
+    key: "library.transitive_depth"
+    type: integer
+
+  checksum:
+    key: "library.checksum"
+    type: string
+    format: "algorithm:hex_digest"
