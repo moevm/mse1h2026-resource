@@ -118,3 +118,4 @@ unified_metrics:
     key: "library.checksum"
     type: string
     format: "algorithm:hex_digest"
+    
