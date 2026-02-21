@@ -1,0 +1,84 @@
+vertex_type: "ExternalAPI"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:external_api:{host}"
+    examples:
+      - "urn:external_api:api.stripe.com"
+      - "urn:external_api:maps.googleapis.com"
+
+  name:
+    type: string
+    sources:
+      otel: "peer.service / server.address / http.url → parsed host"
+      istio: "destination_service_name (external)"
+      kong: "upstreams[].name / targets[].target"
+
+  host:
+    type: string
+    sources:
+      otel: "server.address / url.full → parsed host"
+
+  base_url:
+    type: string
+    examples: ["https://api.stripe.com/v1", "https://maps.googleapis.com/maps/api"]
+
+  api_type:
+    type: enum
+    values: ["rest", "grpc", "graphql", "soap", "webhook"]
+
+  is_third_party:
+    type: boolean
+    default: true
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  request_rate:
+    key: "external_api.request_rate"
+    type: float
+    unit: "requests/sec"
+    sources:
+      otel: "rate of outgoing spans to this host"
+      istio: "rate(istio_requests_total{destination_service=~'.*<host>.*'}[5m])"
+
+  error_rate:
+    key: "external_api.error_rate"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+
+  p99_latency:
+    key: "external_api.p99_latency"
+    type: float
+    unit: "milliseconds"
+
+  availability:
+    key: "external_api.availability"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+
+  rate_limit_remaining:
+    key: "external_api.rate_limit_remaining"
+    type: integer
+    sources:
+      otel: "http.response.header.x-ratelimit-remaining"
+
+  rate_limit_total:
+    key: "external_api.rate_limit_total"
+    type: integer
+
+  last_error_at:
+    key: "external_api.last_error_at"
+    type: datetime
+    format: "ISO 8601 (UTC)"
