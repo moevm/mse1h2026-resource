@@ -1,0 +1,127 @@
+vertex_type: "RegionCluster"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:{kind}:{provider}:{name}"
+    examples:
+      - "urn:region:aws:us-east-1"
+      - "urn:cluster:gcp:prod-cluster-europe"
+      - "urn:availability_zone:aws:us-east-1c"
+
+  name:
+    type: string
+    sources:
+      otel: "cloud.region / cloud.availability_zone"
+      kubernetes: "topology.kubernetes.io/region / topology.kubernetes.io/zone"
+      terraform: "provider region / google_container_cluster.name"
+      argocd: "spec.destination.server → parsed cluster name"
+
+  kind:
+    type: enum
+    values: ["region", "availability_zone", "cluster", "data_center"]
+
+  cloud_provider:
+    type: string
+    sources:
+      otel: "cloud.provider"
+      terraform: "provider type (hashicorp/aws, hashicorp/google, hashicorp/azurerm)"
+    examples: ["aws", "gcp", "azure", "on_premise", "hybrid"]
+
+  cloud_platform:
+    type: string
+    sources:
+      otel: "cloud.platform"
+    examples: ["aws_eks", "gcp_gke", "azure_aks", "aws_ecs", "aws_lambda"]
+
+  region:
+    type: string
+    description: "Регион (для zone/cluster — родительский регион)"
+    sources:
+      otel: "cloud.region"
+      kubernetes: "topology.kubernetes.io/region (node labels)"
+      terraform: "provider.aws.region / google_container_cluster.location"
+
+  availability_zone:
+    type: string
+    description: "Зона доступности (null для region-level)"
+    sources:
+      otel: "cloud.availability_zone"
+      kubernetes: "topology.kubernetes.io/zone"
+
+  cluster_endpoint:
+    type: string
+    description: "API endpoint кластера (для kind=cluster)"
+    sources:
+      argocd: "spec.destination.server"
+      terraform: "google_container_cluster.endpoint / aws_eks_cluster.endpoint"
+
+  kubernetes_version:
+    type: string
+    description: "Версия Kubernetes (для kind=cluster)"
+    sources:
+      kubernetes: "serverVersion"
+      terraform: "google_container_cluster.master_version / aws_eks_cluster.version"
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  node_count:
+    key: "region_cluster.node_count"
+    type: integer
+    sources:
+      prometheus: "count(kube_node_info{cluster='<name>'})"
+      terraform: "node_pool.node_count"
+
+  pod_count:
+    key: "region_cluster.pod_count"
+    type: integer
+    sources:
+      prometheus: "count(kube_pod_info{node=~'<nodes_in_cluster>'})"
+
+  cpu_capacity:
+    key: "region_cluster.cpu_capacity"
+    type: float
+    unit: "cores"
+    sources:
+      prometheus: "sum(kube_node_status_allocatable{resource='cpu'})"
+
+  memory_capacity:
+    key: "region_cluster.memory_capacity"
+    type: float
+    unit: "bytes"
+    sources:
+      prometheus: "sum(kube_node_status_allocatable{resource='memory'})"
+
+  cpu_utilization:
+    key: "region_cluster.cpu_utilization"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+
+  memory_utilization:
+    key: "region_cluster.memory_utilization"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+
+  is_healthy:
+    key: "region_cluster.is_healthy"
+    type: boolean
+    sources:
+      prometheus: "all(kube_node_status_condition{condition='Ready', status='true'})"
+
+  cost_per_hour:
+    key: "region_cluster.cost_per_hour"
+    type: float
+    unit: "USD"
+    sources:
+      external: "cloud billing API"
