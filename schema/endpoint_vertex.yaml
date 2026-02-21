@@ -1,0 +1,89 @@
+vertex_type: "Endpoint"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:endpoint:{service_name}:{method}:{route}"
+    examples:
+      - "urn:endpoint:checkout-service:POST:/api/v1/orders"
+      - "urn:endpoint:user-service:grpc:UserService/GetUser"
+
+  name:
+    type: string
+    description: "Человекочитаемое имя (route template или rpc method)"
+    sources:
+      otel: "http.route / rpc.service + '/' + rpc.method / span.name"
+      kong: "routes[].paths[] + methods[]"
+      kubernetes: "Ingress rules[].http.paths[].path"
+
+  service_ref:
+    type: string
+    description: "Ссылка на родительский Service vertex id"
+
+  method:
+    type: string
+    sources:
+      otel: "http.request.method / rpc.method"
+      kong: "routes[].methods[]"
+    examples: ["GET", "POST", "PUT", "DELETE", "GetUser", "CreateOrder"]
+
+  route_pattern:
+    type: string
+    sources:
+      otel: "http.route"
+      kong: "routes[].paths[]"
+    examples: ["/api/v1/orders/{id}", "/users/{userId}/profile"]
+
+  protocol:
+    type: enum
+    values: ["http", "https", "grpc", "graphql", "websocket"]
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  request_rate:
+    key: "endpoint.request_rate"
+    type: float
+    unit: "requests/sec"
+
+  error_rate:
+    key: "endpoint.error_rate"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+
+  p50_latency:
+    key: "endpoint.p50_latency"
+    type: float
+    unit: "milliseconds"
+
+  p95_latency:
+    key: "endpoint.p95_latency"
+    type: float
+    unit: "milliseconds"
+
+  p99_latency:
+    key: "endpoint.p99_latency"
+    type: float
+    unit: "milliseconds"
+
+  response_size_avg:
+    key: "endpoint.response_size_avg"
+    type: float
+    unit: "bytes"
+    sources:
+      istio: "avg(istio_response_bytes_sum / istio_response_bytes_count)"
+
+  status_code_distribution:
+    key: "endpoint.status_code_distribution"
+    type: map[string, integer]
+    description: "{\"2xx\": 9500, \"4xx\": 400, \"5xx\": 100}"
