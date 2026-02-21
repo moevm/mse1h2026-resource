@@ -1,0 +1,107 @@
+vertex_type: "Cache"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:cache:{provider}:{name}"
+    examples:
+      - "urn:cache:redis:session-cache"
+      - "urn:cache:memcached:page-cache"
+      - "urn:cache:aws_elasticache:prod-redis"
+
+  name:
+    type: string
+    sources:
+      otel: "cache.system + logical name / db.name (when db.system=redis)"
+      terraform: "resource.name (aws_elasticache_cluster, google_redis_instance)"
+      prometheus: "Redis/Memcached exporter instance label"
+
+  cache_system:
+    type: string
+    sources:
+      otel: "cache.system / db.system"
+    examples: ["redis", "memcached", "hazelcast", "varnish", "cdn"]
+
+  provider:
+    type: enum
+    values: ["self_hosted", "aws_elasticache", "gcp_memorystore",
+             "azure_cache_for_redis", "redis_cloud"]
+
+  host:
+    type: string
+    sources:
+      terraform: "attributes.endpoint / attributes.cache_nodes[].address"
+
+  port:
+    type: integer
+
+  version:
+    type: string
+    sources:
+      terraform: "attributes.engine_version"
+      prometheus: "redis_version{}"
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  hit_rate:
+    key: "cache.hit_rate"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+    sources:
+      otel: "count(spans where cache.hit==true) / total cache spans"
+      prometheus: "redis_keyspace_hits / (redis_keyspace_hits + redis_keyspace_misses)"
+
+  miss_rate:
+    key: "cache.miss_rate"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+    derivation: "1.0 - hit_rate"
+
+  memory_used:
+    key: "cache.memory_used"
+    type: float
+    unit: "bytes"
+    sources:
+      prometheus: "redis_memory_used_bytes"
+
+  memory_max:
+    key: "cache.memory_max"
+    type: float
+    unit: "bytes"
+    sources:
+      prometheus: "redis_memory_max_bytes"
+
+  eviction_rate:
+    key: "cache.eviction_rate"
+    type: float
+    unit: "evictions/sec"
+    sources:
+      prometheus: "rate(redis_evicted_keys_total[5m])"
+
+  keys_count:
+    key: "cache.keys_count"
+    type: integer
+    sources:
+      prometheus: "redis_db_keys"
+
+  operation_latency_p99:
+    key: "cache.operation_latency_p99"
+    type: float
+    unit: "milliseconds"
+
+  connected_clients:
+    key: "cache.connected_clients"
+    type: integer
+    sources:
+      prometheus: "redis_connected_clients"
