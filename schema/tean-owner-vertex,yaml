@@ -1,0 +1,124 @@
+vertex_type: "TeamOwner"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:team:{provider}:{identifier}"
+    examples:
+      - "urn:team:gitlab:group/payments-team"
+      - "urn:team:kubernetes:label/team=payments"
+
+  name:
+    type: string
+    sources:
+      kubernetes: "label 'team' / 'owner', annotation 'owner'"
+      argocd: "metadata.annotations.team"
+      gitlab: "Group.name / Member.name (access_level >= 40)"
+      istio: "custom label source_team / destination_team"
+      terraform: "tags.Owner / tags.Team"
+      kong: "tags[] parsed 'team:*' / 'owner:*'"
+      otel: "custom resource attribute 'team.name'"
+    normalization: "lowercase, trim, replace spaces with hyphens"
+
+  owner_type:
+    type: enum
+    values: ["team", "individual", "organization", "squad", "tribe"]
+
+  contact_email:
+    type: string
+    format: "email"
+    sources:
+      kubernetes: "annotation 'owner.email'"
+      argocd: "metadata.annotations.contact"
+      gitlab: "Member.email"
+
+  contact_channel:
+    type: string
+    examples: ["#payments-alerts", "#platform-oncall"]
+
+  department:
+    type: string
+    sources:
+      gitlab: "parent group name"
+      terraform: "tags.Department"
+
+  cost_center:
+    type: string
+
+  external_refs:
+    type: map[string, string]
+    examples:
+      jira_project: "PAY"
+      pagerduty_service: "P12345"
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  owned_services_count:
+    key: "team.owned_services_count"
+    type: integer
+    derivation: "count of (ownedby) edges from Service to this TeamOwner"
+
+  owned_resources_count:
+    key: "team.owned_resources_count"
+    type: integer
+
+  total_error_rate:
+    key: "team.total_error_rate"
+    type: float
+    unit: "errors/sec"
+    sources:
+      prometheus: "sum(rate(http_requests_total{status=~'5..', team='<name>'}[5m]))"
+      istio: "sum(rate(istio_requests_total{response_code=~'5..', source_team='<name>'}[5m]))"
+
+  total_request_rate:
+    key: "team.total_request_rate"
+    type: float
+    unit: "requests/sec"
+
+  p99_latency:
+    key: "team.p99_latency"
+    type: float
+    unit: "milliseconds"
+
+  active_incidents_count:
+    key: "team.active_incidents_count"
+    type: integer
+
+  deployment_frequency:
+    key: "team.deployment_frequency"
+    type: float
+    unit: "deployments/day"
+    sources:
+      argocd: "count(sync events) / period_days"
+      gitlab: "count(successful deploy pipelines) / period_days"
+
+  mttr:
+    key: "team.mttr"
+    type: float
+    unit: "minutes"
+
+  slo_compliance_ratio:
+    key: "team.slo_compliance_ratio"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+
+  team_size:
+    key: "team.team_size"
+    type: integer
+    sources:
+      gitlab: "count(members) from /groups/:id/members"
+
+  member_ids:
+    key: "team.member_ids"
+    type: list[string]
