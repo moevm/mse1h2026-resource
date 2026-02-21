@@ -1,0 +1,137 @@
+vertex_type: "PodNode"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:{kind}:{namespace_or_cluster}/{name}"
+    examples:
+      - "urn:pod:payments/checkout-7f8b9c-xk2lm"
+      - "urn:node:cluster-prod/ip-10-0-1-42"
+
+  name:
+    type: string
+    sources:
+      kubernetes: "metadata.name"
+      otel: "host.name (node), k8s.pod.name (pod)"
+      prometheus: "kube_pod_info{pod} / kube_node_info{node}"
+
+  kind:
+    type: enum
+    values: ["pod", "node"]
+
+  namespace:
+    type: string
+    description: "Namespace (для pod); null для node"
+    sources:
+      kubernetes: "metadata.namespace"
+
+  node_name:
+    type: string
+    description: "Имя ноды, на которой запущен pod"
+    sources:
+      kubernetes: "spec.nodeName (pod)"
+      prometheus: "kube_pod_info{node}"
+
+  status:
+    type: string
+    sources:
+      kubernetes: "status.phase (pod: Pending/Running/Succeeded/Failed/Unknown)"
+      prometheus: "kube_pod_status_phase / kube_node_status_condition{condition='Ready'}"
+
+  ip:
+    type: string
+    sources:
+      kubernetes: "status.podIP (pod) / status.addresses[].address (node)"
+
+  container_images:
+    type: list[string]
+    description: "Список образов контейнеров (для pod)"
+    sources:
+      kubernetes: "spec.containers[].image"
+
+  os_type:
+    type: string
+    sources:
+      otel: "os.type"
+      kubernetes: "node labels kubernetes.io/os"
+
+  arch:
+    type: string
+    sources:
+      kubernetes: "node labels kubernetes.io/arch"
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  cpu_usage:
+    key: "pod_node.cpu_usage"
+    type: float
+    unit: "cores"
+    sources:
+      prometheus: "rate(container_cpu_usage_seconds_total[5m]) (pod) / node_cpu_seconds_total (node)"
+
+  memory_usage:
+    key: "pod_node.memory_usage"
+    type: float
+    unit: "bytes"
+    sources:
+      prometheus: "container_memory_working_set_bytes (pod) / node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes (node)"
+
+  cpu_limit:
+    key: "pod_node.cpu_limit"
+    type: float
+    unit: "cores"
+    sources:
+      kubernetes: "spec.containers[].resources.limits.cpu"
+      prometheus: "kube_pod_container_resource_limits{resource='cpu'}"
+
+  memory_limit:
+    key: "pod_node.memory_limit"
+    type: float
+    unit: "bytes"
+    sources:
+      kubernetes: "spec.containers[].resources.limits.memory"
+      prometheus: "kube_pod_container_resource_limits{resource='memory'}"
+
+  restart_count:
+    key: "pod_node.restart_count"
+    type: integer
+    sources:
+      prometheus: "kube_pod_container_status_restarts_total"
+
+  uptime:
+    key: "pod_node.uptime"
+    type: float
+    unit: "milliseconds"
+    sources:
+      kubernetes: "now() - metadata.creationTimestamp"
+
+  ready:
+    key: "pod_node.ready"
+    type: boolean
+    sources:
+      prometheus: "kube_pod_status_ready{condition='true'} / kube_node_status_condition{condition='Ready', status='true'}"
+
+  disk_pressure:
+    key: "pod_node.disk_pressure"
+    type: boolean
+    description: "Только для Node"
+    sources:
+      prometheus: "kube_node_status_condition{condition='DiskPressure', status='true'}"
+
+  allocatable_pods:
+    key: "pod_node.allocatable_pods"
+    type: integer
+    description: "Только для Node"
+    sources:
+      prometheus: "kube_node_status_allocatable{resource='pods'}"

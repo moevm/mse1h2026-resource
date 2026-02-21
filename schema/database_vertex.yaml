@@ -1,0 +1,116 @@
+vertex_type: "Database"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:database:{provider}:{name}"
+    examples:
+      - "urn:database:postgresql:orders-db"
+      - "urn:database:aws_rds:prod-mysql-cluster"
+      - "urn:database:mongodb:analytics"
+
+  name:
+    type: string
+    sources:
+      otel: "db.name"
+      terraform: "resource.name (aws_db_instance, google_sql_database_instance)"
+      prometheus: "DB exporter labels (datname, database)"
+
+  db_system:
+    type: string
+    sources:
+      otel: "db.system"
+    examples: ["postgresql", "mysql", "mongodb", "redis", "mssql", "oracle",
+               "cassandra", "elasticsearch", "dynamodb", "cockroachdb"]
+
+  provider:
+    type: enum
+    values: ["self_hosted", "aws_rds", "aws_aurora", "aws_dynamodb",
+             "gcp_cloud_sql", "gcp_spanner", "azure_sql", "azure_cosmosdb",
+             "mongodb_atlas", "planetscale", "neon"]
+
+  host:
+    type: string
+    sources:
+      otel: "server.address / db.connection_string → parsed host"
+      terraform: "attributes.endpoint / attributes.address"
+
+  port:
+    type: integer
+    sources:
+      otel: "server.port"
+      terraform: "attributes.port"
+
+  version:
+    type: string
+    sources:
+      terraform: "attributes.engine_version"
+      prometheus: "pg_static{server_version} / mysql_version_info"
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  connection_count:
+    key: "database.connection_count"
+    type: integer
+    sources:
+      prometheus: "pg_stat_activity_count / mysql_global_status_threads_connected"
+
+  connection_pool_utilization:
+    key: "database.connection_pool_utilization"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+
+  query_rate:
+    key: "database.query_rate"
+    type: float
+    unit: "queries/sec"
+    sources:
+      prometheus: "rate(pg_stat_database_xact_commit[5m]) / rate(mysql_global_status_queries[5m])"
+
+  query_latency_p99:
+    key: "database.query_latency_p99"
+    type: float
+    unit: "milliseconds"
+    sources:
+      otel: "histogram_quantile(0.99, db span durations)"
+
+  replication_lag:
+    key: "database.replication_lag"
+    type: float
+    unit: "milliseconds"
+    sources:
+      prometheus: "pg_replication_lag / mysql_slave_status_seconds_behind_master"
+
+  storage_used:
+    key: "database.storage_used"
+    type: float
+    unit: "bytes"
+
+  storage_total:
+    key: "database.storage_total"
+    type: float
+    unit: "bytes"
+    sources:
+      terraform: "attributes.allocated_storage (→ bytes)"
+
+  is_multi_az:
+    key: "database.is_multi_az"
+    type: boolean
+    sources:
+      terraform: "attributes.multi_az"
+
+  error_rate:
+    key: "database.error_rate"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
