@@ -1,0 +1,109 @@
+vertex_type: "Deployment"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:deployment:{namespace}/{name}"
+    examples:
+      - "urn:deployment:payments/checkout-deployment"
+
+  name:
+    type: string
+    sources:
+      kubernetes: "apps/v1/Deployment metadata.name"
+      argocd: "Application.metadata.name"
+      terraform: "resource.name (ecs_task_definition, cloud_run)"
+
+  namespace:
+    type: string
+    sources:
+      kubernetes: "metadata.namespace"
+      argocd: "spec.destination.namespace"
+
+  service_ref:
+    type: string
+    description: "Ссылка на Service vertex, который обслуживает этот деплоймент"
+
+  strategy:
+    type: enum
+    values: ["rolling_update", "recreate", "blue_green", "canary"]
+    sources:
+      kubernetes: "spec.strategy.type"
+      argocd: "sync policy + rollout strategy"
+
+  desired_replicas:
+    type: integer
+    sources:
+      kubernetes: "spec.replicas"
+      prometheus: "kube_deployment_spec_replicas"
+
+  container_image:
+    type: string
+    sources:
+      kubernetes: "spec.template.spec.containers[0].image"
+    examples: ["registry.example.com/checkout:v1.2.3"]
+
+  managed_by:
+    type: string
+    sources:
+      kubernetes: "label app.kubernetes.io/managed-by"
+    examples: ["helm", "kustomize", "argocd", "terraform"]
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  available_replicas:
+    key: "deployment.available_replicas"
+    type: integer
+    sources:
+      kubernetes: "status.availableReplicas"
+      prometheus: "kube_deployment_status_replicas_available"
+
+  unavailable_replicas:
+    key: "deployment.unavailable_replicas"
+    type: integer
+    sources:
+      prometheus: "kube_deployment_status_replicas_unavailable"
+
+  ready_ratio:
+    key: "deployment.ready_ratio"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+    derivation: "available_replicas / desired_replicas"
+
+  last_deploy_at:
+    key: "deployment.last_deploy_at"
+    type: datetime
+    format: "ISO 8601 (UTC)"
+    sources:
+      argocd: "status.operationState.finishedAt"
+      gitlab: "last successful deployment timestamp"
+
+  sync_status:
+    key: "deployment.sync_status"
+    type: enum
+    values: ["synced", "out_of_sync", "unknown"]
+    sources:
+      argocd: "status.sync.status"
+
+  health_status:
+    key: "deployment.health_status"
+    type: enum
+    values: ["healthy", "degraded", "progressing", "suspended", "missing", "unknown"]
+    sources:
+      argocd: "status.health.status"
+
+  rollout_duration:
+    key: "deployment.rollout_duration"
+    type: float
+    unit: "milliseconds"
