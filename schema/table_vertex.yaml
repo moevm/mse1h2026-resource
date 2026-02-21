@@ -1,0 +1,83 @@
+vertex_type: "Table"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:table:{database_name}/{schema}.{table_name}"
+    examples:
+      - "urn:table:orders-db/public.orders"
+      - "urn:table:analytics/events.page_views"
+
+  name:
+    type: string
+    sources:
+      otel: "db.sql.table"
+      prometheus: "pg_stat_user_tables{relname} / mysql table metrics"
+
+  database_ref:
+    type: string
+    description: "Ссылка на родительский Database vertex id"
+
+  schema_name:
+    type: string
+    examples: ["public", "dbo", "analytics"]
+
+  table_type:
+    type: enum
+    values: ["table", "view", "materialized_view", "collection", "index"]
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  row_count:
+    key: "table.row_count"
+    type: integer
+    sources:
+      prometheus: "pg_stat_user_tables{relname} → n_live_tup"
+
+  size_bytes:
+    key: "table.size_bytes"
+    type: float
+    unit: "bytes"
+    sources:
+      prometheus: "pg_total_relation_size_bytes / mysql table size"
+
+  read_rate:
+    key: "table.read_rate"
+    type: float
+    unit: "reads/sec"
+    sources:
+      otel: "rate of spans where db.sql.table == this.name AND db.operation IN ('SELECT')"
+      prometheus: "rate(pg_stat_user_tables_seq_scan + pg_stat_user_tables_idx_scan)"
+
+  write_rate:
+    key: "table.write_rate"
+    type: float
+    unit: "writes/sec"
+    sources:
+      otel: "rate of spans where db.operation IN ('INSERT', 'UPDATE', 'DELETE')"
+      prometheus: "rate(pg_stat_user_tables_n_tup_ins + n_tup_upd + n_tup_del)"
+
+  dead_tuple_ratio:
+    key: "table.dead_tuple_ratio"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+    sources:
+      prometheus: "pg_stat_user_tables_n_dead_tup / (n_live_tup + n_dead_tup)"
+
+  last_vacuum_at:
+    key: "table.last_vacuum_at"
+    type: datetime
+    format: "ISO 8601 (UTC)"
+    sources:
+      prometheus: "pg_stat_user_tables_last_autovacuum"
