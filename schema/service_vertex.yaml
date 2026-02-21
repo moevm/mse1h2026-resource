@@ -1,0 +1,114 @@
+vertex_type: "Service"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:service:{namespace}/{name}"
+    examples:
+      - "urn:service:payments/checkout-service"
+      - "urn:service:default/auth-api"
+
+  name:
+    type: string
+    sources:
+      otel: "service.name"
+      kubernetes: "v1/Service metadata.name"
+      istio: "destination_service_name / source_workload"
+      argocd: "Application.metadata.name"
+      gitlab: "project.name"
+      kong: "services[].name"
+      terraform: "resource.name (ecs_service, cloud_run)"
+
+  version:
+    type: string
+    format: "SemVer preferred"
+    sources:
+      otel: "service.version"
+      kubernetes: "label app.kubernetes.io/version"
+      istio: "source_version / destination_version"
+      argocd: "spec.source.targetRevision"
+
+  namespace:
+    type: string
+    sources:
+      otel: "service.namespace"
+      kubernetes: "metadata.namespace"
+      istio: "source_workload_namespace / destination_workload_namespace"
+
+  service_type:
+    type: enum
+    values: ["http", "grpc", "tcp", "graphql", "websocket", "event_driven"]
+
+  protocol:
+    type: string
+    sources:
+      istio: "request_protocol"
+      otel: "rpc.system / network.protocol.name"
+      kong: "service.protocol"
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+    values: ["otel_traces", "kubernetes_api", "service_mesh", "prometheus",
+             "argocd_api", "gitlab_api", "api_gateway", "terraform_state"]
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  request_rate:
+    key: "service.request_rate"
+    type: float
+    unit: "requests/sec"
+    sources:
+      prometheus: "rate(http_requests_total{service='<name>'}[5m])"
+      istio: "rate(istio_requests_total{destination_service_name='<name>'}[5m])"
+      otel: "aggregate span throughput for service.name == this.name"
+
+  error_rate:
+    key: "service.error_rate"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+    sources:
+      prometheus: "rate(http_requests_total{status=~'5..'}[5m]) / rate(http_requests_total[5m])"
+      istio: "rate(istio_requests_total{response_code=~'5..'}[5m]) / rate(istio_requests_total[5m])"
+      otel: "span error count / total span count"
+
+  p50_latency:
+    key: "service.p50_latency"
+    type: float
+    unit: "milliseconds"
+
+  p95_latency:
+    key: "service.p95_latency"
+    type: float
+    unit: "milliseconds"
+
+  p99_latency:
+    key: "service.p99_latency"
+    type: float
+    unit: "milliseconds"
+    sources:
+      prometheus: "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))"
+      istio: "histogram_quantile(0.99, rate(istio_request_duration_milliseconds_bucket[5m]))"
+
+  availability:
+    key: "service.availability"
+    type: float
+    unit: "ratio [0.0 .. 1.0]"
+
+  active_connections:
+    key: "service.active_connections"
+    type: integer
+
+  instance_count:
+    key: "service.instance_count"
+    type: integer
+    sources:
+      kubernetes: "kube_deployment_status_replicas_available"
+      otel: "count distinct service.instance.id"
