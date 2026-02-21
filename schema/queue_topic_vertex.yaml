@@ -1,0 +1,96 @@
+vertex_type: "QueueTopic"
+
+required_fields:
+
+  id:
+    type: string
+    format: "urn:{kind}:{provider}:{name}"
+    examples:
+      - "urn:topic:kafka:order-events"
+      - "urn:queue:rabbitmq:payment-tasks"
+      - "urn:queue:aws_sqs:email-notifications"
+
+  name:
+    type: string
+    sources:
+      otel: "messaging.destination.name"
+      terraform: "resource.name (aws_sqs_queue, aws_sns_topic, google_pubsub_topic)"
+      prometheus: "Kafka/RabbitMQ exporter labels (topic, queue)"
+
+  kind:
+    type: enum
+    values: ["queue", "topic"]
+    sources:
+      otel: "messaging.destination_kind"
+
+  messaging_system:
+    type: string
+    sources:
+      otel: "messaging.system"
+    examples: ["kafka", "rabbitmq", "aws_sqs", "aws_sns", "google_pubsub",
+               "nats", "pulsar", "azure_servicebus", "activemq"]
+
+  provider:
+    type: enum
+    values: ["self_hosted", "aws_sqs", "aws_sns", "aws_msk", "gcp_pubsub",
+             "azure_servicebus", "confluent_cloud"]
+
+  discovered_at:
+    type: datetime
+    format: "ISO 8601 (UTC)"
+
+  source_system:
+    type: string
+
+  labels:
+    type: map[string, string]
+
+unified_metrics:
+
+  message_rate_in:
+    key: "queue_topic.message_rate_in"
+    type: float
+    unit: "messages/sec"
+    sources:
+      prometheus: "rate(kafka_topic_partition_current_offset[5m]) / rate(rabbitmq_queue_messages_published_total[5m])"
+
+  message_rate_out:
+    key: "queue_topic.message_rate_out"
+    type: float
+    unit: "messages/sec"
+
+  consumer_lag:
+    key: "queue_topic.consumer_lag"
+    type: integer
+    unit: "messages"
+    sources:
+      prometheus: "kafka_consumergroup_lag / rabbitmq_queue_messages_unacked"
+
+  queue_depth:
+    key: "queue_topic.queue_depth"
+    type: integer
+    unit: "messages"
+    sources:
+      prometheus: "rabbitmq_queue_messages / aws_sqs_approximate_number_of_messages"
+
+  partition_count:
+    key: "queue_topic.partition_count"
+    type: integer
+    sources:
+      prometheus: "kafka_topic_partitions"
+
+  consumer_count:
+    key: "queue_topic.consumer_count"
+    type: integer
+    sources:
+      prometheus: "rabbitmq_queue_consumers / kafka_consumergroup_members"
+
+  oldest_message_age:
+    key: "queue_topic.oldest_message_age"
+    type: float
+    unit: "milliseconds"
+
+  dlq_message_count:
+    key: "queue_topic.dlq_message_count"
+    type: integer
+    description: "Количество сообщений в Dead Letter Queue"
