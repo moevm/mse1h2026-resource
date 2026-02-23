@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Deployment Node",
+  "description": "A deployment configuration (e.g., Kubernetes Deployment)",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "Deployment"
+    },
+    "replicas_desired": {
+      "type": "integer"
+    },
+    "replicas_ready": {
+      "type": "integer"
+    },
+    "strategy": {
+      "type": "string",
+      "enum": [
+        "RollingUpdate",
+        "Recreate",
+        "BlueGreen",
+        "Canary"
+      ]
+    },
+    "namespace": {
+      "type": "string",
+      "description": "Kubernetes namespace"
+    },
+    "cluster_id": {
+      "type": "string",
+      "description": "Reference to the cluster URN"
+    },
+    "image_tag": {
+      "type": "string",
+      "description": "Container image tag"
+    },
+    "helm_chart_version": {
+      "type": "string"
+    },
+    "last_deployed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "rollback_revision": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}
