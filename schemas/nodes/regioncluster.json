@@ -1,0 +1,108 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RegionCluster Node",
+  "description": "A geographical region or compute cluster",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "RegionCluster"
+    },
+    "provider": {
+      "type": "string",
+      "examples": [
+        "aws",
+        "gcp",
+        "azure",
+        "on-prem"
+      ]
+    },
+    "region_code": {
+      "type": "string",
+      "examples": [
+        "us-east-1",
+        "eu-central-1"
+      ]
+    },
+    "zones": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "k8s_version": {
+      "type": "string"
+    },
+    "node_count": {
+      "type": "integer"
+    },
+    "vpc_id": {
+      "type": "string"
+    },
+    "is_active": {
+      "type": "boolean"
+    },
+    "total_cpu": {
+      "type": "integer"
+    },
+    "total_memory_gb": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}

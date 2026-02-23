@@ -1,0 +1,99 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Table Node",
+  "description": "A database table or collection",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "Table"
+    },
+    "schema_name": {
+      "type": "string"
+    },
+    "row_count": {
+      "type": "integer"
+    },
+    "size_bytes": {
+      "type": "integer"
+    },
+    "primary_key": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "is_partitioned": {
+      "type": "boolean"
+    },
+    "retention_days": {
+      "type": "integer"
+    },
+    "index_count": {
+      "type": "integer"
+    },
+    "last_vacuumed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "table_locks": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}

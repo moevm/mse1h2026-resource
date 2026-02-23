@@ -1,0 +1,123 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Service Node",
+  "description": "A microservice or application component",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "Service"
+    },
+    "language": {
+      "type": "string",
+      "examples": [
+        "go",
+        "java",
+        "python",
+        "nodejs"
+      ]
+    },
+    "framework": {
+      "type": "string",
+      "examples": [
+        "spring",
+        "gin",
+        "django",
+        "express"
+      ]
+    },
+    "version": {
+      "type": "string",
+      "description": "Application version"
+    },
+    "repository_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Git repository URL"
+    },
+    "commit_hash": {
+      "type": "string",
+      "description": "Deployed commit hash"
+    },
+    "tier": {
+      "type": "integer",
+      "description": "Criticality tier (1-4, where 1 is most critical)"
+    },
+    "is_external": {
+      "type": "boolean",
+      "description": "True if this is a third-party service"
+    },
+    "build_id": {
+      "type": "string",
+      "description": "CI/CD build identifier"
+    },
+    "runtime_version": {
+      "type": "string",
+      "description": "Version of the runtime (e.g., Node 18.x, Java 17)"
+    },
+    "memory_allocated_mb": {
+      "type": "integer",
+      "description": "Allocated memory in MB"
+    },
+    "cpu_allocated_cores": {
+      "type": "number",
+      "description": "Allocated CPU cores"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}
