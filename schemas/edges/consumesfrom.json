@@ -1,0 +1,68 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "consumesfrom Edge",
+  "description": "Asynchronous message consumption from a queue/topic",
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "URN of the source node"
+    },
+    "target_id": {
+      "type": "string",
+      "description": "URN of the target node"
+    },
+    "first_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was first detected"
+    },
+    "last_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was last detected"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Importance or frequency weight of the edge (e.g., for graph layout algorithms)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "stale",
+        "deleted"
+      ],
+      "description": "Status of the relationship"
+    },
+    "type": {
+      "type": "string",
+      "const": "consumesfrom"
+    },
+    "consumer_group": {
+      "type": "string"
+    },
+    "lag_messages": {
+      "type": "integer",
+      "description": "Number of messages behind"
+    },
+    "processing_time_ms": {
+      "type": "number"
+    },
+    "auto_commit": {
+      "type": "boolean"
+    },
+    "prefetch_count": {
+      "type": "integer"
+    },
+    "concurrent_consumers": {
+      "type": "integer"
+    }
+  },
+  "required": [
+    "source_id",
+    "target_id",
+    "type"
+  ],
+  "additionalProperties": true
+}

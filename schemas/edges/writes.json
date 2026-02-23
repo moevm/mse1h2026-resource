@@ -1,0 +1,77 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "writes Edge",
+  "description": "Data write operation to a database, table, or cache",
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "URN of the source node"
+    },
+    "target_id": {
+      "type": "string",
+      "description": "URN of the target node"
+    },
+    "first_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was first detected"
+    },
+    "last_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was last detected"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Importance or frequency weight of the edge (e.g., for graph layout algorithms)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "stale",
+        "deleted"
+      ],
+      "description": "Status of the relationship"
+    },
+    "type": {
+      "type": "string",
+      "const": "writes"
+    },
+    "query_type": {
+      "type": "string",
+      "examples": [
+        "insert",
+        "update",
+        "delete",
+        "put"
+      ]
+    },
+    "bytes_written": {
+      "type": "integer"
+    },
+    "transaction_isolation": {
+      "type": "string",
+      "examples": [
+        "read_committed",
+        "serializable"
+      ]
+    },
+    "latency_ms": {
+      "type": "number"
+    },
+    "batch_size": {
+      "type": "integer"
+    },
+    "is_upsert": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "source_id",
+    "target_id",
+    "type"
+  ],
+  "additionalProperties": true
+}
