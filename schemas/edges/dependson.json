@@ -1,0 +1,75 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "dependson Edge",
+  "description": "General dependency (e.g., service depends on a library or secret)",
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "URN of the source node"
+    },
+    "target_id": {
+      "type": "string",
+      "description": "URN of the target node"
+    },
+    "first_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was first detected"
+    },
+    "last_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was last detected"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Importance or frequency weight of the edge (e.g., for graph layout algorithms)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "stale",
+        "deleted"
+      ],
+      "description": "Status of the relationship"
+    },
+    "type": {
+      "type": "string",
+      "const": "dependson"
+    },
+    "criticality": {
+      "type": "string",
+      "enum": [
+        "hard",
+        "soft"
+      ],
+      "description": "Hard means failure cascades, soft means graceful degradation"
+    },
+    "fallback_available": {
+      "type": "boolean"
+    },
+    "circuit_breaker_state": {
+      "type": "string",
+      "enum": [
+        "closed",
+        "open",
+        "half_open"
+      ]
+    },
+    "is_async": {
+      "type": "boolean"
+    },
+    "impact_score": {
+      "type": "number",
+      "description": "1-10 scale of impact if dependency fails"
+    }
+  },
+  "required": [
+    "source_id",
+    "target_id",
+    "type"
+  ],
+  "additionalProperties": true
+}
