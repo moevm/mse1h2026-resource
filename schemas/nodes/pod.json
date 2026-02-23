@@ -1,0 +1,111 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Pod Node",
+  "description": "A Kubernetes Pod or similar container group",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "Pod"
+    },
+    "namespace": {
+      "type": "string"
+    },
+    "node_name": {
+      "type": "string",
+      "description": "Name of the node it runs on"
+    },
+    "ip_address": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "Pending",
+        "Running",
+        "Succeeded",
+        "Failed",
+        "Unknown"
+      ]
+    },
+    "restart_count": {
+      "type": "integer"
+    },
+    "cpu_usage_m": {
+      "type": "integer",
+      "description": "CPU usage in millicores"
+    },
+    "memory_usage_mi": {
+      "type": "integer",
+      "description": "Memory usage in MiB"
+    },
+    "service_account": {
+      "type": "string"
+    },
+    "qos_class": {
+      "type": "string",
+      "enum": [
+        "Guaranteed",
+        "Burstable",
+        "BestEffort"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}

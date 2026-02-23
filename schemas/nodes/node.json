@@ -1,0 +1,110 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Node Node",
+  "description": "A physical or virtual machine (Compute Node)",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "Node"
+    },
+    "instance_type": {
+      "type": "string",
+      "description": "e.g., t3.medium, n2-standard-2"
+    },
+    "os_image": {
+      "type": "string"
+    },
+    "kernel_version": {
+      "type": "string"
+    },
+    "kubelet_version": {
+      "type": "string"
+    },
+    "architecture": {
+      "type": "string",
+      "enum": [
+        "amd64",
+        "arm64"
+      ]
+    },
+    "capacity_cpu": {
+      "type": "integer",
+      "description": "Total CPU cores"
+    },
+    "capacity_memory_gb": {
+      "type": "number",
+      "description": "Total memory in GB"
+    },
+    "region": {
+      "type": "string"
+    },
+    "zone": {
+      "type": "string"
+    },
+    "internal_ip": {
+      "type": "string",
+      "format": "ipv4"
+    },
+    "external_ip": {
+      "type": "string",
+      "format": "ipv4"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}

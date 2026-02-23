@@ -1,0 +1,105 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QueueTopic Node",
+  "description": "A message queue or pub/sub topic",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "QueueTopic"
+    },
+    "broker": {
+      "type": "string",
+      "examples": [
+        "kafka",
+        "rabbitmq",
+        "sqs",
+        "pubsub"
+      ]
+    },
+    "partitions": {
+      "type": "integer"
+    },
+    "retention_bytes": {
+      "type": "integer"
+    },
+    "retention_ms": {
+      "type": "integer"
+    },
+    "message_rate": {
+      "type": "number",
+      "description": "Messages per second"
+    },
+    "consumer_groups": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "max_message_size_bytes": {
+      "type": "integer"
+    },
+    "replication_factor": {
+      "type": "integer"
+    },
+    "is_dead_letter": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}

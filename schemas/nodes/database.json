@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Database Node",
+  "description": "A database instance or cluster",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "Database"
+    },
+    "engine": {
+      "type": "string",
+      "examples": [
+        "postgresql",
+        "mysql",
+        "mongodb",
+        "cassandra"
+      ]
+    },
+    "version": {
+      "type": "string"
+    },
+    "capacity_gb": {
+      "type": "number"
+    },
+    "connection_string": {
+      "type": "string",
+      "description": "Sanitized connection string (no passwords)"
+    },
+    "is_managed": {
+      "type": "boolean",
+      "description": "True if managed by cloud provider (e.g., RDS)"
+    },
+    "region": {
+      "type": "string"
+    },
+    "instance_class": {
+      "type": "string"
+    },
+    "max_connections": {
+      "type": "integer"
+    },
+    "backup_retention_days": {
+      "type": "integer"
+    },
+    "multi_az": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}

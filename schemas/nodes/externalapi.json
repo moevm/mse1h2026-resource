@@ -1,0 +1,106 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExternalAPI Node",
+  "description": "A third-party external API",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "ExternalAPI"
+    },
+    "provider": {
+      "type": "string",
+      "examples": [
+        "stripe",
+        "twilio",
+        "sendgrid"
+      ]
+    },
+    "base_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "auth_type": {
+      "type": "string",
+      "enum": [
+        "oauth2",
+        "api_key",
+        "basic",
+        "mtls"
+      ]
+    },
+    "rate_limit_tier": {
+      "type": "string"
+    },
+    "sla_percentage": {
+      "type": "number"
+    },
+    "support_email": {
+      "type": "string",
+      "format": "email"
+    },
+    "documentation_url": {
+      "type": "string",
+      "format": "uri"
+    },
+    "ip_whitelisted": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}
