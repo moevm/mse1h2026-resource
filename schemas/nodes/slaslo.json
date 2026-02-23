@@ -1,0 +1,94 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SLASLO Node",
+  "description": "Service Level Agreement or Objective",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Global URN identifier (e.g., urn:service:payment-api)"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable name"
+    },
+    "description": {
+      "type": "string",
+      "description": "Detailed description of the resource"
+    },
+    "tags": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "Key-value pairs for labels/tags"
+    },
+    "environment": {
+      "type": "string",
+      "enum": [
+        "production",
+        "staging",
+        "development",
+        "testing"
+      ],
+      "description": "Deployment environment"
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was first discovered"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the resource was last updated"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "inactive",
+        "degraded",
+        "offline",
+        "unknown"
+      ],
+      "description": "Current operational status"
+    },
+    "type": {
+      "type": "string",
+      "const": "SLASLO"
+    },
+    "metric_name": {
+      "type": "string",
+      "examples": [
+        "availability",
+        "latency_p99"
+      ]
+    },
+    "target_percentage": {
+      "type": "number"
+    },
+    "window_days": {
+      "type": "integer"
+    },
+    "current_value": {
+      "type": "number"
+    },
+    "alert_threshold": {
+      "type": "number"
+    },
+    "violation_count": {
+      "type": "integer"
+    },
+    "monitoring_url": {
+      "type": "string",
+      "format": "uri"
+    }
+  },
+  "required": [
+    "id",
+    "type",
+    "name"
+  ],
+  "additionalProperties": true
+}
