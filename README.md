@@ -1,10 +1,7 @@
-# mse-template
+# mse1h2026-resource
 
-## Установка и запуск
-Инструкции по установке и запуску проекта.
+[Вики по проекту](https://github.com/moevm/mse1h2026-resource/wiki)
 
-## Проверка работоспособности
-Инструкции по проверке работоспособности проекта (основной функциональности и результатов).
-
-## Дополнительная информация
-Любая информация, которую комакнда посчитает нужной разместить
+## Itearation-1
+[customer-sync-1](https://github.com/moevm/mse1h2026-resource/blob/reports/customer_sync/Созвон_№1_16.02.md)
+[team-sync-1](https://github.com/moevm/mse1h2026-resource/blob/reports/team_sync/Созвон_№1_22.02.md)
