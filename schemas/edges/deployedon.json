@@ -1,0 +1,76 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "deployedon Edge",
+  "description": "Indicates where a workload is running (e.g., Pod deployed on Node)",
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "URN of the source node"
+    },
+    "target_id": {
+      "type": "string",
+      "description": "URN of the target node"
+    },
+    "first_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was first detected"
+    },
+    "last_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was last detected"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Importance or frequency weight of the edge (e.g., for graph layout algorithms)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "stale",
+        "deleted"
+      ],
+      "description": "Status of the relationship"
+    },
+    "type": {
+      "type": "string",
+      "const": "deployedon"
+    },
+    "path": {
+      "type": "string",
+      "description": "Deployment path or directory"
+    },
+    "isolation_level": {
+      "type": "string",
+      "examples": [
+        "container",
+        "vm",
+        "process"
+      ]
+    },
+    "resource_requests_cpu": {
+      "type": "number"
+    },
+    "resource_requests_mem_mb": {
+      "type": "integer"
+    },
+    "resource_limits_cpu": {
+      "type": "number"
+    },
+    "resource_limits_mem_mb": {
+      "type": "integer"
+    },
+    "mount_path": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_id",
+    "target_id",
+    "type"
+  ],
+  "additionalProperties": true
+}

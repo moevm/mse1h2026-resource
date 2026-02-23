@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "reads Edge",
+  "description": "Data read operation from a database, table, or cache",
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "URN of the source node"
+    },
+    "target_id": {
+      "type": "string",
+      "description": "URN of the target node"
+    },
+    "first_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was first detected"
+    },
+    "last_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was last detected"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Importance or frequency weight of the edge (e.g., for graph layout algorithms)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "stale",
+        "deleted"
+      ],
+      "description": "Status of the relationship"
+    },
+    "type": {
+      "type": "string",
+      "const": "reads"
+    },
+    "query_type": {
+      "type": "string",
+      "examples": [
+        "select",
+        "scan",
+        "get"
+      ]
+    },
+    "rows_returned": {
+      "type": "integer"
+    },
+    "index_used": {
+      "type": "boolean"
+    },
+    "latency_ms": {
+      "type": "number"
+    },
+    "connection_pool_size": {
+      "type": "integer"
+    },
+    "cache_hit_ratio": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "source_id",
+    "target_id",
+    "type"
+  ],
+  "additionalProperties": true
+}

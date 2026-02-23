@@ -1,0 +1,78 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ratelimitedby Edge",
+  "description": "Rate limiting policy applied to a connection or endpoint",
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "URN of the source node"
+    },
+    "target_id": {
+      "type": "string",
+      "description": "URN of the target node"
+    },
+    "first_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was first detected"
+    },
+    "last_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was last detected"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Importance or frequency weight of the edge (e.g., for graph layout algorithms)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "stale",
+        "deleted"
+      ],
+      "description": "Status of the relationship"
+    },
+    "type": {
+      "type": "string",
+      "const": "ratelimitedby"
+    },
+    "limit_type": {
+      "type": "string",
+      "enum": [
+        "ip",
+        "user",
+        "tenant",
+        "global"
+      ]
+    },
+    "max_requests": {
+      "type": "integer"
+    },
+    "window_seconds": {
+      "type": "integer"
+    },
+    "throttle_strategy": {
+      "type": "string",
+      "examples": [
+        "drop",
+        "delay",
+        "queue"
+      ]
+    },
+    "burst_capacity": {
+      "type": "integer"
+    },
+    "current_usage": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "source_id",
+    "target_id",
+    "type"
+  ],
+  "additionalProperties": true
+}

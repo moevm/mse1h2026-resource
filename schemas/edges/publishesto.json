@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "publishesto Edge",
+  "description": "Asynchronous message publishing to a queue/topic",
+  "type": "object",
+  "properties": {
+    "source_id": {
+      "type": "string",
+      "description": "URN of the source node"
+    },
+    "target_id": {
+      "type": "string",
+      "description": "URN of the target node"
+    },
+    "first_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was first detected"
+    },
+    "last_seen": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the relationship was last detected"
+    },
+    "weight": {
+      "type": "number",
+      "description": "Importance or frequency weight of the edge (e.g., for graph layout algorithms)"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "stale",
+        "deleted"
+      ],
+      "description": "Status of the relationship"
+    },
+    "type": {
+      "type": "string",
+      "const": "publishesto"
+    },
+    "message_size_bytes": {
+      "type": "integer"
+    },
+    "batch_size": {
+      "type": "integer"
+    },
+    "compression": {
+      "type": "string",
+      "examples": [
+        "gzip",
+        "snappy",
+        "lz4",
+        "none"
+      ]
+    },
+    "qos_level": {
+      "type": "integer",
+      "description": "Quality of Service (e.g., MQTT QoS 0, 1, 2)"
+    },
+    "routing_key": {
+      "type": "string"
+    },
+    "partition_key": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_id",
+    "target_id",
+    "type"
+  ],
+  "additionalProperties": true
+}
