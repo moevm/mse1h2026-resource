@@ -12,7 +12,7 @@ docker compose up -d
 ## Запуск mocker для генерации моковых данных каждые 5 секунд
 
 ```
-python -m mocker.run --url http://localhost:8000 --interval 5
+docker exec resource-backend python -m mocker.run --url http://localhost:8000 --interval 5
 ```
 
 ## Веб-страница
