@@ -15,10 +15,12 @@ import type {
 
 const BASE = "/graph";
 
-export async function fetchFullGraph(limit = 500): Promise<GraphResponse> {
-    const { data } = await client.get<GraphResponse>(`${BASE}/full`, {
-        params: { limit },
-    });
+export async function fetchFullGraph(limit = 500, appId?: string): Promise<GraphResponse> {
+    const params: Record<string, unknown> = { limit };
+    if (appId) {
+        params.app_id = appId;
+    }
+    const { data } = await client.get<GraphResponse>(`${BASE}/full`, { params });
     return data;
 }
 

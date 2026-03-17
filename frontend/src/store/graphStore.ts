@@ -27,6 +27,8 @@ export interface GraphState {
     filterMode: "ghost" | "exclude";
     searchQuery: string;
 
+    selectedAppId: string | null;
+
     queryHistory: QueryHistoryEntry[];
 
     backendStatus: "connected" | "disconnected" | "checking";
@@ -48,6 +50,7 @@ export interface GraphState {
     setHiddenEdgeTypes: (types: string[]) => void;
     setFilterMode: (mode: "ghost" | "exclude") => void;
     setSearchQuery: (q: string) => void;
+    setSelectedAppId: (id: string | null) => void;
     addQueryHistory: (entry: Omit<QueryHistoryEntry, "id" | "timestamp">) => void;
     setBackendStatus: (s: "connected" | "disconnected" | "checking") => void;
     setLastRefreshed: () => void;
@@ -71,6 +74,7 @@ const initialState = {
     hiddenEdgeTypes: new Set<string>(),
     filterMode: "ghost" as const,
     searchQuery: "",
+    selectedAppId: null as string | null,
     queryHistory: [] as QueryHistoryEntry[],
     backendStatus: "checking" as const,
     lastRefreshedAt: null as string | null,
@@ -123,6 +127,8 @@ export const useGraphStore = create<GraphState>((set) => ({
     setFilterMode: (mode) => set({ filterMode: mode }),
 
     setSearchQuery: (q) => set({ searchQuery: q }),
+
+    setSelectedAppId: (id) => set({ selectedAppId: id }),
 
     addQueryHistory: (entry) =>
         set((s) => {

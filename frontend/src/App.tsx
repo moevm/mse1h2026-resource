@@ -3,13 +3,13 @@ import { AppLayout } from "./components/layout/AppLayout";
 import { DashboardPage } from "./components/pages/DashboardPage";
 import { GraphPage } from "./components/pages/GraphPage";
 import { AgentsPage } from "./components/pages/AgentsPage";
+import { MapperPage } from "./components/mapper/MapperPage";
 
 export default function App() {
     return (
         <BrowserRouter>
             <Routes>
                 <Route path="/graph" element={<GraphPage />} />
-
                 <Route
                     path="/"
                     element={
@@ -23,6 +23,14 @@ export default function App() {
                     element={
                         <AppLayout>
                             <AgentsPage />
+                        </AppLayout>
+                    }
+                />
+                <Route
+                    path="/mapper"
+                    element={
+                        <AppLayout>
+                            <MapperPage />
                         </AppLayout>
                     }
                 />

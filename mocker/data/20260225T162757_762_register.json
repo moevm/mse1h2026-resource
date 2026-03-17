@@ -1,0 +1,16 @@
+{
+  "timestamp": "2026-02-25T16:27:57.762846+00:00",
+  "endpoint": "http://localhost:8000/api/v1/agents/register",
+  "request": {
+    "name": "mock-generator",
+    "source_type": "mock",
+    "description": "Real-time mock topology generator"
+  },
+  "response": {
+    "agent_id": "d7f9618e-1706-4286-8d3f-3fdcee1b5ae9",
+    "token": "c061549f-6222-430f-bccd-5fa085d53d06",
+    "name": "mock-generator",
+    "source_type": "mock",
+    "registered_at": "2026-02-25T16:27:57.492478Z"
+  }
+}

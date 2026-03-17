@@ -2,7 +2,7 @@ import type { ReactNode, ComponentType } from "react";
 import { NavLink } from "react-router-dom";
 import { useUiStore } from "../../store/uiStore";
 import { useGraphStore } from "../../store/graphStore";
-import { IconDashboard, IconGraph, IconAgents, IconChevronLeft } from "../icons";
+import { IconDashboard, IconGraph, IconAgents, IconMapper, IconChevronLeft } from "../icons";
 
 interface NavItem {
     to: string;
@@ -15,6 +15,7 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
     { to: "/", end: true, label: "Dashboard", icon: IconDashboard },
     { to: "/graph", end: false, label: "Graph", icon: IconGraph },
+    { to: "/mapper", end: false, label: "Mapper", icon: IconMapper },
     { to: "/agents", end: false, label: "Agents", icon: IconAgents },
 ];
 

@@ -13,3 +13,4 @@ export async function fetchHealth(): Promise<HealthResponse> {
 export * from "./graphApi";
 export * from "./agentsApi";
 export * from "./ingestApi";
+export * from "./applicationsApi";

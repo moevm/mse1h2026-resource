@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useGraph } from "../../hooks/useGraph";
+import { useApplications } from "../../hooks/useApplications";
 import { useGraphStore } from "../../store/graphStore";
 import { useLogStore } from "../../store/logStore";
 import { AppLayout } from "../layout/AppLayout";
@@ -30,9 +31,12 @@ const PANEL_CONFIG: Array<{ id: RightPanel; label: string; shortLabel: string }>
 
 export function GraphPage() {
     const { loadFullGraph, checkHealth } = useGraph();
+    const { applications } = useApplications();
     const nodes = useGraphStore((s) => s.nodes);
     const searchQuery = useGraphStore((s) => s.searchQuery);
     const setSearchQuery = useGraphStore((s) => s.setSearchQuery);
+    const selectedAppId = useGraphStore((s) => s.selectedAppId);
+    const setSelectedAppId = useGraphStore((s) => s.setSelectedAppId);
     const error = useGraphStore((s) => s.error);
     const lastRefreshedAt = useGraphStore((s) => s.lastRefreshedAt);
     const logCount = useLogStore((s) => s.entries.length);
@@ -44,15 +48,41 @@ export function GraphPage() {
         useGraphStore.getState().setGraph(data.nodes, data.edges);
     }, []);
 
+    const handleAppChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = e.target.value || undefined;
+        setSelectedAppId(value || null);
+        void loadFullGraph(limitInput, value);
+    }, [limitInput, loadFullGraph, setSelectedAppId]);
+
     useEffect(() => {
         void checkHealth();
         if (nodes.length === 0) {
-            void loadFullGraph(limitInput);
+            void loadFullGraph(limitInput, selectedAppId || undefined);
         }
     }, []);
 
     const headerContent = (
         <div className="flex items-center gap-3 flex-1 min-w-0">
+            {/* Application Selector */}
+            <div className="flex items-center gap-2 shrink-0">
+                <label htmlFor="app-selector" className="text-xs text-slate-500 whitespace-nowrap">
+                    App
+                </label>
+                <select
+                    id="app-selector"
+                    className="bg-slate-800/80 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-36"
+                    value={selectedAppId || ""}
+                    onChange={handleAppChange}
+                >
+                    <option value="">All Applications</option>
+                    {applications.map((app) => (
+                        <option key={app.app_id} value={app.app_id}>
+                            {app.name} ({app.agent_count})
+                        </option>
+                    ))}
+                </select>
+            </div>
+
             <Input
                 icon={<IconSearch />}
                 placeholder="Search nodes…"
@@ -79,7 +109,7 @@ export function GraphPage() {
                     size="sm"
                     icon={<IconRefresh className="w-3.5 h-3.5" />}
                     onClick={() => {
-                        void loadFullGraph(limitInput);
+                        void loadFullGraph(limitInput, selectedAppId || undefined);
                     }}
                 >
                     Reload

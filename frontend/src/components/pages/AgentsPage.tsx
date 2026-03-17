@@ -120,6 +120,8 @@ interface AgentCardProps {
         description?: string;
         registered_at?: string;
         last_seen_at?: string;
+        app_id?: string;
+        app_name?: string;
     };
 }
 
@@ -134,6 +136,9 @@ function AgentCard({ agent }: Readonly<AgentCardProps>) {
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-slate-100">{agent.name}</span>
                     <Badge label={agent.source_type} color="#6366f1" />
+                    {agent.app_name && (
+                        <Badge label={agent.app_name} color="#10b981" />
+                    )}
                 </div>
                 {agent.description && (
                     <p className="text-xs text-slate-500 mt-0.5 truncate">{agent.description}</p>
@@ -171,6 +176,7 @@ interface RegisterRequest {
     name: string;
     source_type: string;
     description?: string;
+    app_token?: string;
 }
 
 function RegisterForm({
@@ -181,6 +187,7 @@ function RegisterForm({
     const [name, setName] = useState("");
     const [sourceType, setSourceType] = useState("custom");
     const [description, setDescription] = useState("");
+    const [appToken, setAppToken] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
     const handleSubmit = async (e: { preventDefault(): void }) => {
@@ -191,6 +198,7 @@ function RegisterForm({
                 name: name.trim(),
                 source_type: sourceType,
                 description: description.trim() || undefined,
+                app_token: appToken.trim() || undefined,
             });
         } finally {
             setSubmitting(false);
@@ -225,6 +233,12 @@ function RegisterForm({
                     placeholder="Optional description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
+                />
+                <Input
+                    label="Application Token (optional)"
+                    placeholder="Paste app_token to bind to application"
+                    value={appToken}
+                    onChange={(e) => setAppToken(e.target.value)}
                 />
                 <Button
                     type="submit"

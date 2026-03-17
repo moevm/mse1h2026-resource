@@ -49,17 +49,18 @@ export function useGraph() {
     }, [setBackendStatus, addLog]);
 
     const loadFullGraph = useCallback(
-        async (limit = 500) => {
+        async (limit = 500, appId?: string) => {
             setLoading(true);
-            addLog("info", "graph", `Loading full graph (limit=${limit})...`);
+            const appInfo = appId ? ` (app=${appId.slice(0, 8)}...)` : "";
+            addLog("info", "graph", `Loading full graph (limit=${limit}${appInfo})...`);
             try {
-                const res = await fetchFullGraph(limit);
+                const res = await fetchFullGraph(limit, appId);
                 setGraph(res.nodes, res.edges);
                 syncFilters();
                 setLastRefreshed();
                 addQueryHistory({
                     type: "full",
-                    params: { limit },
+                    params: { limit, app_id: appId },
                     nodeCount: res.node_count,
                     edgeCount: res.edge_count,
                 });
