@@ -14,6 +14,15 @@ from app.repositories.neo4j_connection import neo4j_driver
 class MappingRepository:
     """Repository for storing and retrieving mapping configurations in Neo4j."""
 
+    @staticmethod
+    def _dump_model_or_dict(item: Any) -> Dict[str, Any]:
+        """Serialize an item that may be a Pydantic model or plain dict."""
+        if hasattr(item, "model_dump"):
+            return item.model_dump()
+        if isinstance(item, dict):
+            return item
+        raise TypeError(f"Unsupported mapping item type: {type(item).__name__}")
+
     def _serialize_mapping(self, mapping: MappingConfig) -> Dict[str, Any]:
         """Convert MappingConfig to Neo4j-compatible dict."""
         return {
@@ -27,9 +36,15 @@ class MappingRepository:
             "created_by": mapping.created_by,
             "description": mapping.description,
             "sample_chunk_id": mapping.sample_chunk_id,
-            "field_mappings": json.dumps([fm.model_dump() for fm in mapping.field_mappings]),
-            "conditional_rules": json.dumps([cr.model_dump() for cr in mapping.conditional_rules]),
-            "auto_edge_rules": json.dumps([r.model_dump() for r in mapping.auto_edge_rules]) if mapping.auto_edge_rules else "[]",
+            "field_mappings": json.dumps([
+                self._dump_model_or_dict(fm) for fm in mapping.field_mappings
+            ]),
+            "conditional_rules": json.dumps([
+                self._dump_model_or_dict(cr) for cr in mapping.conditional_rules
+            ]),
+            "auto_edge_rules": json.dumps([
+                self._dump_model_or_dict(r) for r in mapping.auto_edge_rules
+            ]) if mapping.auto_edge_rules else "[]",
             "edge_preset_id": mapping.edge_preset_id,
             "edge_source_path": mapping.edge_source_path,
             "edge_target_path": mapping.edge_target_path,

@@ -7,7 +7,13 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel
 
-from app.models.mapper.mapping import MappingConfig, MappingListResponse
+from app.models.mapper.mapping import (
+    AutoEdgeRule,
+    ConditionalRule,
+    FieldMapping,
+    MappingConfig,
+    MappingListResponse,
+)
 from app.models.mapper.raw_data import RawDataSource
 from app.repositories.mapping_repo import mapping_repo
 from app.repositories.raw_data_repo import raw_data_repo
@@ -23,9 +29,9 @@ class MappingUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     sample_chunk_id: Optional[str] = None
-    field_mappings: Optional[list] = None
-    conditional_rules: Optional[list] = None
-    auto_edge_rules: Optional[list] = None
+    field_mappings: Optional[List[FieldMapping]] = None
+    conditional_rules: Optional[List[ConditionalRule]] = None
+    auto_edge_rules: Optional[List[AutoEdgeRule]] = None
     edge_preset_id: Optional[str] = None
     edge_source_path: Optional[str] = None
     edge_target_path: Optional[str] = None
