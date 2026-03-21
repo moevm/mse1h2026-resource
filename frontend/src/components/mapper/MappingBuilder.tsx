@@ -86,7 +86,7 @@ function MappingCard({
   );
 }
 
-export function MappingBuilder() {
+export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | void }) {
   const {
     draftMapping,
     selectedFieldPath,
@@ -163,10 +163,11 @@ export function MappingBuilder() {
     setSaving(true);
     try {
       await saveDraftMapping();
+      await onSaved?.();
     } finally {
       setSaving(false);
     }
-  }, [draftMapping, saveDraftMapping]);
+  }, [draftMapping, saveDraftMapping, onSaved]);
 
   const fieldMappings = draftMapping?.field_mappings || [];
 
@@ -192,15 +193,13 @@ export function MappingBuilder() {
           className="flex-1 px-2 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
           placeholder="Mapping name..."
         />
-        {draftMapping?.id && (
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 text-white px-2 py-1 rounded"
-          >
-            {saving ? "..." : "Save"}
-          </button>
-        )}
+        <button
+          onClick={handleSave}
+          disabled={saving || !(draftMapping?.name || "").trim()}
+          className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2 py-1 rounded"
+        >
+          {saving ? "..." : draftMapping?.id ? "Save" : "Create"}
+        </button>
       </div>
 
       {/* Auto Edge Creation - Always visible */}

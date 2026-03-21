@@ -8,6 +8,7 @@ import { RawDataPanel } from "./RawDataPanel";
 import { SchemaBrowser } from "./SchemaBrowser";
 import { MappingBuilder } from "./MappingBuilder";
 import { TimelineSlider } from "./TimelineSlider";
+import { PreviewPanel } from "./PreviewPanel";
 import type { MappingConfig } from "../../types/mapper";
 
 interface Agent {
@@ -31,10 +32,15 @@ export function MapperPage() {
     selectedChunk,
     chunksLoading,
     draftMapping,
+    previewLoading,
     setChunks,
     selectChunk,
     setChunksLoading,
     setDraftMapping,
+    setPreview,
+    setPreviewLoading,
+    clearPreview,
+    saveDraftMapping,
   } = useMapperStore();
 
   const [applications, setApplications] = useState<Application[]>([]);
@@ -45,6 +51,10 @@ export function MapperPage() {
   const [activeMapping, setActiveMapping] = useState<MappingConfig | null>(null);
   const [availableMappings, setAvailableMappings] = useState<MappingConfig[]>([]);
   const [mappingsLoading, setMappingsLoading] = useState(false);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [replayLoading, setReplayLoading] = useState(false);
+  const [lastReplayAt, setLastReplayAt] = useState<string | null>(null);
+  const [deactivateClearLoading, setDeactivateClearLoading] = useState(false);
 
   // Load applications first
   useEffect(() => {
@@ -163,14 +173,20 @@ export function MapperPage() {
     setDraftMapping(mapping);
   }, [setDraftMapping]);
 
-  // Deactivate current mapping
-  const handleDeactivate = useCallback(async () => {
+  const handleDeactivateAndClear = useCallback(async () => {
     if (!activeMapping) return;
+    setDeactivateClearLoading(true);
     try {
-      await mapperApi.deactivateMapping(activeMapping.id);
+      const result = await mapperApi.deactivateAndClearMapping(activeMapping.id);
       setActiveMapping(null);
+      setActionMessage(
+        `Deactivated + cleared: ${result.deleted_nodes} nodes, ${result.deleted_edges} edges`
+      );
     } catch (error) {
-      console.error("Failed to deactivate mapping:", error);
+      console.error("Failed to deactivate and clear mapping:", error);
+      setActionMessage("Deactivate + clear failed");
+    } finally {
+      setDeactivateClearLoading(false);
     }
   }, [activeMapping]);
 
@@ -184,7 +200,133 @@ export function MapperPage() {
       edge_preset_id: "default",
       sample_chunk_id: selectedChunk?.id || null,
     });
+    clearPreview();
+    setActionMessage(null);
   }, [selectedAgent, selectedChunk, setDraftMapping]);
+
+  const ensureDraftMappingId = useCallback(async (): Promise<string | null> => {
+    if (!draftMapping) return null;
+    if (draftMapping.id) return draftMapping.id;
+
+    await saveDraftMapping();
+    return useMapperStore.getState().draftMapping?.id || null;
+  }, [draftMapping, saveDraftMapping]);
+
+  const handlePreview = useCallback(async () => {
+    if (!selectedChunk) {
+      setActionMessage("Select a data chunk first");
+      return;
+    }
+
+    setPreviewLoading(true);
+    setActionMessage(null);
+
+    try {
+      const mappingId = await ensureDraftMappingId();
+      if (!mappingId) {
+        setActionMessage("Create or save a mapping first");
+        return;
+      }
+
+      const result = await mapperApi.preview(selectedChunk.id, mappingId);
+      setPreview(
+        result.nodes,
+        result.edges,
+        result.warnings,
+        result.unresolved_references
+      );
+      setActionMessage(`Preview: ${result.nodes.length} nodes, ${result.edges.length} edges`);
+    } catch (error) {
+      console.error("Preview failed:", error);
+      setActionMessage("Preview failed");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [selectedChunk, ensureDraftMappingId, setPreview, setPreviewLoading]);
+
+  const handleApply = useCallback(async () => {
+    if (!selectedChunk) {
+      setActionMessage("Select a data chunk first");
+      return;
+    }
+
+    setPreviewLoading(true);
+    setActionMessage(null);
+
+    try {
+      const mappingId = await ensureDraftMappingId();
+      if (!mappingId) {
+        setActionMessage("Create or save a mapping first");
+        return;
+      }
+
+      const result = await mapperApi.apply(selectedChunk.id, mappingId);
+      if (result.success) {
+        setActionMessage(`Applied: ${result.nodes_processed} nodes, ${result.edges_processed} edges`);
+      } else {
+        setActionMessage(`Apply finished with errors (${result.errors.length})`);
+      }
+
+      const preview = await mapperApi.preview(selectedChunk.id, mappingId);
+      setPreview(
+        preview.nodes,
+        preview.edges,
+        preview.warnings,
+        preview.unresolved_references
+      );
+    } catch (error) {
+      console.error("Apply failed:", error);
+      setActionMessage("Apply failed");
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [selectedChunk, ensureDraftMappingId, setPreview, setPreviewLoading]);
+
+  const handleReplay = useCallback(async () => {
+    setReplayLoading(true);
+    setActionMessage(null);
+
+    try {
+      const mappingId = await ensureDraftMappingId();
+      if (!mappingId) {
+        setActionMessage("Create or save a mapping first");
+        return;
+      }
+
+      const result = await mapperApi.replayMapping(mappingId, {
+        agent_id: selectedAgent?.agent_id,
+      });
+
+      if (result.errors.length > 0) {
+        setActionMessage(
+          `Replay: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges, errors: ${result.errors.length}`
+        );
+      } else {
+        setActionMessage(
+          `Replay complete: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges`
+        );
+        setLastReplayAt(new Date().toLocaleString());
+      }
+    } catch (error) {
+      console.error("Replay failed:", error);
+      setActionMessage("Replay failed");
+    } finally {
+      setReplayLoading(false);
+    }
+  }, [ensureDraftMappingId, selectedAgent?.agent_id]);
+
+  const refreshMappings = useCallback(async () => {
+    if (!selectedAgent) return;
+    try {
+      const response = await mapperApi.listMappings({
+        source_type: selectedAgent.source_type,
+        limit: 50,
+      });
+      setAvailableMappings(response.mappings);
+    } catch (error) {
+      console.error("Failed to refresh mappings:", error);
+    }
+  }, [selectedAgent]);
 
   return (
     <DndProvider backend={HTML5Backend}>
@@ -247,10 +389,11 @@ export function MapperPage() {
                     Active: {activeMapping.name}
                   </span>
                   <button
-                    onClick={handleDeactivate}
-                    className="text-slate-400 hover:text-slate-200 text-xs underline"
+                    onClick={handleDeactivateAndClear}
+                    disabled={deactivateClearLoading}
+                    className="text-red-400 hover:text-red-300 text-xs underline disabled:text-slate-600"
                   >
-                    Deactivate
+                    {deactivateClearLoading ? "Clearing..." : "Deactivate"}
                   </button>
                 </>
               ) : (
@@ -287,6 +430,8 @@ export function MapperPage() {
                       "w-full text-left px-3 py-2 rounded text-sm transition-colors",
                       m.id === activeMapping?.id
                         ? "bg-emerald-600/30 border border-emerald-500/50 text-emerald-300"
+                        : m.id === draftMapping?.id
+                        ? "bg-blue-600/20 border border-blue-500/50 text-blue-200"
                         : "bg-slate-800/50 hover:bg-slate-700/50 text-slate-300",
                     ].join(" ")}
                   >
@@ -370,7 +515,44 @@ export function MapperPage() {
             </div>
             {draftMapping && (
               <div className="border-t border-slate-700/50 bg-slate-800/20 max-h-[50%] overflow-auto shrink-0">
-                <MappingBuilder />
+                <MappingBuilder onSaved={refreshMappings} />
+              </div>
+            )}
+
+            {draftMapping && (
+              <div className="border-t border-slate-700/50 bg-slate-800/10 shrink-0">
+                <div className="px-3 py-2 border-b border-slate-700/50 flex items-center gap-2">
+                  <button
+                    onClick={handlePreview}
+                    disabled={!selectedChunk || previewLoading || replayLoading}
+                    className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                  >
+                    Preview
+                  </button>
+                  <button
+                    onClick={handleApply}
+                    disabled={!selectedChunk || previewLoading || replayLoading}
+                    className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                  >
+                    Apply
+                  </button>
+                  <button
+                    onClick={handleReplay}
+                    disabled={!draftMapping || previewLoading || replayLoading}
+                    className="text-xs bg-violet-600 hover:bg-violet-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                  >
+                    {replayLoading ? "Replaying..." : "Replay"}
+                  </button>
+                  {actionMessage && (
+                    <span className="text-xs text-slate-400">{actionMessage}</span>
+                  )}
+                  {lastReplayAt && (
+                    <span className="text-xs text-slate-500">Last replay: {lastReplayAt}</span>
+                  )}
+                </div>
+                <div className="max-h-60 overflow-auto">
+                  <PreviewPanel loading={previewLoading} />
+                </div>
               </div>
             )}
           </section>

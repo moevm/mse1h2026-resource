@@ -15,9 +15,10 @@ from app.models.mapper.mapping import (
     MappingListResponse,
 )
 from app.models.mapper.raw_data import RawDataSource
+from app.repositories import agent_repo
 from app.repositories.mapping_repo import mapping_repo
 from app.repositories.raw_data_repo import raw_data_repo
-from app.repositories.neo4j_repo import upsert_nodes, upsert_edges
+from app.repositories.neo4j_repo import upsert_nodes, upsert_edges, delete_graph_by_sources
 from app.services.mapper_service import mapper_service
 
 router = APIRouter()
@@ -53,6 +54,16 @@ class ReplayResponse(BaseModel):
     nodes_created: int
     edges_created: int
     errors: List[str] = []
+
+
+class DeactivateAndClearResponse(BaseModel):
+    """Response for deactivate+clear operation."""
+    mapping_id: str
+    source_type: str
+    deactivated: bool
+    sources: List[str] = []
+    deleted_nodes: int = 0
+    deleted_edges: int = 0
 
 
 async def replay_mapping_background(mapping_id: str, source_type: str) -> None:
@@ -253,6 +264,47 @@ async def deactivate_mapping(mapping_id: str):
             detail="Mapping not found",
         )
     return updated
+
+
+@router.post(
+    "/{mapping_id}/deactivate-and-clear",
+    response_model=DeactivateAndClearResponse,
+    summary="Deactivate mapping and clear graph data for its source type",
+)
+async def deactivate_and_clear_mapping(mapping_id: str):
+    """Deactivate mapping and delete graph data produced by same source_type agents."""
+    mapping = mapping_repo.get(mapping_id)
+    if not mapping:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Mapping not found",
+        )
+
+    updated = mapping_repo.set_active(mapping_id, False)
+    if not updated:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Mapping not found",
+        )
+
+    agents = agent_repo.list_agents()
+    sources = [a["name"] for a in agents if a.get("source_type") == mapping.source_type]
+
+    deleted_nodes = 0
+    deleted_edges = 0
+    if sources:
+        deleted = delete_graph_by_sources(sources)
+        deleted_nodes = deleted.get("deleted_nodes", 0)
+        deleted_edges = deleted.get("deleted_edges", 0)
+
+    return DeactivateAndClearResponse(
+        mapping_id=mapping_id,
+        source_type=mapping.source_type,
+        deactivated=True,
+        sources=sources,
+        deleted_nodes=deleted_nodes,
+        deleted_edges=deleted_edges,
+    )
 
 
 @router.get(

@@ -75,6 +75,18 @@ export const mapperApi = {
     return res.data;
   },
 
+  async deactivateAndClearMapping(mappingId: string): Promise<{
+    mapping_id: string;
+    source_type: string;
+    deactivated: boolean;
+    sources: string[];
+    deleted_nodes: number;
+    deleted_edges: number;
+  }> {
+    const res = await client.post(`/mapper/${mappingId}/deactivate-and-clear`);
+    return res.data;
+  },
+
   async getActiveMapping(sourceType: string): Promise<MappingConfig | null> {
     const res = await client.get(`/mapper/active/${sourceType}`);
     return res.data;

@@ -150,7 +150,31 @@ export const useMapperStore = create<MapperState>((set) => ({
         set({ draftMapping: updated, selectedMapping: updated });
       } else {
         // Create new
-        const created = await mapperApi.createMapping(draft as MappingConfig);
+        const generatedId =
+          typeof crypto !== "undefined" && "randomUUID" in crypto
+            ? crypto.randomUUID()
+            : `mapping-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+        const createPayload: Partial<MappingConfig> = {
+          id: generatedId,
+          name: draft.name || "New Mapping",
+          source_type: draft.source_type || "custom",
+          version: draft.version || "1.0.0",
+          is_active: draft.is_active ?? false,
+          created_by: draft.created_by || "ui",
+          description: draft.description ?? null,
+          sample_chunk_id: draft.sample_chunk_id ?? null,
+          field_mappings: draft.field_mappings || [],
+          conditional_rules: draft.conditional_rules || [],
+          auto_edge_rules: draft.auto_edge_rules || [],
+          edge_preset_id: draft.edge_preset_id ?? "default",
+          edge_source_path: draft.edge_source_path ?? null,
+          edge_target_path: draft.edge_target_path ?? null,
+          edge_type_path: draft.edge_type_path ?? null,
+          edge_type_default: draft.edge_type_default ?? "dependson",
+        };
+
+        const created = await mapperApi.createMapping(createPayload);
         set({ draftMapping: created, selectedMapping: created });
       }
     } catch (error) {

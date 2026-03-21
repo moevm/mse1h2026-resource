@@ -378,6 +378,46 @@ def get_graph_stats() -> Dict[str, Any]:
         return session.execute_read(_stats_tx)
 
 
+def delete_graph_by_sources(sources: List[str]) -> Dict[str, int]:
+    """Delete graph data produced by specific sources (agent names).
+
+    Removes:
+    - relationships where rel.source IN sources
+    - nodes where node.source IN sources (with DETACH DELETE)
+    """
+    if not sources:
+        return {"deleted_nodes": 0, "deleted_edges": 0}
+
+    with neo4j_driver.session() as session:
+        return session.execute_write(_delete_graph_by_sources_tx, sources)
+
+
+def _delete_graph_by_sources_tx(tx: ManagedTransaction, sources: List[str]) -> Dict[str, int]:
+    edge_count_record = tx.run(
+        "MATCH ()-[rel]->() WHERE rel.source IN $sources RETURN count(rel) AS count",
+        sources=sources,
+    ).single()
+    deleted_edges = int(edge_count_record["count"]) if edge_count_record else 0
+
+    tx.run(
+        "MATCH ()-[rel]->() WHERE rel.source IN $sources DELETE rel",
+        sources=sources,
+    )
+
+    node_count_record = tx.run(
+        "MATCH (n:Resource) WHERE n.source IN $sources RETURN count(n) AS count",
+        sources=sources,
+    ).single()
+    deleted_nodes = int(node_count_record["count"]) if node_count_record else 0
+
+    tx.run(
+        "MATCH (n:Resource) WHERE n.source IN $sources DETACH DELETE n",
+        sources=sources,
+    )
+
+    return {"deleted_nodes": deleted_nodes, "deleted_edges": deleted_edges}
+
+
 def _stats_tx(tx: ManagedTransaction) -> Dict[str, Any]:
     node_res = tx.run(
         "MATCH (r:Resource) RETURN r.type AS type, count(*) AS cnt"
