@@ -16,11 +16,11 @@ function MappingCard({
   mapping,
   onRemove,
   onUpdate,
-}: {
+}: Readonly<{
   mapping: FieldMapping;
   onRemove: () => void;
   onUpdate: (updates: Partial<FieldMapping>) => void;
-}) {
+}>) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -58,7 +58,7 @@ function MappingCard({
         <div className="px-2 py-1.5 border-t border-slate-700/50 bg-slate-800/30">
           <div className="grid grid-cols-2 gap-1.5">
             <div>
-              <label className="block text-slate-600 mb-0.5 text-[10px]">Transform</label>
+              <p className="block text-slate-600 mb-0.5 text-[10px]">Transform</p>
               <select
                 value={mapping.transform_type}
                 onChange={(e) => onUpdate({ transform_type: e.target.value as TransformType })}
@@ -70,7 +70,7 @@ function MappingCard({
               </select>
             </div>
             <div>
-              <label className="block text-slate-600 mb-0.5 text-[10px]">Default</label>
+              <p className="block text-slate-600 mb-0.5 text-[10px]">Default</p>
               <input
                 type="text"
                 value={(mapping.default_value as string) || ""}
@@ -170,6 +170,7 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
   }, [draftMapping, saveDraftMapping, onSaved]);
 
   const fieldMappings = draftMapping?.field_mappings || [];
+  const saveButtonLabel = saving ? "..." : draftMapping?.id ? "Save" : "Create";
 
   // Group mappings by node type
   const mappingsByNodeType = fieldMappings.reduce((acc, mapping) => {
@@ -193,13 +194,15 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
           className="flex-1 px-2 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
           placeholder="Mapping name..."
         />
-        <button
-          onClick={handleSave}
-          disabled={saving || !(draftMapping?.name || "").trim()}
-          className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2 py-1 rounded"
-        >
-          {saving ? "..." : draftMapping?.id ? "Save" : "Create"}
-        </button>
+        {draftMapping && (
+          <button
+            onClick={handleSave}
+            disabled={saving || !(draftMapping.name || "").trim()}
+            className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2 py-1 rounded"
+          >
+            {saveButtonLabel}
+          </button>
+        )}
       </div>
 
       {/* Auto Edge Creation - Always visible */}

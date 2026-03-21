@@ -4,6 +4,7 @@ import { HTML5Backend } from "react-dnd-html5-backend";
 import { useMapperStore } from "../../store/mapperStore";
 import { mapperApi } from "../../api/mapperApi";
 import { fetchApplications } from "../../api/applicationsApi";
+import { fetchAgents } from "../../api/agentsApi";
 import { RawDataPanel } from "./RawDataPanel";
 import { SchemaBrowser } from "./SchemaBrowser";
 import { MappingBuilder } from "./MappingBuilder";
@@ -25,6 +26,8 @@ interface Application {
   name: string;
   agent_count: number;
 }
+
+type MobilePanel = "mappings" | "data" | "config";
 
 export function MapperPage() {
   const {
@@ -56,6 +59,9 @@ export function MapperPage() {
   const [lastReplayAt, setLastReplayAt] = useState<string | null>(null);
   const [deactivateClearLoading, setDeactivateClearLoading] = useState(false);
 
+  // Mobile panel state
+  const [activePanel, setActivePanel] = useState<MobilePanel>("data");
+
   // Load applications first
   useEffect(() => {
     async function loadApplications() {
@@ -73,8 +79,7 @@ export function MapperPage() {
   useEffect(() => {
     async function loadAgents() {
       try {
-        const response = await fetch("/api/v1/agents/");
-        const data = await response.json();
+        const data = await fetchAgents();
         setAgents(data);
       } catch (error) {
         console.error("Failed to load agents:", error);
@@ -120,7 +125,7 @@ export function MapperPage() {
       }
     }
     loadMappings();
-  }, [selectedAgent]);
+  }, [selectedAgent, setDraftMapping]);
 
   // Load chunks when agent is selected
   useEffect(() => {
@@ -146,7 +151,7 @@ export function MapperPage() {
       }
     }
     loadChunks();
-  }, [selectedAgent]);
+  }, [selectedAgent, setChunks, setChunksLoading, selectChunk, selectedChunk]);
 
   // Activate and load a mapping for editing
   const handleActivate = useCallback(async (mappingId: string) => {
@@ -332,52 +337,53 @@ export function MapperPage() {
     <DndProvider backend={HTML5Backend}>
       <div className="h-full flex flex-col bg-slate-900">
         {/* Toolbar */}
-        <div className="flex items-center gap-3 px-4 py-2 bg-slate-800/50 border-b border-slate-700/50 shrink-0">
-          {/* Application Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 uppercase tracking-wide">App:</span>
-            <select
-              value={selectedAppId || ""}
-              onChange={(e) => {
-                setSelectedAppId(e.target.value || null);
-                setSelectedAgent(null);
-                selectChunk(null);
-              }}
-              className="bg-slate-800 text-slate-200 px-3 py-1.5 rounded border border-slate-600 text-sm min-w-[180px]"
-            >
-              <option value="">All Applications</option>
-              {applications.map((app) => (
-                <option key={app.app_id} value={app.app_id}>
-                  {app.name} ({app.agent_count})
-                </option>
-              ))}
-            </select>
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-slate-800/50 border-b border-slate-700/50 shrink-0">
+          {/* Selectors - stack on mobile */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
+            {/* Application Selector */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <span className="text-xs text-slate-500 uppercase tracking-wide hidden sm:inline">App:</span>
+              <select
+                value={selectedAppId || ""}
+                onChange={(e) => {
+                  setSelectedAppId(e.target.value || null);
+                  setSelectedAgent(null);
+                  selectChunk(null);
+                }}
+                className="flex-1 sm:flex-none bg-slate-800 text-slate-200 px-2 sm:px-3 py-1.5 rounded border border-slate-600 text-sm sm:min-w-[160px]"
+              >
+                <option value="">All Apps</option>
+                {applications.map((app) => (
+                  <option key={app.app_id} value={app.app_id}>
+                    {app.name} ({app.agent_count})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Agent Selector */}
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <span className="text-xs text-slate-500 uppercase tracking-wide hidden sm:inline">Agent:</span>
+              <select
+                value={selectedAgent?.agent_id || ""}
+                onChange={(e) => {
+                  const agent = filteredAgents.find((a) => a.agent_id === e.target.value);
+                  setSelectedAgent(agent || null);
+                  selectChunk(null);
+                }}
+                className="flex-1 sm:flex-none bg-slate-800 text-slate-200 px-2 sm:px-3 py-1.5 rounded border border-slate-600 text-sm sm:min-w-[180px]"
+              >
+                <option value="">Select Agent...</option>
+                {filteredAgents.map((agent) => (
+                  <option key={agent.agent_id} value={agent.agent_id}>
+                    {agent.name} ({agent.source_type})
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="h-4 w-px bg-slate-600" />
-
-          {/* Agent Selector */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-slate-500 uppercase tracking-wide">Agent:</span>
-            <select
-              value={selectedAgent?.agent_id || ""}
-              onChange={(e) => {
-                const agent = filteredAgents.find((a) => a.agent_id === e.target.value);
-                setSelectedAgent(agent || null);
-                selectChunk(null);
-              }}
-              className="bg-slate-800 text-slate-200 px-3 py-1.5 rounded border border-slate-600 text-sm min-w-[220px]"
-            >
-              <option value="">Select Agent...</option>
-              {filteredAgents.map((agent) => (
-                <option key={agent.agent_id} value={agent.agent_id}>
-                  {agent.name} ({agent.source_type})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex-1" />
+          <div className="hidden sm:block flex-1" />
 
           {/* Active Mapping Status */}
           {selectedAgent && (
@@ -385,8 +391,8 @@ export function MapperPage() {
               {activeMapping ? (
                 <>
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-emerald-400">
-                    Active: {activeMapping.name}
+                  <span className="text-emerald-400 truncate max-w-[150px]">
+                    {activeMapping.name}
                   </span>
                   <button
                     onClick={handleDeactivateAndClear}
@@ -397,16 +403,39 @@ export function MapperPage() {
                   </button>
                 </>
               ) : (
-                <span className="text-slate-500">No active mapping</span>
+                <span className="text-slate-500 text-xs">No active mapping</span>
               )}
             </div>
           )}
         </div>
 
-        {/* Main Content */}
+        {/* Mobile panel switcher */}
+        <div className="flex lg:hidden border-b border-slate-700/50 bg-slate-800/30 shrink-0">
+          {(["mappings", "data", "config"] as const).map((panel) => (
+            <button
+              key={panel}
+              onClick={() => setActivePanel(panel)}
+              className={[
+                "flex-1 py-2.5 text-xs font-medium capitalize transition-colors",
+                activePanel === panel
+                  ? "text-blue-400 border-b-2 border-blue-500"
+                  : "text-slate-500 hover:text-slate-300",
+              ].join(" ")}
+            >
+              {panel}
+            </button>
+          ))}
+        </div>
+
+        {/* Main Content - responsive layout */}
         <div className="flex-1 flex overflow-hidden min-h-0">
           {/* Left: Mappings List */}
-          <section className="w-64 border-r border-slate-700/50 bg-slate-900 flex flex-col shrink-0">
+          <section
+            className={[
+              "border-r border-slate-700/50 bg-slate-900 flex flex-col shrink-0",
+              activePanel === "mappings" ? "flex w-full lg:w-56 xl:w-64" : "hidden lg:flex lg:w-56 xl:w-64",
+            ].join(" ")}
+          >
             <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
               <h2 className="text-sm font-semibold text-slate-300">Mappings</h2>
               <p className="text-xs text-slate-500">
@@ -464,7 +493,12 @@ export function MapperPage() {
           </section>
 
           {/* Center: Timeline & Raw Data */}
-          <section className="flex-1 flex flex-col min-w-0">
+          <section
+            className={[
+              "flex-1 flex flex-col min-w-0",
+              activePanel === "data" ? "flex" : "hidden lg:flex",
+            ].join(" ")}
+          >
             {/* Timeline */}
             <TimelineSlider
               chunks={chunks}
@@ -504,7 +538,12 @@ export function MapperPage() {
           </section>
 
           {/* Right: Mapping Config */}
-          <section className="w-80 bg-slate-900 flex flex-col border-l border-slate-700/50 shrink-0">
+          <section
+            className={[
+              "bg-slate-900 flex flex-col border-l border-slate-700/50 shrink-0",
+              activePanel === "config" ? "flex w-full lg:w-72 xl:w-80" : "hidden lg:flex lg:w-72 xl:w-80",
+            ].join(" ")}
+          >
             <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
               <h2 className="text-sm font-semibold text-slate-300">
                 {activeMapping ? `Edit: ${activeMapping.name}` : "New Mapping"}

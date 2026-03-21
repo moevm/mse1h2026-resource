@@ -1,4 +1,5 @@
 import type { RawDataChunk } from "../../types/mapper";
+import { formatTime } from "../../lib/utils/format";
 
 interface TimelineSliderProps {
   chunks: RawDataChunk[];
@@ -12,7 +13,7 @@ export function TimelineSlider({
   selectedChunk,
   onSelectChunk,
   loading,
-}: TimelineSliderProps) {
+}: Readonly<TimelineSliderProps>) {
   if (loading) {
     return (
       <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700/50 shrink-0">
@@ -28,16 +29,6 @@ export function TimelineSlider({
       </div>
     );
   }
-
-  // Format timestamp for display
-  const formatTime = (isoString: string) => {
-    const date = new Date(isoString);
-    return date.toLocaleTimeString("en-US", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  };
 
   const formatDate = (isoString: string) => {
     const date = new Date(isoString);
@@ -57,11 +48,13 @@ export function TimelineSlider({
     return acc;
   }, {} as Record<string, RawDataChunk[]>);
 
+  const chunkLabel = `${chunks.length} chunk${chunks.length === 1 ? "" : "s"}`;
+
   return (
     <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700/50 shrink-0">
       <div className="flex items-center gap-4">
         <span className="text-sm text-slate-400 shrink-0">
-          {chunks.length} chunk{chunks.length !== 1 ? "s" : ""}
+          {chunkLabel}
         </span>
 
         {/* Timeline */}
@@ -70,22 +63,30 @@ export function TimelineSlider({
             <div key={date} className="flex items-center gap-1 shrink-0">
               <span className="text-xs text-slate-600 px-2">{date}</span>
               {dateChunks.map((chunk) => (
-                <button
-                  key={chunk.id}
-                  onClick={() => onSelectChunk(chunk)}
-                  className={`px-2 py-1 rounded text-xs font-mono transition-colors ${
-                    selectedChunk?.id === chunk.id
-                      ? "bg-blue-600 text-white"
-                      : chunk.is_processed
-                      ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
-                      : "bg-slate-700 text-slate-300 hover:bg-slate-600"
-                  }`}
-                  title={`${formatTime(chunk.timestamp)} - ${chunk.size_bytes} bytes`}
-                >
-                  {formatTime(chunk.timestamp)}
-                  {chunk.is_processed && " ✓"}
-                </button>
-              ))}
+                (() => {
+                  let chunkClassName = "bg-slate-700 text-slate-300 hover:bg-slate-600";
+                  if (selectedChunk?.id === chunk.id) {
+                    chunkClassName = "bg-blue-600 text-white";
+                  } else if (chunk.is_processed) {
+                    chunkClassName = "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30";
+                  }
+
+                  return (
+                    <button
+                      key={chunk.id}
+                      onClick={() => onSelectChunk(chunk)}
+                      className={[
+                        "px-2 py-1 rounded text-xs font-mono transition-colors",
+                        chunkClassName,
+                      ].join(" ")}
+                      title={`${formatTime(chunk.timestamp)} - ${chunk.size_bytes} bytes`}
+                    >
+                      {formatTime(chunk.timestamp)}
+                      {chunk.is_processed && " ✓"}
+                    </button>
+                  );
+                })()
+             ))}
             </div>
           ))}
         </div>

@@ -1,14 +1,13 @@
-import { create } from "zustand";
-import type { GraphNode, GraphEdge, GraphStats, GraphAnalytics } from "../types";
+import { useMemo } from "react";
+import type { GraphAnalytics, GraphEdge, GraphNode, GraphStats } from "../types";
+import {
+    useGraphDataStore,
+    useGraphFilterStore,
+    useGraphUiStore,
+    type QueryHistoryEntry,
+} from "../features/graph/store";
 
-export interface QueryHistoryEntry {
-    id: string;
-    timestamp: string;
-    type: "full" | "subgraph" | "path" | "impact" | "layout";
-    params: Record<string, unknown>;
-    nodeCount: number;
-    edgeCount: number;
-}
+export type { QueryHistoryEntry } from "../features/graph/store";
 
 export interface GraphState {
     nodes: GraphNode[];
@@ -19,6 +18,8 @@ export interface GraphState {
     selectedNodeId: string | null;
     hoveredNodeId: string | null;
     highlightedNodeIds: Set<string>;
+    highlightedEdgeIds: Set<string>;
+    focusedNodeIds: Set<string>;
     loading: boolean;
     error: string | null;
 
@@ -42,6 +43,9 @@ export interface GraphState {
     selectNode: (id: string | null) => void;
     hoverNode: (id: string | null) => void;
     setHighlightedNodes: (ids: Set<string>) => void;
+    setHighlightedEdges: (ids: Set<string>) => void;
+    setFocusedNodes: (ids: Set<string>) => void;
+    clearVisualFocus: () => void;
     setLoading: (v: boolean) => void;
     setError: (msg: string | null) => void;
     toggleNodeType: (type: string) => void;
@@ -59,94 +63,49 @@ export interface GraphState {
     reset: () => void;
 }
 
-const initialState = {
-    nodes: [] as GraphNode[],
-    edges: [] as GraphEdge[],
-    stats: null as GraphStats | null,
-    analytics: null as GraphAnalytics | null,
-    selectedNodeId: null as string | null,
-    hoveredNodeId: null as string | null,
-    highlightedNodeIds: new Set<string>(),
-    loading: false,
-    error: null as string | null,
-    hiddenNodeTypes: new Set<string>(),
-    nodePositions: {} as Record<string, { x: number; y: number }>,
-    hiddenEdgeTypes: new Set<string>(),
-    filterMode: "ghost" as const,
-    searchQuery: "",
-    selectedAppId: null as string | null,
-    queryHistory: [] as QueryHistoryEntry[],
-    backendStatus: "checking" as const,
-    lastRefreshedAt: null as string | null,
-};
+function getCombinedState(): GraphState {
+    const dataState = useGraphDataStore.getState();
+    const uiState = useGraphUiStore.getState();
+    const filterState = useGraphFilterStore.getState();
 
-export const useGraphStore = create<GraphState>((set) => ({
-    ...initialState,
+    return {
+        ...dataState,
+        ...uiState,
+        ...filterState,
+        reset: () => {
+            useGraphDataStore.getState().reset();
+            useGraphUiStore.getState().reset();
+            useGraphFilterStore.getState().reset();
+        },
+    };
+}
 
-    setGraph: (nodes, edges) =>
-        set({
-            nodes,
-            edges,
-            error: null,
+interface UseGraphStore {
+    (): GraphState;
+    <T>(selector: (state: GraphState) => T): T;
+    getState: () => GraphState;
+}
+
+export const useGraphStore: UseGraphStore = ((selector?: (state: GraphState) => unknown) => {
+    const dataState = useGraphDataStore();
+    const uiState = useGraphUiStore();
+    const filterState = useGraphFilterStore();
+
+    const state = useMemo(
+        () => ({
+            ...dataState,
+            ...uiState,
+            ...filterState,
+            reset: () => {
+                useGraphDataStore.getState().reset();
+                useGraphUiStore.getState().reset();
+                useGraphFilterStore.getState().reset();
+            },
         }),
+        [dataState, uiState, filterState],
+    );
 
-    setStats: (stats) => set({ stats }),
+    return selector ? selector(state) : state;
+}) as UseGraphStore;
 
-    setAnalytics: (analytics) => set({ analytics }),
-
-    selectNode: (id) => set({ selectedNodeId: id }),
-
-    hoverNode: (id) => set({ hoveredNodeId: id }),
-
-    setHighlightedNodes: (ids) => set({ highlightedNodeIds: ids }),
-
-    setLoading: (v) => set({ loading: v }),
-
-    setError: (msg) => set({ error: msg, loading: false }),
-
-    toggleNodeType: (type) =>
-        set((s) => {
-            const next = new Set(s.hiddenNodeTypes);
-            if (next.has(type)) next.delete(type);
-            else next.add(type);
-            return { hiddenNodeTypes: next };
-        }),
-
-    toggleEdgeType: (type) =>
-        set((s) => {
-            const next = new Set(s.hiddenEdgeTypes);
-            if (next.has(type)) next.delete(type);
-            else next.add(type);
-            return { hiddenEdgeTypes: next };
-        }),
-
-    setHiddenNodeTypes: (types) => set({ hiddenNodeTypes: new Set(types) }),
-
-    setHiddenEdgeTypes: (types) => set({ hiddenEdgeTypes: new Set(types) }),
-
-    setFilterMode: (mode) => set({ filterMode: mode }),
-
-    setSearchQuery: (q) => set({ searchQuery: q }),
-
-    setSelectedAppId: (id) => set({ selectedAppId: id }),
-
-    addQueryHistory: (entry) =>
-        set((s) => {
-            const newEntry: QueryHistoryEntry = {
-                ...entry,
-                id: `qh-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-                timestamp: new Date().toISOString(),
-            };
-            return { queryHistory: [newEntry, ...s.queryHistory].slice(0, 50) };
-        }),
-
-    setBackendStatus: (s) => set({ backendStatus: s }),
-
-    setLastRefreshed: () => set({ lastRefreshedAt: new Date().toISOString() }),
-
-    setNodePositions: (positions) => set({ nodePositions: positions }),
-
-    clearNodePositions: () => set({ nodePositions: {} }),
-
-    reset: () => set(initialState),
-}));
+useGraphStore.getState = getCombinedState;

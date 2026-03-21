@@ -18,6 +18,7 @@ export interface MapperState {
   mappings: MappingConfig[];
   selectedMapping: MappingConfig | null;
   mappingsLoading: boolean;
+  savingMapping: boolean;
 
   // Draft mapping being edited
   draftMapping: Partial<MappingConfig> | null;
@@ -78,6 +79,7 @@ const initialState = {
   mappings: [] as MappingConfig[],
   selectedMapping: null,
   mappingsLoading: false,
+  savingMapping: false,
 
   draftMapping: null as Partial<MappingConfig> | null,
 
@@ -93,7 +95,7 @@ const initialState = {
   activeNodeTypes: new Set<string>(["Service"]),
 };
 
-export const useMapperStore = create<MapperState>((set) => ({
+export const useMapperStore = create<MapperState>((set, get) => ({
   ...initialState,
 
   setChunks: (chunks) => set({ chunks }),
@@ -139,34 +141,37 @@ export const useMapperStore = create<MapperState>((set) => ({
     })),
 
   saveDraftMapping: async () => {
-    const state = useMapperStore.getState();
-    const draft = state.draftMapping;
+    const draft = get().draftMapping;
     if (!draft) return;
 
+    set({ savingMapping: true });
     try {
       if (draft.id) {
         // Update existing
         const updated = await mapperApi.updateMapping(draft.id, draft as MappingConfig);
         set({ draftMapping: updated, selectedMapping: updated });
       } else {
-        // Create new
+        // Create new using backend-required shape
         const generatedId =
           typeof crypto !== "undefined" && "randomUUID" in crypto
             ? crypto.randomUUID()
             : `mapping-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-        const createPayload: Partial<MappingConfig> = {
+        const now = new Date().toISOString();
+        const createPayload: MappingConfig = {
           id: generatedId,
-          name: draft.name || "New Mapping",
-          source_type: draft.source_type || "custom",
-          version: draft.version || "1.0.0",
+          name: draft.name ?? "New Mapping",
+          source_type: draft.source_type ?? "custom",
+          version: draft.version ?? "1.0.0",
           is_active: draft.is_active ?? false,
-          created_by: draft.created_by || "ui",
+          created_at: draft.created_at ?? now,
+          updated_at: draft.updated_at ?? now,
+          created_by: draft.created_by ?? "frontend",
           description: draft.description ?? null,
           sample_chunk_id: draft.sample_chunk_id ?? null,
-          field_mappings: draft.field_mappings || [],
-          conditional_rules: draft.conditional_rules || [],
-          auto_edge_rules: draft.auto_edge_rules || [],
+          field_mappings: draft.field_mappings ?? [],
+          conditional_rules: draft.conditional_rules ?? [],
+          auto_edge_rules: draft.auto_edge_rules ?? [],
           edge_preset_id: draft.edge_preset_id ?? "default",
           edge_source_path: draft.edge_source_path ?? null,
           edge_target_path: draft.edge_target_path ?? null,
@@ -180,6 +185,8 @@ export const useMapperStore = create<MapperState>((set) => ({
     } catch (error) {
       console.error("Failed to save mapping:", error);
       throw error;
+    } finally {
+      set({ savingMapping: false });
     }
   },
 
@@ -215,8 +222,7 @@ export const useMapperStore = create<MapperState>((set) => ({
 
   expandAllPaths: () => {
     // Get all paths from selected chunk data
-    const state = useMapperStore.getState();
-    const data = state.selectedChunk?.data;
+    const data = get().selectedChunk?.data;
     if (!data) return;
 
     const allPaths = new Set<string>();

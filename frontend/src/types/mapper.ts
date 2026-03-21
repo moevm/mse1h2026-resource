@@ -7,6 +7,8 @@ export type RawDataSource =
   | "kubernetes-api"
   | "prometheus"
   | "terraform-state"
+  | "argocd"
+  | "api-gateway"
   | "custom";
 
 export interface RawDataChunk {
