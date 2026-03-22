@@ -12,6 +12,12 @@ class Settings(BaseSettings):
 
     node_ttl_hours: int = 24
 
+    # Redis for raw data storage
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_password: str = ""
+    raw_data_ttl_hours: int = 24
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 
