@@ -1,34 +1,11 @@
-import type { ReactNode, ComponentType } from "react";
+import type { ReactNode } from "react";
 import { NavLink } from "react-router-dom";
 import { useUiStore } from "../../store/uiStore";
 import { useGraphStore } from "../../store/graphStore";
-import { IconDashboard, IconGraph, IconAgents, IconChevronLeft } from "../icons";
-
-interface NavItem {
-    to: string;
-    end: boolean;
-    label: string;
-    icon: ComponentType<{ className?: string }>;
-    badge?: string;
-}
-
-const NAV_ITEMS: NavItem[] = [
-    { to: "/", end: true, label: "Dashboard", icon: IconDashboard },
-    { to: "/graph", end: false, label: "Graph", icon: IconGraph },
-    { to: "/agents", end: false, label: "Agents", icon: IconAgents },
-];
-
-const STATUS_COLOR = {
-    connected: "bg-emerald-500",
-    disconnected: "bg-red-500",
-    checking: "bg-amber-500 animate-pulse",
-} as const;
-
-const STATUS_LABEL = {
-    connected: "Connected",
-    disconnected: "Disconnected",
-    checking: "Checking…",
-} as const;
+import { IconChevronLeft } from "../icons";
+import { NAV_ITEMS } from "../../lib/constants/navigation";
+import { STATUS_CONFIG } from "../../lib/constants/status";
+import { LogoMark } from "../../shared/components/LogoMark";
 
 export function Sidebar() {
     const collapsed = useUiStore((s) => s.sidebarCollapsed);
@@ -38,9 +15,10 @@ export function Sidebar() {
     return (
         <aside
             className={[
-                "relative flex flex-col shrink-0 bg-slate-950 border-r border-slate-800/60",
+                "hidden lg:flex",
+                "relative flex-col shrink-0 bg-slate-950 border-r border-slate-800/60",
                 "transition-[width] duration-300 ease-in-out overflow-x-hidden",
-                collapsed ? "w-52" : "w-56",
+                collapsed ? "lg:w-16 xl:w-20" : "lg:w-52 xl:w-56",
             ].join(" ")}
         >
             <div
@@ -120,16 +98,16 @@ export function Sidebar() {
                     "border-t border-slate-800/60 shrink-0 flex items-center gap-2",
                     collapsed ? "justify-center py-2.5" : "px-4 py-2.5",
                 ].join(" ")}
-                title={collapsed ? STATUS_LABEL[backendStatus] : undefined}
+                title={collapsed ? STATUS_CONFIG[backendStatus].label : undefined}
             >
                 <span
-                    className={["h-2 w-2 rounded-full shrink-0", STATUS_COLOR[backendStatus]].join(
+                    className={["h-2 w-2 rounded-full shrink-0", STATUS_CONFIG[backendStatus].color].join(
                         " ",
                     )}
                 />
                 {!collapsed && (
                     <span className="text-[11px] font-medium text-slate-600 truncate">
-                        {STATUS_LABEL[backendStatus]}
+                        {STATUS_CONFIG[backendStatus].label}
                     </span>
                 )}
             </div>
@@ -148,14 +126,6 @@ export function Sidebar() {
                 />
             </button>
         </aside>
-    );
-}
-
-function LogoMark() {
-    return (
-        <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center text-white font-extrabold text-xs shrink-0 shadow-lg shadow-blue-900/50 tracking-tight select-none">
-            RG
-        </div>
     );
 }
 
