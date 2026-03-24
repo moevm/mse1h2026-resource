@@ -21,10 +21,14 @@
     "clsx": "^2.1.1",
     "cytoscape": "^3.33.1",
     "react": "^19.2.0",
+    "react-dnd": "^16.0.1",
+    "react-dnd-html5-backend": "^16.0.1",
     "react-dom": "^19.2.0",
+    "react-hook-form": "^7.71.2",
     "react-router-dom": "^7.13.0",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^4.2.0",
+    "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
@@ -32,6 +36,8 @@
     "@types/cytoscape": "^3.21.9",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
+    "@types/react-dnd": "^2.0.36",
+    "@types/react-dnd-html5-backend": "^3.0.2",
     "@types/react-dom": "^19.2.3",
     "@typescript-eslint/eslint-plugin": "^8.56.0",
     "@typescript-eslint/parser": "^8.56.0",
