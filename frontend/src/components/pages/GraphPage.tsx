@@ -1,5 +1,6 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useGraph } from "../../hooks/useGraph";
+import { useApplications } from "../../hooks/useApplications";
 import { useGraphStore } from "../../store/graphStore";
 import { useLogStore } from "../../store/logStore";
 import { AppLayout } from "../layout/AppLayout";
@@ -8,21 +9,23 @@ import { GraphControls } from "../graph/GraphControls";
 import { NodeDetail } from "../graph/NodeDetail";
 import { FilterPanel } from "../panels/FilterPanel";
 import { QueryPanel } from "../panels/QueryPanel";
+import GraphInsightsPanel from "../panels/GraphInsightsPanel";
 import { LogPanel } from "../panels/LogPanel";
 import ExportPanel from "../panels/ExportPanel";
 import TraversalPanel from "../panels/TraversalPanel";
 import { CytoscapeProvider } from "../../context/CytoscapeContext";
 import { Input } from "../common/Input";
 import { Button } from "../common/Button";
-import { IconSearch, IconRefresh } from "../icons";
+import { IconSearch, IconRefresh, IconPanel, IconX } from "../icons";
 import type { GraphResponse } from "../../types";
 
-type RightPanel = "detail" | "filter" | "query" | "export" | "traversal" | "log";
+type RightPanel = "detail" | "filter" | "query" | "insights" | "export" | "traversal" | "log";
 
 const PANEL_CONFIG: Array<{ id: RightPanel; label: string; shortLabel: string }> = [
     { id: "detail", label: "Node Detail", shortLabel: "Detail" },
     { id: "filter", label: "Filter", shortLabel: "Filter" },
     { id: "query", label: "Query", shortLabel: "Query" },
+    { id: "insights", label: "Insights", shortLabel: "Insights" },
     { id: "traversal", label: "Traversal", shortLabel: "Traverse" },
     { id: "export", label: "Export", shortLabel: "Export" },
     { id: "log", label: "Activity Log", shortLabel: "Log" },
@@ -30,29 +33,66 @@ const PANEL_CONFIG: Array<{ id: RightPanel; label: string; shortLabel: string }>
 
 export function GraphPage() {
     const { loadFullGraph, checkHealth } = useGraph();
+    const { applications } = useApplications();
     const nodes = useGraphStore((s) => s.nodes);
     const searchQuery = useGraphStore((s) => s.searchQuery);
     const setSearchQuery = useGraphStore((s) => s.setSearchQuery);
+    const selectedAppId = useGraphStore((s) => s.selectedAppId);
+    const setSelectedAppId = useGraphStore((s) => s.setSelectedAppId);
     const error = useGraphStore((s) => s.error);
     const lastRefreshedAt = useGraphStore((s) => s.lastRefreshedAt);
     const logCount = useLogStore((s) => s.entries.length);
 
     const [rightPanel, setRightPanel] = useState<RightPanel>("detail");
     const [limitInput, setLimitInput] = useState(500);
+    const [showRightPanel, setShowRightPanel] = useState(false);
 
     const handleTraversalResult = useCallback((data: GraphResponse) => {
         useGraphStore.getState().setGraph(data.nodes, data.edges);
     }, []);
 
+    const handleAppChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+        const value = e.target.value || undefined;
+        setSelectedAppId(value || null);
+        void loadFullGraph(limitInput, value);
+    }, [limitInput, loadFullGraph, setSelectedAppId]);
+
+    // Health check on mount
     useEffect(() => {
         void checkHealth();
-        if (nodes.length === 0) {
-            void loadFullGraph(limitInput);
+    }, [checkHealth]);
+
+    // Initial graph load only once when nodes are empty
+    const initialLoadDone = useRef(false);
+    useEffect(() => {
+        if (!initialLoadDone.current && nodes.length === 0) {
+            initialLoadDone.current = true;
+            void loadFullGraph(limitInput, selectedAppId || undefined);
         }
-    }, []);
+    }, [nodes.length, loadFullGraph, limitInput, selectedAppId]);
 
     const headerContent = (
         <div className="flex items-center gap-3 flex-1 min-w-0">
+            {/* Application Selector */}
+            <div className="flex items-center gap-2 shrink-0">
+                <label htmlFor="app-selector" className="text-xs text-slate-500 whitespace-nowrap">
+                    App
+                </label>
+                <select
+                    id="app-selector"
+                    className="bg-slate-800/80 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500 min-w-36"
+                    value={selectedAppId || ""}
+                    onChange={handleAppChange}
+                >
+                    <option value="">All Applications</option>
+                    {applications.map((app) => (
+                        <option key={app.app_id} value={app.app_id}>
+                            {app.name} ({app.agent_count})
+                        </option>
+                    ))}
+                </select>
+            </div>
+
             <Input
                 icon={<IconSearch />}
                 placeholder="Search nodes…"
@@ -79,7 +119,7 @@ export function GraphPage() {
                     size="sm"
                     icon={<IconRefresh className="w-3.5 h-3.5" />}
                     onClick={() => {
-                        void loadFullGraph(limitInput);
+                        void loadFullGraph(limitInput, selectedAppId || undefined);
                     }}
                 >
                     Reload
@@ -97,7 +137,7 @@ export function GraphPage() {
     return (
         <AppLayout headerContent={headerContent}>
             <CytoscapeProvider>
-                <div className="flex h-full overflow-hidden">
+                <div className="flex h-full overflow-hidden relative">
                     <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
                         <div className="flex-1 relative min-w-0">
                             {error && (
@@ -107,11 +147,48 @@ export function GraphPage() {
                             )}
                             <GraphCanvas />
                             <GraphControls />
+
+                            {/* Mobile toggle for right panel */}
+                            <button
+                                onClick={() => setShowRightPanel(true)}
+                                className="lg:hidden absolute top-3 right-3 z-30 p-2.5 rounded-xl bg-slate-800/90 backdrop-blur-sm border border-slate-700/60 shadow-lg"
+                                aria-label="Show panel"
+                            >
+                                <IconPanel className="w-5 h-5 text-slate-300" />
+                            </button>
                         </div>
                         <GraphStatsBar />
                     </div>
 
-                    <aside className="w-72 xl:w-80 bg-slate-950/80 border-l border-slate-800/70 shrink-0 flex flex-col overflow-hidden">
+                    {/* Overlay for mobile drawer */}
+                    {showRightPanel && (
+                        <button
+                            type="button"
+                            className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm animate-fade-in"
+                            onClick={() => setShowRightPanel(false)}
+                            aria-label="Close panel"
+                        />
+                    )}
+
+                    {/* Right panel - drawer on mobile, static on desktop */}
+                    <aside
+                        className={[
+                            "bg-slate-950/95 backdrop-blur-sm border-l border-slate-800/70 shrink-0 flex flex-col overflow-hidden",
+                            "lg:relative lg:w-72 xl:w-80",
+                            "fixed lg:static top-0 right-0 h-full w-80 max-w-[85vw] z-50",
+                            "transform transition-transform duration-300 ease-out",
+                            showRightPanel ? "translate-x-0" : "translate-x-full lg:translate-x-0",
+                        ].join(" ")}
+                    >
+                        {/* Close button on mobile */}
+                        <button
+                            onClick={() => setShowRightPanel(false)}
+                            className="lg:hidden absolute top-2.5 right-2.5 z-10 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+                            aria-label="Close panel"
+                        >
+                            <IconX className="w-4 h-4 text-slate-400" />
+                        </button>
+
                         <div className="flex border-b border-slate-800/70 shrink-0 overflow-x-auto scrollbar-none">
                             {PANEL_CONFIG.map(({ id, shortLabel }) => (
                                 <button
@@ -138,6 +215,7 @@ export function GraphPage() {
                             {rightPanel === "detail" && <NodeDetail />}
                             {rightPanel === "filter" && <FilterPanel />}
                             {rightPanel === "query" && <QueryPanel />}
+                            {rightPanel === "insights" && <GraphInsightsPanel />}
                             {rightPanel === "export" && <ExportPanel />}
                             {rightPanel === "traversal" && (
                                 <TraversalPanel onResult={handleTraversalResult} />

@@ -1,6 +1,5 @@
 ﻿import { useState } from "react";
 import { useAgents } from "../../hooks/useAgents";
-import { Spinner } from "../common/Spinner";
 import { Badge } from "../common/Badge";
 import { Button } from "../common/Button";
 import { Input } from "../common/Input";
@@ -74,14 +73,16 @@ export function AgentsPage() {
                 />
             )}
 
-            {}
+            {/* Skeleton loading */}
             {loading && (
-                <div className="flex justify-center py-16">
-                    <Spinner size="lg" label="Loading agents…" />
+                <div className="grid gap-3">
+                    {[1, 2, 3].map((i) => (
+                        <AgentCardSkeleton key={i} />
+                    ))}
                 </div>
             )}
 
-            {}
+            {/* Empty state */}
             {!loading && agents.length === 0 && (
                 <EmptyState
                     icon={<IconAgents className="w-12 h-12" />}
@@ -100,7 +101,7 @@ export function AgentsPage() {
                 />
             )}
 
-            {}
+            {/* Agents list */}
             {!loading && agents.length > 0 && (
                 <div className="grid gap-3">
                     {agents.map((agent) => (
@@ -120,7 +121,29 @@ interface AgentCardProps {
         description?: string;
         registered_at?: string;
         last_seen_at?: string;
+        app_id?: string;
+        app_name?: string;
     };
+}
+
+function AgentCardSkeleton() {
+    return (
+        <div className="flex items-center gap-4 bg-slate-900 border border-slate-800/80 rounded-xl p-4 animate-pulse">
+            <div className="h-10 w-10 rounded-xl bg-slate-800" />
+            <div className="flex-1 min-w-0 space-y-2">
+                <div className="flex items-center gap-2">
+                    <div className="h-4 w-32 bg-slate-800 rounded" />
+                    <div className="h-5 w-20 bg-slate-800 rounded-full" />
+                </div>
+                <div className="h-3 w-48 bg-slate-800 rounded" />
+                <div className="h-2.5 w-64 bg-slate-800 rounded" />
+            </div>
+            <div className="text-right space-y-1 shrink-0">
+                <div className="h-3 w-28 bg-slate-800 rounded" />
+                <div className="h-3 w-24 bg-slate-800 rounded" />
+            </div>
+        </div>
+    );
 }
 
 function AgentCard({ agent }: Readonly<AgentCardProps>) {
@@ -134,6 +157,9 @@ function AgentCard({ agent }: Readonly<AgentCardProps>) {
                 <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-semibold text-slate-100">{agent.name}</span>
                     <Badge label={agent.source_type} color="#6366f1" />
+                    {agent.app_name && (
+                        <Badge label={agent.app_name} color="#10b981" />
+                    )}
                 </div>
                 {agent.description && (
                     <p className="text-xs text-slate-500 mt-0.5 truncate">{agent.description}</p>
@@ -171,6 +197,7 @@ interface RegisterRequest {
     name: string;
     source_type: string;
     description?: string;
+    app_token?: string;
 }
 
 function RegisterForm({
@@ -181,6 +208,7 @@ function RegisterForm({
     const [name, setName] = useState("");
     const [sourceType, setSourceType] = useState("custom");
     const [description, setDescription] = useState("");
+    const [appToken, setAppToken] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
     const handleSubmit = async (e: { preventDefault(): void }) => {
@@ -191,6 +219,7 @@ function RegisterForm({
                 name: name.trim(),
                 source_type: sourceType,
                 description: description.trim() || undefined,
+                app_token: appToken.trim() || undefined,
             });
         } finally {
             setSubmitting(false);
@@ -225,6 +254,12 @@ function RegisterForm({
                     placeholder="Optional description"
                     value={description}
                     onChange={(e) => setDescription(e.target.value)}
+                />
+                <Input
+                    label="Application Token (optional)"
+                    placeholder="Paste app_token to bind to application"
+                    value={appToken}
+                    onChange={(e) => setAppToken(e.target.value)}
                 />
                 <Button
                     type="submit"
