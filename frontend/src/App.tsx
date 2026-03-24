@@ -7,6 +7,8 @@ import { Spinner } from "./shared/components/Spinner";
 const DashboardPage = lazy(() => import("./components/pages/DashboardPage").then((m) => ({ default: m.DashboardPage })));
 const GraphPage = lazy(() => import("./components/pages/GraphPage").then((m) => ({ default: m.GraphPage })));
 const AgentsPage = lazy(() => import("./components/pages/AgentsPage").then((m) => ({ default: m.AgentsPage })));
+const MapperPage = lazy(() => import("./components/mapper/MapperPage").then((m) => ({ default: m.MapperPage })));
+
 export default function App() {
     return (
         <ErrorBoundary>
@@ -33,6 +35,14 @@ export default function App() {
                             element={
                                 <AppLayout>
                                     <AgentsPage />
+                                </AppLayout>
+                            }
+                        />
+                        <Route
+                            path="/mapper"
+                            element={
+                                <AppLayout>
+                                    <MapperPage />
                                 </AppLayout>
                             }
                         />
