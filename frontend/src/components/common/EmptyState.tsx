@@ -17,16 +17,20 @@ export function EmptyState({
 }: Readonly<EmptyStateProps>) {
     return (
         <div
-            className={`flex flex-col items-center justify-center text-center gap-3 py-12 px-6 ${className}`}
+            className={`flex flex-col items-center justify-center text-center gap-4 py-16 px-8 animate-fade-in ${className}`}
         >
-            {icon && <div className="text-slate-600 opacity-50 mb-1">{icon}</div>}
-            <div>
-                <p className="text-sm font-medium text-slate-400">{title}</p>
+            {icon && (
+                <div className="text-slate-500 p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50">
+                    {icon}
+                </div>
+            )}
+            <div className="space-y-2">
+                <p className="text-base font-medium text-slate-300">{title}</p>
                 {description && (
-                    <p className="text-xs text-slate-600 mt-1 max-w-xs">{description}</p>
+                    <p className="text-sm text-slate-500 max-w-sm leading-relaxed">{description}</p>
                 )}
             </div>
-            {action && <div className="mt-1">{action}</div>}
+            {action && <div className="mt-2">{action}</div>}
         </div>
     );
 }
