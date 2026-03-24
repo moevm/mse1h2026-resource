@@ -1,6 +1,6 @@
-﻿import { useState, useCallback } from "react";
+﻿import { useState, useCallback, useRef, useEffect } from "react";
 import { useCyContext } from "../../context/CytoscapeContext";
-import { useGraphStore } from "../../store/graphStore";
+import { useGraphDataStore, useGraphUiStore } from "../../features/graph/store";
 import { Spinner } from "../common/Spinner";
 import { Badge } from "../common/Badge";
 import { getStatusColor } from "../../utils/colors";
@@ -8,17 +8,36 @@ import { getStatusColor } from "../../utils/colors";
 export function GraphCanvas() {
     const { containerRef } = useCyContext();
 
-    const loading = useGraphStore((s) => s.loading);
-    const nodes = useGraphStore((s) => s.nodes);
-    const hoveredNodeId = useGraphStore((s) => s.hoveredNodeId);
+    const loading = useGraphUiStore((s) => s.loading);
+    const nodes = useGraphDataStore((s) => s.nodes);
+    const hoveredNodeId = useGraphUiStore((s) => s.hoveredNodeId);
 
     const hoveredNode = hoveredNodeId ? nodes.find((n) => n.id === hoveredNodeId) : null;
 
     const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+    const rafRef = useRef<number | null>(null);
+
+    useEffect(
+        () => () => {
+            if (rafRef.current !== null) {
+                cancelAnimationFrame(rafRef.current);
+            }
+        },
+        [],
+    );
+
     const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+        if (!hoveredNode) return;
+
         const rect = e.currentTarget.getBoundingClientRect();
-        setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-    }, []);
+        const next = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+        if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+        rafRef.current = requestAnimationFrame(() => {
+            setMousePos(next);
+            rafRef.current = null;
+        });
+    }, [hoveredNode]);
 
     return (
         <div

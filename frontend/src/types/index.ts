@@ -1,5 +1,7 @@
 ﻿export type * from "./graph";
 export type * from "./agent";
+export type * from "./mapper";
+export type * from "./application";
 export * from "./enums";
 
 export type {

@@ -4,6 +4,9 @@ import { StatusDot } from "../common/StatusDot";
 import { EmptyState } from "../common/EmptyState";
 import { getEdgeColor } from "../../utils/colors";
 import { IconInfo } from "../icons";
+import { InfoRow } from "../../shared/components/InfoRow";
+import { MetricBar } from "../../shared/components/MetricBar";
+import { formatLabel, formatValue } from "../../lib/utils/format";
 import type {
     GraphNode,
     GraphEdge,
@@ -33,10 +36,10 @@ export function NodeDetail() {
     if (!selectedId) {
         return (
             <EmptyState
-                icon={<IconInfo className="w-8 h-8" />}
+                icon={<IconInfo className="w-10 h-10" />}
                 title="No node selected"
                 description="Click a node on the graph to view its details."
-                className="pt-8"
+                className="pt-12"
             />
         );
     }
@@ -48,16 +51,17 @@ export function NodeDetail() {
     const outgoing = edges.filter((e) => e.source_id === selectedId);
 
     return (
-        <div className="flex flex-col gap-4 p-4 overflow-y-auto max-h-full">
-            <div>
-                <div className="flex items-center gap-2 mb-1">
-                    <Badge label={node.type} nodeType={node.type} />
+        <div className="flex flex-col gap-5 p-5 overflow-y-auto max-h-full">
+            {/* Node Header */}
+            <div className="space-y-3">
+                <div className="flex items-center gap-2.5">
+                    <Badge label={node.type} nodeType={node.type} size="md" />
                     <StatusDot status={node.status} showLabel size="sm" />
                 </div>
-                <h3 className="text-base font-semibold text-slate-100">{node.name}</h3>
-                <p className="text-xs text-slate-500 font-mono mt-0.5 break-all">{node.id}</p>
+                <h3 className="text-lg font-semibold text-slate-100 leading-snug">{node.name}</h3>
+                <p className="text-xs text-slate-400 font-mono break-all leading-relaxed">{node.id}</p>
                 {node.environment && (
-                    <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700">
+                    <span className="inline-block px-2.5 py-1 rounded-md text-xs font-medium bg-slate-800/80 text-slate-300 border border-slate-700/60">
                         {node.environment}
                     </span>
                 )}
@@ -286,15 +290,17 @@ function EdgeSection({
 }>) {
     return (
         <Section title={title}>
-            {edges.length === 0 && <p className="text-xs text-slate-600">None</p>}
-            {edges.map((e) => (
-                <EdgeDetailRow
-                    key={`${e.source_id}-${e.target_id}-${e.type}`}
-                    edge={e}
-                    direction={direction}
-                    nodes={nodes}
-                />
-            ))}
+            {edges.length === 0 && <p className="text-sm text-slate-500">None</p>}
+            <div className="space-y-2">
+                {edges.map((e) => (
+                    <EdgeDetailRow
+                        key={`${e.source_id}-${e.target_id}-${e.type}`}
+                        edge={e}
+                        direction={direction}
+                        nodes={nodes}
+                    />
+                ))}
+            </div>
         </Section>
     );
 }
@@ -320,47 +326,60 @@ function EdgeDetailRow({
     const errorRate = p.error_rate_percent == null ? null : Number(p.error_rate_percent);
 
     return (
-        <div className="bg-slate-800/50 rounded-lg p-2 space-y-1">
+        <div className="bg-slate-800/60 rounded-lg p-3 space-y-2 border border-slate-700/50 hover:border-slate-600/60 transition-all duration-200">
             <button
                 onClick={() => selectNode(otherId)}
-                className="flex items-center gap-2 w-full text-left text-xs hover:bg-slate-700/50 rounded px-1 py-0.5 transition-colors"
+                className="flex items-center gap-2.5 w-full text-left text-sm hover:bg-slate-700/40 rounded-md px-2 py-1.5 transition-colors"
             >
                 <span className="font-medium" style={{ color }}>
                     {edge.type}
                 </span>
-                <span className="text-slate-500">{direction === "from" ? "←" : "→"}</span>
-                <span className="text-slate-300 truncate">{otherNode?.name ?? otherId}</span>
+                <span className="text-slate-400 text-base">{direction === "from" ? "←" : "→"}</span>
+                <span className="text-slate-200 truncate flex-1">{otherNode?.name ?? otherId}</span>
             </button>
 
             {hasCallMetrics && (rps != null || latency != null || errorRate != null) && (
-                <div className="flex items-center gap-3 px-1 text-[10px]">
+                <div className="flex items-center gap-4 px-2 text-xs">
                     {rps != null && (
-                        <span className="text-blue-400">
-                            <span className="text-slate-500">RPS:</span> {rps.toFixed(1)}
+                        <span className="flex items-center gap-1.5">
+                            <span className="text-slate-500 font-medium">RPS:</span>
+                            <span className="text-blue-400 font-semibold tabular-nums">{rps.toFixed(1)}</span>
                         </span>
                     )}
                     {latency != null && (
-                        <span style={{ color: latency > 200 ? "#f59e0b" : "#22c55e" }}>
-                            <span className="text-slate-500">P99:</span> {latency.toFixed(0)}ms
+                        <span className="flex items-center gap-1.5">
+                            <span className="text-slate-500 font-medium">P99:</span>
+                            <span
+                                className="font-semibold tabular-nums"
+                                style={{ color: latency > 200 ? "#f59e0b" : "#22c55e" }}
+                            >
+                                {latency.toFixed(0)}ms
+                            </span>
                         </span>
                     )}
                     {errorRate != null && (
-                        <span style={{ color: errorRate > 1 ? "#ef4444" : "#22c55e" }}>
-                            <span className="text-slate-500">Err:</span> {errorRate.toFixed(2)}%
+                        <span className="flex items-center gap-1.5">
+                            <span className="text-slate-500 font-medium">Err:</span>
+                            <span
+                                className="font-semibold tabular-nums"
+                                style={{ color: errorRate > 1 ? "#ef4444" : "#22c55e" }}
+                            >
+                                {errorRate.toFixed(2)}%
+                            </span>
                         </span>
                     )}
                 </div>
             )}
 
             {!hasCallMetrics && Object.keys(p).length > 0 && (
-                <div className="px-1 space-y-0.5">
+                <div className="px-2 space-y-1.5">
                     {Object.entries(p)
                         .filter(([, v]) => v != null && v !== "")
                         .slice(0, 4)
                         .map(([k, v]) => (
-                            <div key={k} className="flex justify-between text-[10px]">
-                                <span className="text-slate-500">{formatLabel(k)}</span>
-                                <span className="text-slate-400 font-mono">{formatValue(v)}</span>
+                            <div key={k} className="flex justify-between text-xs">
+                                <span className="text-slate-400">{formatLabel(k)}</span>
+                                <span className="text-slate-300 font-mono">{formatValue(v)}</span>
                             </div>
                         ))}
                 </div>
@@ -369,62 +388,26 @@ function EdgeDetailRow({
     );
 }
 
-function MetricBar({
-    label,
-    value,
-    max,
-    unit,
-    decimals = 0,
-}: Readonly<{
-    label: string;
-    value: number;
-    max: number;
-    unit: string;
-    decimals?: number;
-}>) {
-    const pct = Math.min(100, (value / max) * 100);
-    let color = "#22c55e";
-    if (pct > 80) color = "#ef4444";
-    else if (pct > 60) color = "#f59e0b";
-
-    return (
-        <div className="space-y-0.5">
-            <div className="flex justify-between text-xs">
-                <span className="text-slate-500">{label}</span>
-                <span className="text-slate-300 font-mono">
-                    {value.toFixed(decimals)} {unit}
-                </span>
-            </div>
-            <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                <div
-                    className="h-full rounded-full transition-all duration-500"
-                    style={{ width: `${pct}%`, backgroundColor: color }}
-                />
-            </div>
-        </div>
-    );
-}
-
 function ReplicaIndicator({ desired, ready }: Readonly<{ desired: number; ready: number }>) {
     const isHealthy = ready >= desired;
     return (
-        <div className="space-y-1">
-            <div className="flex justify-between text-xs">
-                <span className="text-slate-500">Replicas</span>
+        <div className="space-y-2">
+            <div className="flex justify-between text-sm">
+                <span className="text-slate-400">Replicas</span>
                 <span
-                    className="font-mono font-medium"
+                    className="font-mono font-semibold"
                     style={{ color: isHealthy ? "#22c55e" : "#ef4444" }}
                 >
                     {ready}/{desired}
                 </span>
             </div>
-            <div className="flex gap-1">
+            <div className="flex gap-1.5">
                 {Array.from({ length: desired }).map((_, i) => {
                     const rid = `replica-${i}`;
                     return (
                         <div
                             key={rid}
-                            className="h-2 flex-1 rounded-sm transition-colors duration-300"
+                            className="h-2.5 flex-1 rounded transition-colors duration-300"
                             style={{
                                 backgroundColor: i < ready ? "#22c55e" : "#ef444450",
                             }}
@@ -450,18 +433,18 @@ function SLOGauge({
     const displayValue = isLatency ? `${current.toFixed(1)}ms` : `${current.toFixed(4)}%`;
 
     return (
-        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-800/50 border border-slate-700">
+        <div className="flex items-center justify-between p-3 rounded-lg bg-slate-800/60 border border-slate-700/50">
             <div>
-                <p className="text-slate-500 text-[10px]">Current</p>
+                <p className="text-slate-400 text-xs font-medium">Current</p>
                 <p
-                    className="text-sm font-mono font-bold"
+                    className="text-base font-mono font-bold mt-1"
                     style={{ color: isMet ? "#22c55e" : "#ef4444" }}
                 >
                     {displayValue}
                 </p>
             </div>
             <div
-                className="px-2 py-1 rounded text-[10px] font-medium"
+                className="px-3 py-1.5 rounded-md text-xs font-bold"
                 style={{
                     backgroundColor: isMet ? "#22c55e20" : "#ef444420",
                     color: isMet ? "#22c55e" : "#ef4444",
@@ -475,39 +458,11 @@ function SLOGauge({
 
 function Section({ title, children }: Readonly<{ title: string; children: React.ReactNode }>) {
     return (
-        <div>
-            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+        <div className="space-y-3">
+            <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
                 {title}
             </h4>
-            <div className="space-y-1">{children}</div>
+            {children}
         </div>
     );
-}
-
-function InfoRow({
-    label,
-    value,
-    warn,
-}: Readonly<{ label: string; value: string; warn?: boolean }>) {
-    return (
-        <div className="flex justify-between text-xs">
-            <span className="text-slate-500">{label}</span>
-            <span className="font-mono" style={{ color: warn ? "#ef4444" : "#cbd5e1" }}>
-                {value}
-            </span>
-        </div>
-    );
-}
-
-function formatLabel(key: string): string {
-    return key.replaceAll("_", " ").replaceAll(/\b\w/g, (c) => c.toUpperCase());
-}
-
-function formatValue(v: unknown): string {
-    if (v === null || v === undefined) return "—";
-    if (typeof v === "boolean") return v ? "Yes" : "No";
-    if (typeof v === "number") return v.toLocaleString();
-    if (Array.isArray(v)) return v.join(", ");
-    if (typeof v === "object") return JSON.stringify(v);
-    return `${v as string}`;
 }
