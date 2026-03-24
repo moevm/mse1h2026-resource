@@ -2,6 +2,7 @@
     name: string;
     source_type: string;
     description?: string;
+    app_token?: string;
 }
 
 export interface AgentRegisterResponse {
@@ -19,4 +20,6 @@ export interface AgentInfo {
     description?: string;
     registered_at?: string;
     last_seen_at?: string;
+    app_id?: string;
+    app_name?: string;
 }

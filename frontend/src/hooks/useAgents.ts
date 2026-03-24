@@ -1,45 +1,22 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
 import { fetchAgents, registerAgent } from "../api";
 import type { AgentInfo, AgentRegisterRequest } from "../types";
+import { useResource } from "../shared/hooks/useResource";
 
 export function useAgents() {
-    const [agents, setAgents] = useState<AgentInfo[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const fetcher = useCallback(() => fetchAgents(), []);
+    const creator = useCallback((req: AgentRegisterRequest) => registerAgent(req), []);
 
-    const load = useCallback(async () => {
-        setLoading(true);
-        try {
-            const data = await fetchAgents();
-            setAgents(data);
-            setError(null);
-        } catch (e: unknown) {
-            setError(e instanceof Error ? e.message : "Failed to load agents");
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+    const { items, loading, error, reload, create } = useResource<
+        AgentInfo,
+        AgentRegisterRequest,
+        Awaited<ReturnType<typeof registerAgent>>
+    >({
+        fetcher,
+        creator,
+        loadErrorMessage: "Failed to load agents",
+        createErrorMessage: "Failed to register agent",
+    });
 
-    const register = useCallback(
-        async (req: AgentRegisterRequest) => {
-            setLoading(true);
-            try {
-                const res = await registerAgent(req);
-                await load();
-                return res;
-            } catch (e: unknown) {
-                setError(e instanceof Error ? e.message : "Failed to register agent");
-                throw e;
-            } finally {
-                setLoading(false);
-            }
-        },
-        [load],
-    );
-
-    useEffect(() => {
-        void load();
-    }, [load]);
-
-    return { agents, loading, error, reload: load, register };
+    return { agents: items, loading, error, reload, register: create };
 }

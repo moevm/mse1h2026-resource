@@ -5,6 +5,7 @@ import type { LogLevel } from "../../types";
 import { Input } from "../common/Input";
 import { Button } from "../common/Button";
 import { IconInfo, IconCheckCircle, IconExclamation, IconXCircle } from "../icons";
+import { formatTime } from "../../lib/utils/format";
 
 const LEVEL_CONFIG: Record<LogLevel, { icon: ReactNode; color: string; bg: string }> = {
     info: { icon: <IconInfo className="w-3.5 h-3.5" />, color: "#60a5fa", bg: "bg-blue-500/10" },
@@ -197,15 +198,3 @@ function QueryHistoryRow({ entry }: Readonly<{ entry: QueryHistoryEntry }>) {
     );
 }
 
-function formatTime(iso: string): string {
-    try {
-        const d = new Date(iso);
-        return d.toLocaleTimeString("ru-RU", {
-            hour: "2-digit",
-            minute: "2-digit",
-            second: "2-digit",
-        });
-    } catch {
-        return iso;
-    }
-}

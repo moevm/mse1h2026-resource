@@ -25,6 +25,7 @@ export function useGraph() {
         addQueryHistory,
         setBackendStatus,
         setLastRefreshed,
+        clearVisualFocus,
     } = useGraphStore();
 
     const { addLog } = useLogStore();
@@ -49,17 +50,19 @@ export function useGraph() {
     }, [setBackendStatus, addLog]);
 
     const loadFullGraph = useCallback(
-        async (limit = 500) => {
+        async (limit = 500, appId?: string) => {
             setLoading(true);
-            addLog("info", "graph", `Loading full graph (limit=${limit})...`);
+            const appInfo = appId ? ` (app=${appId.slice(0, 8)}...)` : "";
+            addLog("info", "graph", `Loading full graph (limit=${limit}${appInfo})...`);
             try {
-                const res = await fetchFullGraph(limit);
+                const res = await fetchFullGraph(limit, appId);
                 setGraph(res.nodes, res.edges);
+                clearVisualFocus();
                 syncFilters();
                 setLastRefreshed();
                 addQueryHistory({
                     type: "full",
-                    params: { limit },
+                    params: { limit, app_id: appId },
                     nodeCount: res.node_count,
                     edgeCount: res.edge_count,
                 });
@@ -77,7 +80,16 @@ export function useGraph() {
                 setLoading(false);
             }
         },
-        [setGraph, setLoading, setError, syncFilters, addLog, addQueryHistory, setLastRefreshed],
+        [
+            setGraph,
+            setLoading,
+            setError,
+            syncFilters,
+            addLog,
+            addQueryHistory,
+            setLastRefreshed,
+            clearVisualFocus,
+        ],
     );
 
     const loadLayout = useCallback(
@@ -87,6 +99,7 @@ export function useGraph() {
             try {
                 const res = await fetchLayout(limit, layout);
                 setGraph(res.nodes, res.edges);
+                clearVisualFocus();
                 syncFilters();
                 setLastRefreshed();
                 addQueryHistory({
@@ -108,7 +121,16 @@ export function useGraph() {
                 setLoading(false);
             }
         },
-        [setGraph, setLoading, setError, syncFilters, addLog, addQueryHistory, setLastRefreshed],
+        [
+            setGraph,
+            setLoading,
+            setError,
+            syncFilters,
+            addLog,
+            addQueryHistory,
+            setLastRefreshed,
+            clearVisualFocus,
+        ],
     );
 
     const loadSubgraph = useCallback(
@@ -122,6 +144,7 @@ export function useGraph() {
             try {
                 const res = await fetchSubgraph(req);
                 setGraph(res.nodes, res.edges);
+                clearVisualFocus();
                 syncFilters();
                 setLastRefreshed();
                 addQueryHistory({
@@ -144,16 +167,26 @@ export function useGraph() {
                 setLoading(false);
             }
         },
-        [setGraph, setLoading, setError, syncFilters, addLog, addQueryHistory, setLastRefreshed],
+        [
+            setGraph,
+            setLoading,
+            setError,
+            syncFilters,
+            addLog,
+            addQueryHistory,
+            setLastRefreshed,
+            clearVisualFocus,
+        ],
     );
 
     const loadShortestPath = useCallback(
         async (req: PathRequest) => {
             setLoading(true);
-            addLog("info", "graph", `Finding path: ${req.source_id} в†’ ${req.target_id}...`);
+            addLog("info", "graph", `Finding path: ${req.source_id} -> ${req.target_id}...`);
             try {
                 const res = await fetchShortestPath(req);
                 setGraph(res.nodes, res.edges);
+                clearVisualFocus();
                 syncFilters();
                 setLastRefreshed();
                 addQueryHistory({
@@ -176,7 +209,16 @@ export function useGraph() {
                 setLoading(false);
             }
         },
-        [setGraph, setLoading, setError, syncFilters, addLog, addQueryHistory, setLastRefreshed],
+        [
+            setGraph,
+            setLoading,
+            setError,
+            syncFilters,
+            addLog,
+            addQueryHistory,
+            setLastRefreshed,
+            clearVisualFocus,
+        ],
     );
 
     const loadImpact = useCallback(
@@ -190,6 +232,7 @@ export function useGraph() {
             try {
                 const res = await fetchImpact(req);
                 setGraph(res.nodes, res.edges);
+                clearVisualFocus();
                 syncFilters();
                 setLastRefreshed();
                 addQueryHistory({
@@ -212,7 +255,16 @@ export function useGraph() {
                 setLoading(false);
             }
         },
-        [setGraph, setLoading, setError, syncFilters, addLog, addQueryHistory, setLastRefreshed],
+        [
+            setGraph,
+            setLoading,
+            setError,
+            syncFilters,
+            addLog,
+            addQueryHistory,
+            setLastRefreshed,
+            clearVisualFocus,
+        ],
     );
 
     const loadStats = useCallback(async () => {
