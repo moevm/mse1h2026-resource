@@ -1,6 +1,6 @@
-﻿import { useState, useEffect, useRef, useCallback, type RefObject } from "react";
+import { useState, useEffect, useRef, useCallback, type RefObject } from "react";
 import cytoscape, { type Core, type EventObject } from "cytoscape";
-import { useGraphStore } from "../store/graphStore";
+import { useGraphDataStore, useGraphFilterStore, useGraphUiStore } from "../features/graph/store";
 import { toCytoscapeElements, filterDanglingEdges, diffCytoscapeGraph } from "../utils/cytoHelpers";
 import { buildCytoscapeStyles } from "../utils/cytoscapeStyles";
 
@@ -23,20 +23,22 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
 
     const [cyGen, setCyGen] = useState(0);
 
-    const {
-        nodes,
-        edges,
-        hiddenNodeTypes,
-        hiddenEdgeTypes,
-        filterMode,
-        searchQuery,
-        selectedNodeId,
-        highlightedNodeIds,
-        nodePositions,
-        selectNode,
-        hoverNode,
-        setNodePositions,
-    } = useGraphStore();
+    const nodes = useGraphDataStore((s) => s.nodes);
+    const edges = useGraphDataStore((s) => s.edges);
+
+    const hiddenNodeTypes = useGraphFilterStore((s) => s.hiddenNodeTypes);
+    const hiddenEdgeTypes = useGraphFilterStore((s) => s.hiddenEdgeTypes);
+    const filterMode = useGraphFilterStore((s) => s.filterMode);
+    const searchQuery = useGraphFilterStore((s) => s.searchQuery);
+
+    const selectedNodeId = useGraphUiStore((s) => s.selectedNodeId);
+    const highlightedNodeIds = useGraphUiStore((s) => s.highlightedNodeIds);
+    const highlightedEdgeIds = useGraphUiStore((s) => s.highlightedEdgeIds);
+    const focusedNodeIds = useGraphUiStore((s) => s.focusedNodeIds);
+    const nodePositions = useGraphUiStore((s) => s.nodePositions);
+    const selectNode = useGraphUiStore((s) => s.selectNode);
+    const hoverNode = useGraphUiStore((s) => s.hoverNode);
+    const setNodePositions = useGraphUiStore((s) => s.setNodePositions);
 
     const nodePositionsRef = useRef(nodePositions);
     nodePositionsRef.current = nodePositions;
@@ -178,7 +180,7 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
         } else if (hasRemovals && !hasUpdates) {
             cy.fit(undefined, 40);
         }
-    }, [nodes, edges, cyGen]);
+    }, [nodes, edges, cyGen, stopLayout, runCose, savePositions]);
 
     useEffect(() => {
         const cy = cyRef.current;
@@ -199,13 +201,13 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
             } as unknown as cytoscape.LayoutOptions);
             layoutRef.current.run();
         }
-    }, [hiddenNodeTypes, hiddenEdgeTypes, filterMode, cyGen]);
+    }, [hiddenNodeTypes, hiddenEdgeTypes, filterMode, cyGen, stopLayout]);
 
     useEffect(() => {
         const cy = cyRef.current;
         if (!isAlive(cy)) return;
 
-        cy.elements().removeClass("faded highlighted");
+        cy.elements().removeClass("faded search-hit");
 
         if (searchQuery.trim()) {
             const q = searchQuery.toLowerCase();
@@ -216,7 +218,7 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
             });
             if (matched.length) {
                 cy.elements().addClass("faded");
-                matched.removeClass("faded").addClass("highlighted");
+                matched.removeClass("faded").addClass("search-hit");
                 matched.connectedEdges().removeClass("faded");
             }
         }
@@ -226,11 +228,32 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
         const cy = cyRef.current;
         if (!isAlive(cy)) return;
 
-        cy.elements().removeClass("highlighted");
+        cy.nodes().removeClass("path-node");
+        cy.edges().removeClass("path-edge");
+
         if (highlightedNodeIds.size > 0) {
-            highlightedNodeIds.forEach((id) => cy.getElementById(id).addClass("highlighted"));
+            highlightedNodeIds.forEach((id) => cy.getElementById(id).addClass("path-node"));
         }
-    }, [highlightedNodeIds, cyGen]);
+        if (highlightedEdgeIds.size > 0) {
+            highlightedEdgeIds.forEach((id) => cy.getElementById(id).addClass("path-edge"));
+        }
+    }, [highlightedNodeIds, highlightedEdgeIds, cyGen]);
+
+    useEffect(() => {
+        const cy = cyRef.current;
+        if (!isAlive(cy)) return;
+
+        cy.elements().removeClass("focus-dim");
+        if (focusedNodeIds.size === 0) return;
+
+        cy.elements().addClass("focus-dim");
+
+        focusedNodeIds.forEach((id) => {
+            const node = cy.getElementById(id);
+            node.removeClass("focus-dim");
+            node.connectedEdges().removeClass("focus-dim");
+        });
+    }, [focusedNodeIds, cyGen]);
 
     useEffect(() => {
         const cy = cyRef.current;

@@ -55,7 +55,17 @@ export function buildCytoscapeStyles(
         },
 
         {
-            selector: "node.highlighted",
+            selector: "node.search-hit",
+            style: {
+                "border-color": "#60a5fa",
+                "border-width": 3,
+                width: 48,
+                height: 48,
+            } as unknown as Record<string, string | number>,
+        },
+
+        {
+            selector: "node.path-node",
             style: {
                 "border-color": "#fbbf24",
                 "border-width": 3,
@@ -123,6 +133,31 @@ export function buildCytoscapeStyles(
                 opacity: 1,
                 "line-color": "#fbbf24",
                 "target-arrow-color": "#fbbf24",
+            } as unknown as Record<string, string | number>,
+        },
+
+        {
+            selector: "edge.path-edge",
+            style: {
+                width: 4,
+                opacity: 1,
+                "line-color": "#fbbf24",
+                "target-arrow-color": "#fbbf24",
+                "arrow-scale": 1,
+            } as unknown as Record<string, string | number>,
+        },
+
+        {
+            selector: "node.focus-dim",
+            style: {
+                opacity: 0.14,
+            } as unknown as Record<string, string | number>,
+        },
+
+        {
+            selector: "edge.focus-dim",
+            style: {
+                opacity: 0.08,
             } as unknown as Record<string, string | number>,
         },
     ];
