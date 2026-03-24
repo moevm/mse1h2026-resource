@@ -8,17 +8,23 @@ import type {
     PathRequest,
     ImpactRequest,
     ExportRequest,
+    ExportFormat,
     ExportFormatInfo,
     TraversalRule,
     TraversalPreset,
 } from "../types";
 
+interface ExportFormatApiItem {
+    id: ExportFormat;
+    name: string;
+    description: string;
+    extension: string;
+}
+
 const BASE = "/graph";
 
 export async function fetchFullGraph(limit = 500): Promise<GraphResponse> {
-    const { data } = await client.get<GraphResponse>(`${BASE}/full`, {
-        params: { limit },
-    });
+    const { data } = await client.get<GraphResponse>(`${BASE}/full`, { params: { limit } });
     return data;
 }
 
@@ -59,8 +65,13 @@ export async function fetchLayout(limit = 500, layout = "spring"): Promise<Layou
 const EXPORT_BASE = "/export";
 
 export async function fetchExportFormats(): Promise<ExportFormatInfo[]> {
-    const { data } = await client.get<ExportFormatInfo[]>(`${EXPORT_BASE}/formats`);
-    return data;
+    const { data } = await client.get<ExportFormatApiItem[]>(`${EXPORT_BASE}/formats`);
+    return data.map((item) => ({
+        format: item.id,
+        label: item.name,
+        description: item.description,
+        extension: item.extension,
+    }));
 }
 
 export async function downloadExport(body: ExportRequest): Promise<Blob> {

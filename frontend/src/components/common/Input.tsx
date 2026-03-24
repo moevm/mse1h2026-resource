@@ -1,4 +1,6 @@
 import type { InputHTMLAttributes, ReactNode } from "react";
+import { cn } from "../../lib/utils/cn";
+import { FormField } from "../../shared/components/FormField";
 
 interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
     label?: string;
@@ -21,39 +23,31 @@ export function Input({
     const inputId = id ?? label?.toLowerCase().replaceAll(" ", "-");
 
     return (
-        <div className={wrapperClassName}>
-            {label && (
-                <label
-                    htmlFor={inputId}
-                    className="block text-xs font-medium text-slate-400 mb-1.5"
-                >
-                    {label}
-                </label>
-            )}
-            <div className="relative">
-                {icon && (
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none">
-                        {icon}
-                    </span>
+        <FormField
+            label={label}
+            hint={hint}
+            error={error}
+            icon={icon}
+            wrapperClassName={wrapperClassName}
+            id={inputId}
+        >
+            <input
+                id={inputId}
+                className={cn(
+                    "w-full bg-slate-800/80 border rounded-lg px-3.5 py-2 text-sm text-slate-200 h-10",
+                    "placeholder:text-slate-500",
+                    "transition-all duration-200",
+                    "hover:bg-slate-800 hover:border-slate-600",
+                    "focus:outline-none focus:ring-2 focus:ring-blue-500/40 focus:border-blue-500 focus:bg-slate-800",
+                    "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-800/80",
+                    error
+                        ? "border-red-500/60 bg-red-500/5 focus:ring-red-500/40 focus:border-red-500"
+                        : "border-slate-700/80",
+                    icon && "pl-10",
+                    className,
                 )}
-                <input
-                    id={inputId}
-                    className={[
-                        "w-full bg-slate-800 border rounded-lg px-3 py-1.5 text-sm text-slate-200",
-                        "placeholder-slate-500 transition-colors",
-                        "focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500",
-                        "disabled:opacity-50 disabled:cursor-not-allowed",
-                        error ? "border-red-600" : "border-slate-700 hover:border-slate-600",
-                        icon ? "pl-9" : "",
-                        className,
-                    ]
-                        .filter(Boolean)
-                        .join(" ")}
-                    {...rest}
-                />
-            </div>
-            {error && <p className="mt-1 text-xs text-red-400">{error}</p>}
-            {hint && !error && <p className="mt-1 text-xs text-slate-500">{hint}</p>}
-        </div>
+                {...rest}
+            />
+        </FormField>
     );
 }

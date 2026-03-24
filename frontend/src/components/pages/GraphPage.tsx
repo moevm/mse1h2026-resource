@@ -14,7 +14,7 @@ import TraversalPanel from "../panels/TraversalPanel";
 import { CytoscapeProvider } from "../../context/CytoscapeContext";
 import { Input } from "../common/Input";
 import { Button } from "../common/Button";
-import { IconSearch, IconRefresh } from "../icons";
+import { IconSearch, IconRefresh, IconPanel, IconX } from "../icons";
 import type { GraphResponse } from "../../types";
 
 type RightPanel = "detail" | "filter" | "query" | "export" | "traversal" | "log";
@@ -39,6 +39,7 @@ export function GraphPage() {
 
     const [rightPanel, setRightPanel] = useState<RightPanel>("detail");
     const [limitInput, setLimitInput] = useState(500);
+    const [showRightPanel, setShowRightPanel] = useState(false);
 
     const handleTraversalResult = useCallback((data: GraphResponse) => {
         useGraphStore.getState().setGraph(data.nodes, data.edges);
@@ -97,7 +98,7 @@ export function GraphPage() {
     return (
         <AppLayout headerContent={headerContent}>
             <CytoscapeProvider>
-                <div className="flex h-full overflow-hidden">
+                <div className="flex h-full overflow-hidden relative">
                     <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
                         <div className="flex-1 relative min-w-0">
                             {error && (
@@ -107,11 +108,48 @@ export function GraphPage() {
                             )}
                             <GraphCanvas />
                             <GraphControls />
+
+                            {/* Mobile toggle for right panel */}
+                            <button
+                                onClick={() => setShowRightPanel(true)}
+                                className="lg:hidden absolute top-3 right-3 z-30 p-2.5 rounded-xl bg-slate-800/90 backdrop-blur-sm border border-slate-700/60 shadow-lg"
+                                aria-label="Show panel"
+                            >
+                                <IconPanel className="w-5 h-5 text-slate-300" />
+                            </button>
                         </div>
                         <GraphStatsBar />
                     </div>
 
-                    <aside className="w-72 xl:w-80 bg-slate-950/80 border-l border-slate-800/70 shrink-0 flex flex-col overflow-hidden">
+                    {/* Overlay for mobile drawer */}
+                    {showRightPanel && (
+                        <button
+                            type="button"
+                            className="lg:hidden fixed inset-0 z-40 bg-black/60 backdrop-blur-sm animate-fade-in"
+                            onClick={() => setShowRightPanel(false)}
+                            aria-label="Close panel"
+                        />
+                    )}
+
+                    {/* Right panel - drawer on mobile, static on desktop */}
+                    <aside
+                        className={[
+                            "bg-slate-950/95 backdrop-blur-sm border-l border-slate-800/70 shrink-0 flex flex-col overflow-hidden",
+                            "lg:relative lg:w-72 xl:w-80",
+                            "fixed lg:static top-0 right-0 h-full w-80 max-w-[85vw] z-50",
+                            "transform transition-transform duration-300 ease-out",
+                            showRightPanel ? "translate-x-0" : "translate-x-full lg:translate-x-0",
+                        ].join(" ")}
+                    >
+                        {/* Close button on mobile */}
+                        <button
+                            onClick={() => setShowRightPanel(false)}
+                            className="lg:hidden absolute top-2.5 right-2.5 z-10 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
+                            aria-label="Close panel"
+                        >
+                            <IconX className="w-4 h-4 text-slate-400" />
+                        </button>
+
                         <div className="flex border-b border-slate-800/70 shrink-0 overflow-x-auto scrollbar-none">
                             {PANEL_CONFIG.map(({ id, shortLabel }) => (
                                 <button

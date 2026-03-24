@@ -184,8 +184,8 @@ export interface DependsOnEdgeProperties {
 
 export interface ExportFormatInfo {
     format: ExportFormat;
+    label: string;
     description: string;
-    content_type: string;
     extension: string;
 }
 
