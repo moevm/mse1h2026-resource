@@ -1,4 +1,4 @@
-﻿import { useGraphStore } from "../../store/graphStore";
+import { useGraphStore } from "../../store/graphStore";
 import { getNodeColor, getEdgeColor } from "../../utils/colors";
 import { EmptyState } from "../common/EmptyState";
 
@@ -22,18 +22,19 @@ export function FilterPanel() {
             <EmptyState
                 title="No graph loaded"
                 description="Load a graph to see type filters."
-                className="pt-10"
+                className="pt-12"
             />
         );
     }
 
     return (
         <div className="flex flex-col overflow-y-auto max-h-full">
-            <div className="px-4 pt-4 pb-3 border-b border-slate-800/70">
-                <p className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mb-2.5">
-                    Hidden elements
+            {/* Filter Mode Selection */}
+            <div className="px-5 pt-5 pb-4 border-b border-slate-800/70">
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+                    Filter Mode
                 </p>
-                <div className="flex rounded-lg overflow-hidden border border-slate-700/60 bg-slate-900">
+                <div className="flex rounded-lg overflow-hidden border border-slate-700/70 bg-slate-900">
                     <ModeBtn
                         active={filterMode === "ghost"}
                         onClick={() => setFilterMode("ghost")}
@@ -45,18 +46,19 @@ export function FilterPanel() {
                         active={filterMode === "exclude"}
                         onClick={() => setFilterMode("exclude")}
                         label="Exclude"
-                        desc="Remove from graph"
+                        desc="Hide completely"
                     />
                 </div>
             </div>
 
+            {/* Node Type Filters */}
             {nodeTypes.length > 0 && (
-                <section className="px-4 pt-3.5 pb-3">
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                            Nodes
+                <section className="px-5 pt-4 pb-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                            Node Types
                         </h3>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1.5">
                             <BulkBtn
                                 label="All"
                                 active={hiddenNodeTypes.size === 0}
@@ -69,7 +71,7 @@ export function FilterPanel() {
                             />
                         </div>
                     </div>
-                    <div className="space-y-0.5">
+                    <div className="space-y-1">
                         {nodeTypes.map((t) => (
                             <TypeToggle
                                 key={t}
@@ -84,17 +86,19 @@ export function FilterPanel() {
                 </section>
             )}
 
+            {/* Divider */}
             {nodeTypes.length > 0 && edgeTypes.length > 0 && (
-                <div className="border-t border-slate-800/60 mx-4" />
+                <div className="border-t border-slate-800/60 mx-5" />
             )}
 
+            {/* Edge Type Filters */}
             {edgeTypes.length > 0 && (
-                <section className="px-4 pt-3.5 pb-4">
-                    <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
-                            Edges
+                <section className="px-5 pt-4 pb-5">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                            Edge Types
                         </h3>
-                        <div className="flex gap-1">
+                        <div className="flex gap-1.5">
                             <BulkBtn
                                 label="All"
                                 active={hiddenEdgeTypes.size === 0}
@@ -107,7 +111,7 @@ export function FilterPanel() {
                             />
                         </div>
                     </div>
-                    <div className="space-y-0.5">
+                    <div className="space-y-1">
                         {edgeTypes.map((t) => (
                             <TypeToggle
                                 key={t}
@@ -135,16 +139,18 @@ function ModeBtn({
         <button
             onClick={onClick}
             className={[
-                "flex-1 py-2.5 px-3 text-left transition-colors",
-                active ? "bg-blue-600/15" : "hover:bg-slate-800/50",
+                "flex-1 py-3 px-3.5 text-left transition-all duration-200",
+                active
+                    ? "bg-blue-600/20 border-l-2 border-blue-500"
+                    : "hover:bg-slate-800/60 border-l-2 border-transparent",
             ].join(" ")}
         >
             <p
-                className={`text-xs font-semibold leading-tight ${active ? "text-blue-300" : "text-slate-400"}`}
+                className={`text-sm font-semibold leading-tight ${active ? "text-blue-300" : "text-slate-400"}`}
             >
                 {label}
             </p>
-            <p className="text-[10px] text-slate-600 leading-tight mt-0.5">{desc}</p>
+            <p className="text-xs text-slate-500 leading-snug mt-1">{desc}</p>
         </button>
     );
 }
@@ -158,10 +164,10 @@ function BulkBtn({
         <button
             onClick={onClick}
             className={[
-                "text-[10px] px-2 py-0.5 rounded transition-colors font-medium",
+                "text-xs px-2.5 py-1 rounded-md transition-all duration-150 font-medium",
                 active
-                    ? "bg-slate-700 text-slate-300"
-                    : "text-slate-600 hover:text-slate-400 hover:bg-slate-800/60",
+                    ? "bg-slate-700/80 text-slate-200"
+                    : "text-slate-500 hover:text-slate-300 hover:bg-slate-800/60",
             ].join(" ")}
         >
             {label}
@@ -179,19 +185,34 @@ interface TypeToggleProps {
 
 function TypeToggle({ label, color, checked, count, onToggle }: Readonly<TypeToggleProps>) {
     return (
-        <label className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-slate-800/70 cursor-pointer transition-colors">
-            <span
-                className="h-2.5 w-2.5 rounded-sm shrink-0 ring-1 ring-inset ring-black/25 transition-opacity"
-                style={{ backgroundColor: color, opacity: checked ? 1 : 0.3 }}
+        <label className="flex items-center gap-3 px-2.5 py-2 rounded-lg hover:bg-slate-800/70 cursor-pointer transition-all duration-150 group">
+            <input
+                type="checkbox"
+                checked={checked}
+                onChange={onToggle}
+                className="shrink-0"
             />
-            <input type="checkbox" checked={checked} onChange={onToggle} className="sr-only" />
             <span
-                className={`flex-1 text-xs leading-tight transition-colors ${checked ? "text-slate-200" : "text-slate-500"}`}
+                className="h-3 w-3 rounded-sm shrink-0 shadow-sm transition-all duration-150"
+                style={{
+                    backgroundColor: color,
+                    opacity: checked ? 1 : 0.3,
+                    boxShadow: checked ? `0 0 8px ${color}60` : "none",
+                }}
+            />
+            <span
+                className={`flex-1 text-sm leading-tight transition-colors ${
+                    checked ? "text-slate-200 font-medium" : "text-slate-500"
+                }`}
             >
                 {label}
             </span>
             <span
-                className={`text-[10px] tabular-nums font-mono ${checked ? "text-slate-500" : "text-slate-700"}`}
+                className={`text-xs tabular-nums font-mono px-2 py-0.5 rounded ${
+                    checked
+                        ? "text-slate-400 bg-slate-800/60"
+                        : "text-slate-600"
+                }`}
             >
                 {count}
             </span>
