@@ -1,4 +1,4 @@
-﻿import { useState, useId } from "react";
+﻿import { useState, useId, useEffect } from "react";
 import { useGraph } from "../../hooks/useGraph";
 import { useGraphStore } from "../../store/graphStore";
 import { Button } from "../common/Button";
@@ -15,7 +15,7 @@ export function QueryPanel() {
         <div className="flex flex-col gap-5 p-4 overflow-y-auto max-h-full">
             <SubgraphForm defaultCenter={selectedNodeId ?? ""} onSubmit={loadSubgraph} />
             <div className="border-t border-slate-800" />
-            <PathForm onSubmit={loadShortestPath} />
+            <PathForm selectedNodeId={selectedNodeId ?? ""} onSubmit={loadShortestPath} />
             <div className="border-t border-slate-800" />
             <ImpactForm defaultNode={selectedNodeId ?? ""} onSubmit={loadImpact} />
         </div>
@@ -31,6 +31,12 @@ function SubgraphForm({
 }>) {
     const [center, setCenter] = useState(defaultCenter);
     const [depth, setDepth] = useState(2);
+
+    useEffect(() => {
+        if (!center.trim() && defaultCenter) {
+            setCenter(defaultCenter);
+        }
+    }, [defaultCenter, center]);
 
     return (
         <Section title="Subgraph (Ego Network)">
@@ -58,8 +64,10 @@ function SubgraphForm({
 }
 
 function PathForm({
+    selectedNodeId,
     onSubmit,
 }: Readonly<{
+    selectedNodeId: string;
     onSubmit: (r: { source_id: string; target_id: string; max_depth?: number }) => Promise<void>;
 }>) {
     const [source, setSource] = useState("");
@@ -75,12 +83,28 @@ function PathForm({
                     onChange={(e) => setSource(e.target.value)}
                     placeholder="urn:service:…"
                 />
+                {selectedNodeId && (
+                    <button
+                        className="text-[11px] text-blue-400 hover:text-blue-300"
+                        onClick={() => setSource(selectedNodeId)}
+                    >
+                        Use selected node as source
+                    </button>
+                )}
                 <Input
                     label="Target ID"
                     value={target}
                     onChange={(e) => setTarget(e.target.value)}
                     placeholder="urn:db:…"
                 />
+                {selectedNodeId && (
+                    <button
+                        className="text-[11px] text-blue-400 hover:text-blue-300"
+                        onClick={() => setTarget(selectedNodeId)}
+                    >
+                        Use selected node as target
+                    </button>
+                )}
                 <NumberSlider
                     label="Max Depth"
                     value={maxDepth}
@@ -121,6 +145,12 @@ function ImpactForm({
     const [nodeId, setNodeId] = useState(defaultNode);
     const [depth, setDepth] = useState(3);
     const [direction, setDirection] = useState<ImpactDirection>("downstream");
+
+    useEffect(() => {
+        if (!nodeId.trim() && defaultNode) {
+            setNodeId(defaultNode);
+        }
+    }, [defaultNode, nodeId]);
 
     return (
         <Section title="Impact / Blast Radius">

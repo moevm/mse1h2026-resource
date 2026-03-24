@@ -29,38 +29,38 @@ export default function ExportPanel() {
                 setFormats([
                     {
                         format: "json",
+                        label: "JSON",
                         description: "JSON",
-                        content_type: "application/json",
                         extension: ".json",
                     },
                     {
                         format: "graphml",
+                        label: "GraphML",
                         description: "GraphML (XML)",
-                        content_type: "application/xml",
                         extension: ".graphml",
                     },
                     {
                         format: "gexf",
+                        label: "GEXF",
                         description: "GEXF (Gephi)",
-                        content_type: "application/xml",
                         extension: ".gexf",
                     },
                     {
                         format: "dot",
+                        label: "DOT",
                         description: "DOT (Graphviz)",
-                        content_type: "text/vnd.graphviz",
                         extension: ".dot",
                     },
                     {
                         format: "cytoscape_json",
+                        label: "Cytoscape JSON",
                         description: "Cytoscape JSON",
-                        content_type: "application/json",
                         extension: ".cyjs",
                     },
                     {
                         format: "csv",
+                        label: "CSV",
                         description: "CSV (zipped)",
-                        content_type: "application/zip",
                         extension: ".zip",
                     },
                 ]);

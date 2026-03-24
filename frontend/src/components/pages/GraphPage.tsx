@@ -8,6 +8,7 @@ import { GraphControls } from "../graph/GraphControls";
 import { NodeDetail } from "../graph/NodeDetail";
 import { FilterPanel } from "../panels/FilterPanel";
 import { QueryPanel } from "../panels/QueryPanel";
+import GraphInsightsPanel from "../panels/GraphInsightsPanel";
 import { LogPanel } from "../panels/LogPanel";
 import ExportPanel from "../panels/ExportPanel";
 import TraversalPanel from "../panels/TraversalPanel";
@@ -17,12 +18,13 @@ import { Button } from "../common/Button";
 import { IconSearch, IconRefresh, IconPanel, IconX } from "../icons";
 import type { GraphResponse } from "../../types";
 
-type RightPanel = "detail" | "filter" | "query" | "export" | "traversal" | "log";
+type RightPanel = "detail" | "filter" | "query" | "insights" | "export" | "traversal" | "log";
 
 const PANEL_CONFIG: Array<{ id: RightPanel; label: string; shortLabel: string }> = [
     { id: "detail", label: "Node Detail", shortLabel: "Detail" },
     { id: "filter", label: "Filter", shortLabel: "Filter" },
     { id: "query", label: "Query", shortLabel: "Query" },
+    { id: "insights", label: "Insights", shortLabel: "Insights" },
     { id: "traversal", label: "Traversal", shortLabel: "Traverse" },
     { id: "export", label: "Export", shortLabel: "Export" },
     { id: "log", label: "Activity Log", shortLabel: "Log" },
@@ -176,6 +178,7 @@ export function GraphPage() {
                             {rightPanel === "detail" && <NodeDetail />}
                             {rightPanel === "filter" && <FilterPanel />}
                             {rightPanel === "query" && <QueryPanel />}
+                            {rightPanel === "insights" && <GraphInsightsPanel />}
                             {rightPanel === "export" && <ExportPanel />}
                             {rightPanel === "traversal" && (
                                 <TraversalPanel onResult={handleTraversalResult} />
