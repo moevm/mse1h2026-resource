@@ -140,7 +140,6 @@ def _upsert_edges_tx(tx: ManagedTransaction, edges: List[Dict], source: str, now
 
 
 def get_full_graph(limit: int = 500) -> Tuple[List[Dict], List[Dict]]:
-    """Return all nodes and edges (edges are restricted to the fetched node set)."""
     with neo4j_driver.session() as session:
         nodes = session.execute_read(_read_all_nodes, limit)
         node_ids = [n["id"] for n in nodes]
@@ -149,10 +148,6 @@ def get_full_graph(limit: int = 500) -> Tuple[List[Dict], List[Dict]]:
 
 
 def get_graph_by_sources(sources: List[str], limit: int = 500) -> Tuple[List[Dict], List[Dict]]:
-    """Return nodes and edges filtered by source (agent name).
-
-    Used for application-scoped graph visualization.
-    """
     if not sources:
         return [], []
 
@@ -205,13 +200,6 @@ def _read_all_edges(tx: ManagedTransaction, limit: int) -> List[Dict]:
 
 
 def _read_edges_for_nodes(tx: ManagedTransaction, node_ids: List[str]) -> List[Dict]:
-    """Fetch ALL edges whose source AND target are in node_ids (no arbitrary cut-off).
-
-    Using this instead of a separate LIMIT keeps the edge set coherent
-    with the returned node set: every visible connection is present.
-    Duplicate parallel relationships (same source/target/type) are
-    de-duplicated here to save bandwidth.
-    """
     if not node_ids:
         return []
     result = tx.run(
@@ -243,7 +231,6 @@ def _read_edges_for_nodes(tx: ManagedTransaction, node_ids: List[str]) -> List[D
 def get_subgraph(center_id: str, depth: int = 2,
                  node_types: Optional[List[str]] = None,
                  edge_types: Optional[List[str]] = None) -> Tuple[List[Dict], List[Dict]]:
-    """BFS from center_id up to *depth* hops, optionally filtering types."""
     with neo4j_driver.session() as session:
         return session.execute_read(
             _read_subgraph, center_id, depth, node_types, edge_types
@@ -297,7 +284,6 @@ def _read_subgraph(tx: ManagedTransaction, center_id: str, depth: int,
 
 def find_shortest_path(source_id: str, target_id: str,
                        max_depth: int = 5) -> Tuple[List[Dict], List[Dict]]:
-    """Find shortest path between two nodes."""
     with neo4j_driver.session() as session:
         return session.execute_read(_find_path_tx, source_id, target_id, max_depth)
 
@@ -379,12 +365,6 @@ def get_graph_stats() -> Dict[str, Any]:
 
 
 def delete_graph_by_sources(sources: List[str]) -> Dict[str, int]:
-    """Delete graph data produced by specific sources (agent names).
-
-    Removes:
-    - relationships where rel.source IN sources
-    - nodes where node.source IN sources (with DETACH DELETE)
-    """
     if not sources:
         return {"deleted_nodes": 0, "deleted_edges": 0}
 
@@ -469,18 +449,6 @@ def find_node_by_field(
     field_name: str,
     field_value: str,
 ) -> Optional[Dict[str, Any]]:
-    """Find a node by type and field value.
-
-    Used for auto-edge creation to find target nodes.
-
-    Args:
-        node_type: The type of node to find (Service, Node, Database, etc.)
-        field_name: The field to match (name, cluster_id, etc.)
-        field_value: The value to match
-
-    Returns:
-        Node dictionary or None if not found
-    """
     with neo4j_driver.session() as session:
         return session.execute_read(
             _find_node_by_field_tx, node_type, field_name, field_value
@@ -493,14 +461,11 @@ def _find_node_by_field_tx(
     field_name: str,
     field_value: str,
 ) -> Optional[Dict[str, Any]]:
-    # Map field_name to Neo4j property
-    # In Neo4j, 'name' is stored directly, other fields are in props
     if field_name == "name":
         prop_query = "r.name = $value"
     elif field_name == "cluster_id":
         prop_query = "r.cluster_id = $value"
     else:
-        # For other fields, check if they exist as direct properties
         prop_query = f"r.{field_name} = $value"
 
     query = (
@@ -518,16 +483,6 @@ def _find_node_by_field_tx(
 
 
 def find_node_by_name(name: str) -> Optional[Dict[str, Any]]:
-    """Find a node by name field across all types.
-
-    Used for resolving edge URN format - finds node to determine its type.
-
-    Args:
-        name: The node name to search for
-
-    Returns:
-        Node dictionary with 'id' and 'type' fields, or None if not found
-    """
     with neo4j_driver.session() as session:
         return session.execute_read(_find_node_by_name_tx, name)
 
@@ -536,7 +491,6 @@ def _find_node_by_name_tx(
     tx: ManagedTransaction,
     name: str,
 ) -> Optional[Dict[str, Any]]:
-    """Transaction for find_node_by_name."""
     query = (
         "MATCH (r:Resource) "
         "WHERE r.name = $name "
@@ -555,16 +509,6 @@ def _find_node_by_name_tx(
 
 
 def get_nodes_by_types(node_types: List[str]) -> List[Dict[str, Any]]:
-    """Get all nodes of specified types.
-
-    Used for edge recreation after bulk node insertion.
-
-    Args:
-        node_types: List of node types to fetch (e.g., ['Service', 'Database'])
-
-    Returns:
-        List of node dictionaries with all properties
-    """
     if not node_types:
         return []
     with neo4j_driver.session() as session:
@@ -575,7 +519,6 @@ def _get_nodes_by_types_tx(
     tx: ManagedTransaction,
     node_types: List[str],
 ) -> List[Dict[str, Any]]:
-    """Transaction for get_nodes_by_types."""
     query = (
         "MATCH (r:Resource) "
         "WHERE r.type IN $node_types "
@@ -586,12 +529,10 @@ def _get_nodes_by_types_tx(
 
 
 def get_all_node_types() -> List[str]:
-    """Get all unique node types in the graph."""
     with neo4j_driver.session() as session:
         return session.execute_read(_get_all_node_types_tx)
 
 
 def _get_all_node_types_tx(tx: ManagedTransaction) -> List[str]:
-    """Transaction for get_all_node_types."""
     result = tx.run("MATCH (r:Resource) RETURN DISTINCT r.type AS type")
     return [record["type"] for record in result if record["type"]]

@@ -21,8 +21,11 @@ router = APIRouter()
     summary="Get the full topology graph",
     description="Returns all nodes and edges (with a default limit of 500 to protect the browser).",
 )
-async def full_graph(limit: Annotated[int, Query(ge=1, le=5000)] = 500):
-    return graph_service.get_full_graph(limit)
+async def full_graph(
+    limit: Annotated[int, Query(ge=1, le=5000)] = 500,
+    app_id: Optional[str] = Query(None, description="Filter by application ID"),
+):
+    return graph_service.get_full_graph(limit, app_id=app_id)
 
 
 @router.post(

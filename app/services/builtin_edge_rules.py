@@ -6,7 +6,6 @@ from app.models.mapper.mapping import AutoEdgeRule
 
 
 BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
-
     AutoEdgeRule(
         id="pod-to-node",
         source_type="Pod",

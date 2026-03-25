@@ -59,15 +59,11 @@ EDGE_TYPE_MAP = {
 
 
 class PreviewRequest(BaseModel):
-    """Request for previewing or applying a mapping."""
-
     chunk_id: str = Field(..., description="ID of the raw data chunk")
     mapping_id: str = Field(..., description="ID of the mapping to apply")
 
 
 class PreviewResponse(BaseModel):
-    """Response for preview endpoint."""
-
     chunk_id: str
     mapping_id: str
     nodes: List[Dict[str, Any]]
@@ -77,8 +73,6 @@ class PreviewResponse(BaseModel):
 
 
 class ApplyResponse(BaseModel):
-    """Response for apply endpoint."""
-
     chunk_id: str
     mapping_id: str
     nodes_processed: int
@@ -94,12 +88,6 @@ class ApplyResponse(BaseModel):
     summary="Preview mapping result without persisting",
 )
 async def preview_mapping(request: PreviewRequest):
-    """Preview how raw data would be transformed by a mapping.
-
-    Returns the nodes and edges that would be created without
-    actually persisting them to the graph.
-    """
-    # Get the chunk
     chunk_data = await raw_data_repo.get_chunk(request.chunk_id)
     if not chunk_data:
         raise HTTPException(
@@ -107,7 +95,6 @@ async def preview_mapping(request: PreviewRequest):
             detail="Chunk not found or expired",
         )
 
-    # Get the mapping
     mapping = mapping_repo.get(request.mapping_id)
     if not mapping:
         raise HTTPException(
@@ -149,12 +136,6 @@ async def preview_mapping(request: PreviewRequest):
     summary="Apply mapping and ingest into graph",
 )
 async def apply_mapping(request: PreviewRequest):
-    """Apply a mapping to a chunk and persist the result to Neo4j.
-
-    The mapped data is ingested into the graph database and the
-    chunk is marked as processed.
-    """
-    # Get the chunk
     chunk_data = await raw_data_repo.get_chunk(request.chunk_id)
     if not chunk_data:
         raise HTTPException(
@@ -187,19 +168,16 @@ async def apply_mapping(request: PreviewRequest):
     try:
         node_models = []
         for n in nodes:
-            # Determine the correct node type and instantiate
             node_type = n.get("type", "Service")
             node_class = NODE_TYPE_MAP.get(node_type, ServiceNode)
             node_models.append(node_class(**n))
 
         edge_models = []
         for e in edges:
-            # Determine the correct edge type and instantiate
             edge_type = e.get("type", "dependson")
             edge_class = EDGE_TYPE_MAP.get(edge_type, DependsOnEdge)
             edge_models.append(edge_class(**e))
 
-        # Create topology update
         update = TopologyUpdate(
             source=f"mapper:{mapping.name}",
             nodes=node_models,
@@ -236,9 +214,6 @@ async def preview_raw_data(
     raw_data: Dict[str, Any],
     mapping_id: str,
 ):
-    """Preview mapping with raw JSON data.
-
-    """
     mapping = mapping_repo.get(mapping_id)
     if not mapping:
         raise HTTPException(

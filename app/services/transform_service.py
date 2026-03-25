@@ -118,7 +118,7 @@ class TransformService:
             elif expression.startswith("float("):
                 return float(value)
             else:
-                return eval(expression, {"__builtins__": {}}, allowed_names)  # nosec B307
+                return eval(expression, {"__builtins__": {}}, allowed_names)
 
         except Exception as e:
             log.warning(f"Expression transform failed: {e}")
@@ -158,6 +158,22 @@ class TransformService:
             return False
 
         try:
+            import re
+            eq_match = re.match(r"^([\w.]+)\s*==\s*['\"]?(.+?)['\"]?$", condition.strip())
+            neq_match = re.match(r"^([\w.]+)\s*!=\s*['\"]?(.+?)['\"]?$", condition.strip())
+
+            if eq_match:
+                field_path = eq_match.group(1)
+                expected = eq_match.group(2)
+                actual = self.extract(data, field_path)
+                return str(actual) == expected
+
+            if neq_match:
+                field_path = neq_match.group(1)
+                expected = neq_match.group(2)
+                actual = self.extract(data, field_path)
+                return str(actual) != expected
+
             result = self.extract(data, condition)
             if result is None:
                 return False

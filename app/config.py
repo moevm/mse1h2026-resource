@@ -12,7 +12,6 @@ class Settings(BaseSettings):
 
     node_ttl_hours: int = 24
 
-    # Redis for raw data storage
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_password: str = ""

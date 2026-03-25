@@ -30,15 +30,8 @@ async def receive_raw_data(
     ),
     agent: Dict[str, Any] = Depends(require_agent),
 ):
-    """Receive raw telemetry data from an agent.
-
-    Data is stored temporarily (24h TTL) in Redis for history/timeline.
-    If an active mapping exists for this source_type, it is automatically
-    applied and the resulting nodes/edges are saved to Neo4j.
-    """
     agent_name = agent.get("name", "unknown")
 
-    # 1. Always store raw data in Redis (for history/timeline)
     chunk_id = await raw_data_repo.store_chunk(
         agent_id=agent["agent_id"],
         source_type=source_type,
@@ -49,17 +42,14 @@ async def receive_raw_data(
         },
     )
 
-    # 2. Check for active mapping for this source_type
     active_mapping = mapping_repo.get_active_for_source(source_type.value)
 
-    # 3. If active mapping exists, auto-apply
     nodes_created = 0
     edges_created = 0
     mapping_applied = False
 
     if active_mapping:
         try:
-            # Create a temporary chunk object for mapping
             from app.models.mapper.raw_data import RawDataChunk
             from datetime import datetime, timezone
             temp_chunk = RawDataChunk(
@@ -76,6 +66,11 @@ async def receive_raw_data(
                 upsert_nodes(nodes, source=agent_name)
                 nodes_created = len(nodes)
 
+            if nodes:
+                new_edges, new_unresolved = mapper_service.recreate_edges_for_nodes(nodes, active_mapping)
+                edges.extend(new_edges)
+                unresolved.extend(new_unresolved)
+
             if edges:
                 upsert_edges(edges, source=agent_name)
                 edges_created = len(edges)
@@ -89,7 +84,6 @@ async def receive_raw_data(
 
         except Exception as e:
             log.error(f"Error auto-applying mapping: {e}")
-            # Don't fail the request - data is still stored
 
     return {
         "chunk_id": chunk_id,
@@ -116,7 +110,6 @@ async def list_raw_data(
     source_type: Optional[RawDataSource] = Query(None, description="Filter by source type"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of chunks to return"),
 ):
-    """List stored raw data chunks with optional filters."""
     return await raw_data_repo.list_chunks(
         agent_id=agent_id,
         source_type=source_type,
@@ -129,7 +122,6 @@ async def list_raw_data(
     summary="Get specific raw data chunk",
 )
 async def get_raw_data(chunk_id: str):
-    """Retrieve a specific raw data chunk by ID."""
     chunk = await raw_data_repo.get_chunk(chunk_id)
     if not chunk:
         raise HTTPException(
@@ -145,7 +137,6 @@ async def get_raw_data(chunk_id: str):
     status_code=status.HTTP_204_NO_CONTENT,
 )
 async def delete_raw_data(chunk_id: str):
-    """Delete a specific raw data chunk."""
     deleted = await raw_data_repo.delete_chunk(chunk_id)
     if not deleted:
         raise HTTPException(

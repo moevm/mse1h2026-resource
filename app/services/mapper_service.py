@@ -18,7 +18,6 @@ log = logging.getLogger(__name__)
 
 
 class MapperService:
-
     def map_chunk(
         self,
         chunk: RawDataChunk,
@@ -34,17 +33,20 @@ class MapperService:
         mappings_by_type = self._group_mappings_by_type(mapping.field_mappings)
 
         if applicable_rules:
-            for rule in applicable_rules:
-                node_type = rule.target_node_type
+            primary_types = {rule.target_node_type for rule in applicable_rules}
+
+            for node_type in primary_types:
+                field_maps = mappings_by_type.get(node_type, [])
                 node = self._map_to_node(
                     raw_data,
                     node_type,
-                    mappings_by_type.get(node_type, []),
+                    field_maps,
                     mapping,
                 )
                 if node:
-                    nodes.append(node)
-        else:
+                    if self._is_valid_node_for_type(node, node_type):
+                        nodes.append(node)
+        elif not mapping.conditional_rules:
             node_types = set(mappings_by_type.keys())
             for node_type in node_types:
                 node = self._map_to_node(
@@ -53,7 +55,7 @@ class MapperService:
                     mappings_by_type.get(node_type, []),
                     mapping,
                 )
-                if node:
+                if node and self._is_valid_node_for_type(node, node_type):
                     nodes.append(node)
 
         if mapping.edge_source_path and mapping.edge_target_path:
@@ -103,6 +105,76 @@ class MapperService:
                 grouped[node_type] = []
             grouped[node_type].append(mapping)
         return grouped
+
+    def _is_valid_node_for_type(self, node: Dict[str, Any], node_type: str) -> bool:
+        validation_rules = {
+            "Pod": lambda n: n.get("node_name") is not None,
+            "Node": lambda n: n.get("zone") is not None or n.get("instance_type") is not None,
+            "Deployment": lambda n: n.get("replicas_desired") is not None,
+            "Service": lambda n: True,
+            "Database": lambda n: n.get("engine") is not None,
+            "Cache": lambda n: n.get("engine") is not None,
+            "QueueTopic": lambda n: (
+                n.get("partitions") is not None or
+                (n.get("publishers") is not None and len(n.get("publishers") if isinstance(n.get("publishers"), list) else []) > 0) or
+                (n.get("consumers") is not None and len(n.get("consumers") if isinstance(n.get("consumers"), list) else []) > 0)
+            ),
+            "SecretConfig": lambda n: (
+                (n.get("services") is not None and len(n.get("services") if isinstance(n.get("services"), list) else []) > 0) or
+                n.get("provider") is not None
+            ),
+            "Table": lambda n: n.get("database_ref") is not None or n.get("schema_name") is not None,
+            "Library": lambda n: n.get("language") is not None,
+            "TeamOwner": lambda n: True,
+            "SLASLO": lambda n: n.get("service_ref") is not None,
+            "ExternalAPI": lambda n: True,
+            "RegionCluster": lambda n: n.get("region") is not None and n.get("provider") is not None,
+            "Endpoint": lambda n: n.get("service_name") is not None,
+        }
+
+        validator = validation_rules.get(node_type)
+        if validator:
+            return validator(node)
+        return True
+
+    def _is_valid_secondary_node(self, node: Dict[str, Any], node_type: str) -> bool:
+        type_specific_fields = {
+            "Database": {"engine", "storage_gb", "instance_class", "owner_service"},
+            "Cache": {"engine", "cluster_size", "node_type", "owner_service"},
+            "QueueTopic": {"partitions", "replication_factor"},
+            "SecretConfig": {"description", "services", "provider"},
+            "Table": {"schema_name", "database_ref", "row_count"},
+            "Library": {"language"},
+            "TeamOwner": set(),
+            "SLASLO": {"metric_name", "target_percentage", "service_ref"},
+            "ExternalAPI": set(),
+            "RegionCluster": {"region", "provider"},
+            "Node": {"zone", "instance_type", "capacity_cpu"},
+            "Deployment": {"replicas_desired", "replicas_ready"},
+            "Pod": {"node_name"},
+            "Service": set(),
+            "Endpoint": {"service_name", "path"},
+        }
+
+        required_fields = type_specific_fields.get(node_type, set())
+
+        if required_fields:
+            for field in required_fields:
+                value = node.get(field)
+                if value is not None and value != "" and value != []:
+                    return True
+            return False
+
+        meaningful_fields = set(node.keys()) - {"id", "name", "status", "type"}
+        if not meaningful_fields:
+            return False
+
+        for field in meaningful_fields:
+            value = node.get(field)
+            if value is not None and value != "" and value != []:
+                return True
+
+        return False
 
     def _map_to_node(
         self,
@@ -166,14 +238,14 @@ class MapperService:
         if not str(source_id).startswith("urn:"):
             source_node = find_node_by_name(str(source_id))
             if source_node:
-                source_id = source_node["id"]  # Already has correct URN
+                source_id = source_node["id"]
             else:
                 source_id = f"urn:resource:{source_id}"
 
         if not str(target_id).startswith("urn:"):
             target_node = find_node_by_name(str(target_id))
             if target_node:
-                target_id = target_node["id"]  # Already has correct URN
+                target_id = target_node["id"]
             else:
                 target_id = f"urn:resource:{target_id}"
 
@@ -205,6 +277,9 @@ class MapperService:
                     continue
 
                 source_field_value = node.get(rule.source_field)
+                if not source_field_value:
+                    properties = node.get("properties", {})
+                    source_field_value = properties.get(rule.source_field)
                 if not source_field_value:
                     continue
 
@@ -274,6 +349,14 @@ class MapperService:
             )
 
         return nodes, edges, warnings, unresolved
+
+    def recreate_edges_for_nodes(
+        self,
+        nodes: List[Dict[str, Any]],
+        mapping: MappingConfig,
+    ) -> Tuple[List[Dict[str, Any]], List[UnresolvedReference]]:
+        edge_rules = self._get_edge_rules(mapping)
+        return self._auto_create_edges(nodes, edge_rules)
 
     def infer_node_type(
         self,

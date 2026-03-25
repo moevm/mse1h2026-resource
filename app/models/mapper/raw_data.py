@@ -8,13 +8,13 @@ from pydantic import BaseModel, Field
 
 
 class RawDataSource(str, Enum):
-
     OPEN_TELEMETRY_TRACES = "opentelemetry-traces"
     OPEN_TELEMETRY_METRICS = "opentelemetry-metrics"
     ISTIO_METRICS = "istio-metrics"
     ISTIO_ACCESS_LOGS = "istio-access-logs"
     KUBERNETES_API = "kubernetes-api"
     PROMETHEUS = "prometheus"
+    PROMETHEUS_SLO = "prometheus-slo"
     TERRAFORM_STATE = "terraform-state"
     ARGCD = "argocd"
     API_GATEWAY = "api-gateway"
@@ -22,7 +22,6 @@ class RawDataSource(str, Enum):
 
 
 class RawDataChunk(BaseModel):
-
     id: str = Field(..., description="Unique chunk identifier (UUID)")
     agent_id: str = Field(..., description="ID of the agent that sent this data")
     source_type: RawDataSource = Field(..., description="Type of data source")
@@ -40,7 +39,6 @@ class RawDataChunk(BaseModel):
 
 
 class RawDataListResponse(BaseModel):
-
     chunks: List[RawDataChunk]
     total: int
     timeline_min: Optional[datetime] = None

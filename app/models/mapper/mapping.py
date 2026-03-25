@@ -9,7 +9,6 @@ from app.models.mapper.transform import TransformType
 
 
 class FieldMapping(BaseModel):
-
     id: str = Field(..., description="Unique identifier for this mapping")
     source_path: str = Field(
         ...,
@@ -43,7 +42,6 @@ class FieldMapping(BaseModel):
 
 
 class ConditionalRule(BaseModel):
-
     id: str = Field(..., description="Unique identifier for this rule")
     condition: str = Field(
         ...,
@@ -64,7 +62,6 @@ class ConditionalRule(BaseModel):
 
 
 class AutoEdgeRule(BaseModel):
-
     id: str = Field(..., description="Unique identifier for this rule")
     source_type: str = Field(
         ...,
@@ -89,7 +86,6 @@ class AutoEdgeRule(BaseModel):
 
 
 class UnresolvedReference(BaseModel):
-
     source_node_id: str = Field(..., description="ID of the source node")
     source_node_type: str = Field(..., description="Type of the source node")
     source_field: str = Field(..., description="Field containing the reference")
@@ -99,7 +95,6 @@ class UnresolvedReference(BaseModel):
 
 
 class MappingConfig(BaseModel):
-
     id: str = Field(..., description="Unique identifier (UUID)")
     name: str = Field(..., description="Human-readable name")
     source_type: str = Field(
@@ -154,6 +149,5 @@ class MappingConfig(BaseModel):
 
 
 class MappingListResponse(BaseModel):
-
     mappings: List[MappingConfig]
     total: int
