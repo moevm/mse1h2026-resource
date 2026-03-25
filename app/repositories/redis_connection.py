@@ -6,6 +6,8 @@ from app.config import settings
 
 
 class RedisConnection:
+    """Redis connection manager for raw data storage."""
+
     def __init__(self) -> None:
         self._client: redis.Redis | None = None
 
@@ -22,6 +24,7 @@ class RedisConnection:
         return self._client
 
     async def ping(self) -> bool:
+        """Check Redis connection."""
         try:
             return await self.client.ping()
         except redis.ConnectionError:

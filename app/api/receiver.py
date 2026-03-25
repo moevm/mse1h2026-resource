@@ -72,9 +72,18 @@ async def receive_raw_data(
 
             nodes, edges, unresolved = mapper_service.map_chunk(temp_chunk, active_mapping)
 
+            # IMPORTANT: Create nodes FIRST before edges
+            # Edge creation uses find_node_by_field which requires target nodes to exist
             if nodes:
                 upsert_nodes(nodes, source=agent_name)
                 nodes_created = len(nodes)
+
+            # Now re-evaluate auto-edge rules with nodes in Neo4j
+            # This is needed when a single trace creates multiple nodes (e.g., Service + ExternalAPI)
+            if nodes:
+                new_edges, new_unresolved = mapper_service.recreate_edges_for_nodes(nodes, active_mapping)
+                edges.extend(new_edges)
+                unresolved.extend(new_unresolved)
 
             if edges:
                 upsert_edges(edges, source=agent_name)

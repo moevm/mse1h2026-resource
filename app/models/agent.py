@@ -11,6 +11,7 @@ class AgentRegisterRequest(BaseModel):
         description="Type of agent: otel-collector | k8s-agent | aws-agent | mock | custom",
     )
     description: Optional[str] = None
+    app_token: Optional[str] = Field(None, description="Application token to bind agent to an application")
 
 
 class AgentRegisterResponse(BaseModel):
@@ -28,3 +29,5 @@ class AgentInfo(BaseModel):
     description: Optional[str] = None
     registered_at: Optional[datetime] = None
     last_seen_at: Optional[datetime] = None
+    app_id: Optional[str] = None
+    app_name: Optional[str] = None

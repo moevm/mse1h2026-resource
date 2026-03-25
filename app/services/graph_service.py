@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import networkx as nx
 
-from app.repositories import neo4j_repo
+from app.repositories import neo4j_repo, application_repo
 from app.models.topology import (
     GraphEdge,
     GraphNode,
@@ -60,8 +60,16 @@ def _build_response(raw_nodes: List[Dict], raw_edges: List[Dict]) -> GraphRespon
     )
 
 
-def get_full_graph(limit: int = 500) -> GraphResponse:
-    raw_nodes, raw_edges = neo4j_repo.get_full_graph(limit)
+def get_full_graph(limit: int = 500, app_id: Optional[str] = None) -> GraphResponse:
+    if app_id:
+        # Get agent names for this application
+        agent_names = application_repo.get_agent_names_for_application(app_id)
+        if not agent_names:
+            # No agents for this app - return empty graph
+            return GraphResponse(nodes=[], edges=[], node_count=0, edge_count=0)
+        raw_nodes, raw_edges = neo4j_repo.get_graph_by_sources(agent_names, limit)
+    else:
+        raw_nodes, raw_edges = neo4j_repo.get_full_graph(limit)
     return _build_response(raw_nodes, raw_edges)
 
 

@@ -20,6 +20,7 @@ def register_agent(
     name: str,
     source_type: str,
     description: Optional[str] = None,
+    app_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     agent_id = str(uuid.uuid4())
     token = str(uuid.uuid4())
@@ -27,7 +28,7 @@ def register_agent(
 
     with neo4j_driver.session() as session:
         result = session.execute_write(
-            _register_tx, agent_id, token, name, source_type, description, now
+            _register_tx, agent_id, token, name, source_type, description, now, app_id
         )
     return result
 
@@ -40,25 +41,52 @@ def _register_tx(
     source_type: str,
     description: Optional[str],
     now: str,
+    app_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     # MERGE by name so re-registration returns the existing agent + token
-    result = tx.run(
-        "MERGE (a:Agent {name: $name}) "
-        "ON CREATE SET "
-        "    a.agent_id = $agent_id, "
-        "    a.token = $token, "
-        "    a.source_type = $source_type, "
-        "    a.description = $description, "
-        "    a.registered_at = $now "
-        "SET a.last_seen_at = $now "
-        "RETURN a",
-        name=name,
-        agent_id=agent_id,
-        token=token,
-        source_type=source_type,
-        description=description,
-        now=now,
-    )
+    if app_id:
+        # Register with application binding
+        result = tx.run(
+            "MERGE (a:Agent {name: $name}) "
+            "ON CREATE SET "
+            "    a.agent_id = $agent_id, "
+            "    a.token = $token, "
+            "    a.source_type = $source_type, "
+            "    a.description = $description, "
+            "    a.registered_at = $now, "
+            "    a.app_id = $app_id "
+            "SET a.last_seen_at = $now "
+            "WITH a "
+            "MATCH (app:Application {app_id: $app_id}) "
+            "MERGE (app)-[:HAS_AGENT]->(a) "
+            "RETURN a",
+            name=name,
+            agent_id=agent_id,
+            token=token,
+            source_type=source_type,
+            description=description,
+            now=now,
+            app_id=app_id,
+        )
+    else:
+        # Register without application
+        result = tx.run(
+            "MERGE (a:Agent {name: $name}) "
+            "ON CREATE SET "
+            "    a.agent_id = $agent_id, "
+            "    a.token = $token, "
+            "    a.source_type = $source_type, "
+            "    a.description = $description, "
+            "    a.registered_at = $now "
+            "SET a.last_seen_at = $now "
+            "RETURN a",
+            name=name,
+            agent_id=agent_id,
+            token=token,
+            source_type=source_type,
+            description=description,
+            now=now,
+        )
     record = result.single()
     return dict(record["a"])
 
@@ -96,8 +124,19 @@ def list_agents() -> list[Dict[str, Any]]:
 
 
 def _list_agents_tx(tx: ManagedTransaction) -> list[Dict[str, Any]]:
-    result = tx.run("MATCH (a:Agent) RETURN a ORDER BY a.registered_at DESC")
-    return [dict(record["a"]) for record in result]
+    result = tx.run(
+        "MATCH (a:Agent) "
+        "OPTIONAL MATCH (app:Application)-[:HAS_AGENT]->(a) "
+        "RETURN a, app.name AS app_name, app.app_id AS app_id "
+        "ORDER BY a.registered_at DESC"
+    )
+    agents = []
+    for record in result:
+        agent_data = dict(record["a"])
+        agent_data["app_name"] = record["app_name"]
+        agent_data["app_id"] = record["app_id"]
+        agents.append(agent_data)
+    return agents
 
 
 def ensure_agent_indexes() -> None:

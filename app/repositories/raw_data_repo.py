@@ -11,8 +11,10 @@ from app.repositories.redis_connection import redis_client
 
 
 class RawDataRepository:
+    """Repository for storing and retrieving raw telemetry data chunks."""
+
     KEY_PREFIX = "raw:chunk:"
-    INDEX_KEY = "raw:index"
+    INDEX_KEY = "raw:index"  # Set of all chunk IDs for faster listing
 
     @property
     def ttl(self) -> timedelta:
@@ -25,6 +27,7 @@ class RawDataRepository:
         data: Dict[str, Any],
         metadata: Dict[str, Any],
     ) -> str:
+        """Store raw data chunk and return chunk ID."""
         chunk_id = str(uuid.uuid4())
         timestamp = datetime.utcnow()
         key = f"{self.KEY_PREFIX}{agent_id}:{chunk_id}"
@@ -44,18 +47,23 @@ class RawDataRepository:
         }
 
         client = redis_client.client
+        # Store the chunk
         await client.setex(
             key,
             self.ttl,
             json.dumps(chunk_data, default=str),
         )
+        # Add to index
         await client.sadd(self.INDEX_KEY, chunk_id)
+        # Set expiry on index (refresh on each add)
         await client.expire(self.INDEX_KEY, self.ttl)
 
         return chunk_id
 
     async def get_chunk(self, chunk_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a specific chunk by ID."""
         client = redis_client.client
+        # Scan for key containing chunk_id
         pattern = f"{self.KEY_PREFIX}*:{chunk_id}"
         keys = []
         async for key in client.scan_iter(match=pattern, count=1):
@@ -75,6 +83,7 @@ class RawDataRepository:
         source_type: Optional[RawDataSource] = None,
         limit: int = 100,
     ) -> RawDataListResponse:
+        """List chunks, optionally filtered."""
         client = redis_client.client
         chunks: List[Dict[str, Any]] = []
 
@@ -90,9 +99,11 @@ class RawDataRepository:
                 if source_type is None or chunk.get("source_type") == source_type.value:
                     chunks.append(chunk)
 
+        # Sort by timestamp descending
         chunks.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         chunks = chunks[:limit]
 
+        # Calculate timeline bounds
         timeline_min = None
         timeline_max = None
         if chunks:
@@ -117,6 +128,7 @@ class RawDataRepository:
         chunk_id: str,
         mapping_id: str,
     ) -> bool:
+        """Mark a chunk as processed."""
         chunk = await self.get_chunk(chunk_id)
         if not chunk:
             return False
@@ -125,6 +137,7 @@ class RawDataRepository:
         chunk["processed_at"] = datetime.utcnow().isoformat()
         chunk["mapping_id"] = mapping_id
 
+        # Find the key and update
         client = redis_client.client
         pattern = f"{self.KEY_PREFIX}*:{chunk_id}"
         async for key in client.scan_iter(match=pattern, count=1):
@@ -135,6 +148,7 @@ class RawDataRepository:
         return False
 
     async def delete_chunk(self, chunk_id: str) -> bool:
+        """Delete a specific chunk."""
         client = redis_client.client
         pattern = f"{self.KEY_PREFIX}*:{chunk_id}"
         async for key in client.scan_iter(match=pattern, count=1):
@@ -147,6 +161,7 @@ class RawDataRepository:
         self,
         agent_id: str,
     ) -> Tuple[Optional[datetime], Optional[datetime]]:
+        """Get min and max timestamps for agent's data."""
         response = await self.list_chunks(agent_id=agent_id, limit=1000)
         return response.timeline_min, response.timeline_max
 

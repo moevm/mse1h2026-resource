@@ -9,6 +9,7 @@ from app.models.mapper.transform import TransformType
 
 
 class FieldMapping(BaseModel):
+    """A single field mapping rule."""
 
     id: str = Field(..., description="Unique identifier for this mapping")
     source_path: str = Field(
@@ -43,6 +44,7 @@ class FieldMapping(BaseModel):
 
 
 class ConditionalRule(BaseModel):
+    """A conditional rule for determining node type."""
 
     id: str = Field(..., description="Unique identifier for this rule")
     condition: str = Field(
@@ -64,6 +66,7 @@ class ConditionalRule(BaseModel):
 
 
 class AutoEdgeRule(BaseModel):
+    """Rule for automatic edge creation based on node field values."""
 
     id: str = Field(..., description="Unique identifier for this rule")
     source_type: str = Field(
@@ -89,6 +92,7 @@ class AutoEdgeRule(BaseModel):
 
 
 class UnresolvedReference(BaseModel):
+    """A reference that could not be resolved during edge creation."""
 
     source_node_id: str = Field(..., description="ID of the source node")
     source_node_type: str = Field(..., description="Type of the source node")
@@ -99,6 +103,7 @@ class UnresolvedReference(BaseModel):
 
 
 class MappingConfig(BaseModel):
+    """Complete mapping configuration for a data source."""
 
     id: str = Field(..., description="Unique identifier (UUID)")
     name: str = Field(..., description="Human-readable name")
@@ -126,6 +131,7 @@ class MappingConfig(BaseModel):
         description="Conditional rules for node type determination",
     )
 
+    # Edge mapping configuration (legacy - for backward compatibility)
     edge_source_path: Optional[str] = Field(
         default=None,
         description="JMESPath to find source node ID for edge (legacy)",
@@ -143,6 +149,7 @@ class MappingConfig(BaseModel):
         description="Default edge type if not found (legacy)",
     )
 
+    # Automatic edge creation rules
     auto_edge_rules: List[AutoEdgeRule] = Field(
         default_factory=list,
         description="Rules for automatic edge creation based on node field values",
@@ -154,6 +161,7 @@ class MappingConfig(BaseModel):
 
 
 class MappingListResponse(BaseModel):
+    """Response for listing mapping configurations."""
 
     mappings: List[MappingConfig]
     total: int

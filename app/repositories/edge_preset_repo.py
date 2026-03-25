@@ -210,4 +210,5 @@ class EdgePresetRepository:
         return preset.rules if preset else []
 
 
+# Singleton instance
 edge_preset_repo = EdgePresetRepository()

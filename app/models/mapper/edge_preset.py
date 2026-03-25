@@ -9,6 +9,7 @@ from app.models.mapper.mapping import AutoEdgeRule
 
 
 class EdgePreset(BaseModel):
+    """A preset configuration for automatic edge creation rules."""
 
     id: str = Field(..., description="Unique identifier")
     name: str = Field(..., description="Human-readable name")
@@ -24,6 +25,7 @@ class EdgePreset(BaseModel):
 
 
 class EdgePresetCreate(BaseModel):
+    """Request to create a new edge preset."""
 
     name: str = Field(..., description="Preset name")
     description: Optional[str] = Field(default=None)
@@ -31,6 +33,7 @@ class EdgePresetCreate(BaseModel):
 
 
 class EdgePresetUpdate(BaseModel):
+    """Request to update an existing edge preset."""
 
     name: Optional[str] = None
     description: Optional[str] = None
@@ -38,6 +41,7 @@ class EdgePresetUpdate(BaseModel):
 
 
 class EdgePresetListResponse(BaseModel):
+    """Response for listing edge presets."""
 
     presets: List[EdgePreset]
     total: int

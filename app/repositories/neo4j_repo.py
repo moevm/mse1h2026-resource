@@ -148,6 +148,32 @@ def get_full_graph(limit: int = 500) -> Tuple[List[Dict], List[Dict]]:
     return nodes, edges
 
 
+def get_graph_by_sources(sources: List[str], limit: int = 500) -> Tuple[List[Dict], List[Dict]]:
+    """Return nodes and edges filtered by source (agent name).
+
+    Used for application-scoped graph visualization.
+    """
+    if not sources:
+        return [], []
+
+    with neo4j_driver.session() as session:
+        nodes = session.execute_read(_read_nodes_by_sources, sources, limit)
+        node_ids = [n["id"] for n in nodes]
+        edges = session.execute_read(_read_edges_for_nodes, node_ids)
+    return nodes, edges
+
+
+def _read_nodes_by_sources(tx: ManagedTransaction, sources: List[str], limit: int) -> List[Dict]:
+    result = tx.run(
+        "MATCH (r:Resource) "
+        "WHERE r.source IN $sources "
+        "RETURN r LIMIT $limit",
+        sources=sources,
+        limit=limit,
+    )
+    return [_node_record_to_dict(record["r"]) for record in result]
+
+
 def _read_all_nodes(tx: ManagedTransaction, limit: int) -> List[Dict]:
     result = tx.run(
         "MATCH (r:Resource) RETURN r LIMIT $limit",
@@ -352,6 +378,46 @@ def get_graph_stats() -> Dict[str, Any]:
         return session.execute_read(_stats_tx)
 
 
+def delete_graph_by_sources(sources: List[str]) -> Dict[str, int]:
+    """Delete graph data produced by specific sources (agent names).
+
+    Removes:
+    - relationships where rel.source IN sources
+    - nodes where node.source IN sources (with DETACH DELETE)
+    """
+    if not sources:
+        return {"deleted_nodes": 0, "deleted_edges": 0}
+
+    with neo4j_driver.session() as session:
+        return session.execute_write(_delete_graph_by_sources_tx, sources)
+
+
+def _delete_graph_by_sources_tx(tx: ManagedTransaction, sources: List[str]) -> Dict[str, int]:
+    edge_count_record = tx.run(
+        "MATCH ()-[rel]->() WHERE rel.source IN $sources RETURN count(rel) AS count",
+        sources=sources,
+    ).single()
+    deleted_edges = int(edge_count_record["count"]) if edge_count_record else 0
+
+    tx.run(
+        "MATCH ()-[rel]->() WHERE rel.source IN $sources DELETE rel",
+        sources=sources,
+    )
+
+    node_count_record = tx.run(
+        "MATCH (n:Resource) WHERE n.source IN $sources RETURN count(n) AS count",
+        sources=sources,
+    ).single()
+    deleted_nodes = int(node_count_record["count"]) if node_count_record else 0
+
+    tx.run(
+        "MATCH (n:Resource) WHERE n.source IN $sources DETACH DELETE n",
+        sources=sources,
+    )
+
+    return {"deleted_nodes": deleted_nodes, "deleted_edges": deleted_edges}
+
+
 def _stats_tx(tx: ManagedTransaction) -> Dict[str, Any]:
     node_res = tx.run(
         "MATCH (r:Resource) RETURN r.type AS type, count(*) AS cnt"
@@ -396,3 +462,136 @@ def _node_record_to_dict(node) -> Dict[str, Any]:
     d = dict(node)
     d["id"] = d.pop("external_id", d.get("id"))
     return d
+
+
+def find_node_by_field(
+    node_type: str,
+    field_name: str,
+    field_value: str,
+) -> Optional[Dict[str, Any]]:
+    """Find a node by type and field value.
+
+    Used for auto-edge creation to find target nodes.
+
+    Args:
+        node_type: The type of node to find (Service, Node, Database, etc.)
+        field_name: The field to match (name, cluster_id, etc.)
+        field_value: The value to match
+
+    Returns:
+        Node dictionary or None if not found
+    """
+    with neo4j_driver.session() as session:
+        return session.execute_read(
+            _find_node_by_field_tx, node_type, field_name, field_value
+        )
+
+
+def _find_node_by_field_tx(
+    tx: ManagedTransaction,
+    node_type: str,
+    field_name: str,
+    field_value: str,
+) -> Optional[Dict[str, Any]]:
+    # Map field_name to Neo4j property
+    # In Neo4j, 'name' is stored directly, other fields are in props
+    if field_name == "name":
+        prop_query = "r.name = $value"
+    elif field_name == "cluster_id":
+        prop_query = "r.cluster_id = $value"
+    else:
+        # For other fields, check if they exist as direct properties
+        prop_query = f"r.{field_name} = $value"
+
+    query = (
+        f"MATCH (r:Resource) "
+        f"WHERE r.type = $node_type AND {prop_query} "
+        f"RETURN r "
+        f"LIMIT 1"
+    )
+
+    result = tx.run(query, node_type=node_type, value=field_value)
+    record = result.single()
+    if record is None:
+        return None
+    return _node_record_to_dict(record["r"])
+
+
+def find_node_by_name(name: str) -> Optional[Dict[str, Any]]:
+    """Find a node by name field across all types.
+
+    Used for resolving edge URN format - finds node to determine its type.
+
+    Args:
+        name: The node name to search for
+
+    Returns:
+        Node dictionary with 'id' and 'type' fields, or None if not found
+    """
+    with neo4j_driver.session() as session:
+        return session.execute_read(_find_node_by_name_tx, name)
+
+
+def _find_node_by_name_tx(
+    tx: ManagedTransaction,
+    name: str,
+) -> Optional[Dict[str, Any]]:
+    """Transaction for find_node_by_name."""
+    query = (
+        "MATCH (r:Resource) "
+        "WHERE r.name = $name "
+        "RETURN r.external_id AS id, r.type AS type, r.name AS name "
+        "LIMIT 1"
+    )
+    result = tx.run(query, name=name)
+    record = result.single()
+    if record is None:
+        return None
+    return {
+        "id": record["id"],
+        "type": record["type"],
+        "name": record["name"],
+    }
+
+
+def get_nodes_by_types(node_types: List[str]) -> List[Dict[str, Any]]:
+    """Get all nodes of specified types.
+
+    Used for edge recreation after bulk node insertion.
+
+    Args:
+        node_types: List of node types to fetch (e.g., ['Service', 'Database'])
+
+    Returns:
+        List of node dictionaries with all properties
+    """
+    if not node_types:
+        return []
+    with neo4j_driver.session() as session:
+        return session.execute_read(_get_nodes_by_types_tx, node_types)
+
+
+def _get_nodes_by_types_tx(
+    tx: ManagedTransaction,
+    node_types: List[str],
+) -> List[Dict[str, Any]]:
+    """Transaction for get_nodes_by_types."""
+    query = (
+        "MATCH (r:Resource) "
+        "WHERE r.type IN $node_types "
+        "RETURN r"
+    )
+    result = tx.run(query, node_types=node_types)
+    return [_node_record_to_dict(record["r"]) for record in result]
+
+
+def get_all_node_types() -> List[str]:
+    """Get all unique node types in the graph."""
+    with neo4j_driver.session() as session:
+        return session.execute_read(_get_all_node_types_tx)
+
+
+def _get_all_node_types_tx(tx: ManagedTransaction) -> List[str]:
+    """Transaction for get_all_node_types."""
+    result = tx.run("MATCH (r:Resource) RETURN DISTINCT r.type AS type")
+    return [record["type"] for record in result if record["type"]]

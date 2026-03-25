@@ -25,6 +25,7 @@ from app.models.edges import (
 
 router = APIRouter()
 
+# Node type dispatch map
 NODE_TYPE_MAP = {
     "Service": ServiceNode,
     "Endpoint": EndpointNode,
@@ -43,6 +44,7 @@ NODE_TYPE_MAP = {
     "RegionCluster": RegionClusterNode,
 }
 
+# Edge type dispatch map
 EDGE_TYPE_MAP = {
     "calls": CallsEdge,
     "publishesto": PublishesToEdge,
@@ -115,10 +117,13 @@ async def preview_mapping(request: PreviewRequest):
             detail="Mapping not found",
         )
 
+    # Convert chunk data to RawDataChunk
     chunk = RawDataChunk(**chunk_data)
 
+    # Apply mapping
     nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
 
+    # Generate warnings
     warnings = []
     if not nodes:
         warnings.append("No nodes generated from this mapping")
@@ -126,6 +131,7 @@ async def preview_mapping(request: PreviewRequest):
         if not node.get("id"):
             warnings.append(f"Node missing id: {node.get('type', 'unknown')}")
 
+    # Add warnings for unresolved references
     for ref in unresolved:
         warnings.append(
             f"{ref.source_node_type} '{ref.source_node_id.split(':')[-1]}' "
@@ -162,6 +168,7 @@ async def apply_mapping(request: PreviewRequest):
             detail="Chunk not found or expired",
         )
 
+    # Get the mapping
     mapping = mapping_repo.get(request.mapping_id)
     if not mapping:
         raise HTTPException(
@@ -169,8 +176,10 @@ async def apply_mapping(request: PreviewRequest):
             detail="Mapping not found",
         )
 
+    # Convert chunk data to RawDataChunk
     chunk = RawDataChunk(**chunk_data)
 
+    # Apply mapping
     nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
 
     if not nodes and not edges:
@@ -184,6 +193,7 @@ async def apply_mapping(request: PreviewRequest):
             unresolved_references=unresolved,
         )
 
+    # Convert to Pydantic models for ingest service
     try:
         node_models = []
         for n in nodes:
@@ -206,8 +216,10 @@ async def apply_mapping(request: PreviewRequest):
             edges=edge_models,
         )
 
+        # Process through existing ingest service
         result = process_topology_update(update)
 
+        # Mark chunk as processed
         await raw_data_repo.mark_processed(request.chunk_id, request.mapping_id)
 
         return ApplyResponse(
@@ -236,9 +248,11 @@ async def preview_raw_data(
     raw_data: Dict[str, Any],
     mapping_id: str,
 ):
-    """Preview mapping with raw JSON data.
+    """Preview mapping with raw JSON data (not stored chunk).
 
+    Useful for testing mappings before receiving actual data.
     """
+    # Get the mapping
     mapping = mapping_repo.get(mapping_id)
     if not mapping:
         raise HTTPException(
@@ -246,6 +260,7 @@ async def preview_raw_data(
             detail="Mapping not found",
         )
 
+    # Create temporary chunk
     from app.models.mapper.raw_data import RawDataSource
     chunk = RawDataChunk(
         id="preview",
@@ -254,6 +269,7 @@ async def preview_raw_data(
         data=raw_data,
     )
 
+    # Apply mapping
     nodes, edges, warnings, unresolved = mapper_service.preview(raw_data, mapping)
 
     return PreviewResponse(
