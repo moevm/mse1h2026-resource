@@ -15,4 +15,4 @@
 https://github.com/user-attachments/assets/b2d6f45d-9825-442a-96a5-72b5f9519c07
 
 ### Screencast-2:
-<video controls src="docs/Screencast-iteration-2.mp4" title="Title"></video>
+https://github.com/moevm/mse1h2026-resource/blob/28bbbda79b92c04f6f85a675546f35ed16c4cd72/docs/Screencast-iteration-2.mp4
