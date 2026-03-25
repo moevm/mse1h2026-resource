@@ -4,7 +4,6 @@ import { NODE_TYPES, NODE_BASE_FIELDS } from "../../types/mapper";
 import { useMapperStore } from "../../store/mapperStore";
 import type { FieldMapping } from "../../types/mapper";
 
-// Node-specific fields
 const NODE_TYPE_FIELDS: Record<string, { name: string; type: string; required?: boolean; description?: string }[]> = {
   Service: [
     { name: "language", type: "string" },
@@ -64,16 +63,15 @@ interface DragItem {
   dataType: string;
 }
 
-// Droppable field row component
 function DroppableFieldRow({
   nodeType,
   field,
-  hasMapping,
+  mappingInfo,
   onDrop,
 }: {
   nodeType: string;
   field: { name: string; type: string; required?: boolean; description?: string };
-  hasMapping: boolean;
+  mappingInfo: { mapping: FieldMapping } | null;
   onDrop: (nodeType: string, fieldName: string, item: DragItem) => void;
 }) {
   const ref = useRef<HTMLTableRowElement>(null);
@@ -88,6 +86,8 @@ function DroppableFieldRow({
   }), [nodeType, field.name, onDrop]);
 
   drop(ref);
+
+  const hasMapping = mappingInfo !== null;
 
   const getBgColor = () => {
     if (isOver && canDrop) return "bg-emerald-500/20 border-emerald-500/50";
@@ -111,6 +111,13 @@ function DroppableFieldRow({
       <td className="py-1.5 text-center">
         {field.required && <span className="text-red-400 text-xs">*</span>}
       </td>
+      <td className="py-1.5 text-xs">
+        {hasMapping && (
+          <span className="text-orange-400 font-mono">
+            ← {mappingInfo!.mapping.source_path}
+          </span>
+        )}
+      </td>
     </tr>
   );
 }
@@ -123,7 +130,12 @@ export function SchemaBrowser() {
     type.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // Get mapped fields for a node type
+  const getMappingInfo = useCallback((nodeType: string, fieldName: string): { mapping: FieldMapping } | null => {
+    const mappings = draftMapping?.field_mappings || [];
+    const mapping = mappings.find((m) => m.target_node_type === nodeType && m.target_field === fieldName);
+    return mapping ? { mapping } : null;
+  }, [draftMapping?.field_mappings]);
+
   const getMappedFields = useCallback((nodeType: string): Set<string> => {
     const mappings = draftMapping?.field_mappings || [];
     return new Set(
@@ -131,7 +143,6 @@ export function SchemaBrowser() {
     );
   }, [draftMapping?.field_mappings]);
 
-  // Handle drop
   const handleDrop = useCallback((nodeType: string, fieldName: string, item: DragItem) => {
     const mapping: FieldMapping = {
       id: `fm-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
@@ -148,9 +159,9 @@ export function SchemaBrowser() {
   }, [addFieldMapping]);
 
   return (
-    <div className="p-2">
-      {/* Search */}
-      <div className="mb-2">
+    <div className="h-full flex flex-col p-2">
+      
+      <div className="mb-2 shrink-0">
         <input
           type="text"
           placeholder="Search node types..."
@@ -160,8 +171,8 @@ export function SchemaBrowser() {
         />
       </div>
 
-      {/* Node Types */}
-      <div className="space-y-1">
+      
+      <div className="flex-1 overflow-y-auto space-y-1 min-h-0">
         {filteredTypes.map((nodeType) => {
           const isActive = activeNodeTypes.has(nodeType);
           const specificFields = NODE_TYPE_FIELDS[nodeType] || [];
@@ -191,13 +202,14 @@ export function SchemaBrowser() {
                 </div>
               </div>
               {isActive && (
-                <div className="p-2 text-xs bg-slate-800/30">
+                <div className="text-xs bg-slate-800/30 max-h-48 overflow-y-auto overflow-x-hidden">
                   <table className="w-full">
                     <thead>
-                      <tr className="text-slate-500 border-b border-slate-700/50">
-                        <th className="text-left py-1 font-normal">Field</th>
+                      <tr className="text-slate-500 border-b border-slate-700/50 sticky top-0 bg-slate-900">
+                        <th className="text-left py-1 font-normal px-2">Field</th>
                         <th className="text-left py-1 font-normal">Type</th>
                         <th className="text-center py-1 font-normal w-8">Req</th>
+                        <th className="text-left py-1 font-normal">Source</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -206,7 +218,7 @@ export function SchemaBrowser() {
                           key={field.name}
                           nodeType={nodeType}
                           field={field}
-                          hasMapping={mappedFields.has(field.name)}
+                          mappingInfo={getMappingInfo(nodeType, field.name)}
                           onDrop={handleDrop}
                         />
                       ))}

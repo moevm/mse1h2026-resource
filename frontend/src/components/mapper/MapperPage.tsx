@@ -9,8 +9,9 @@ import { RawDataPanel } from "./RawDataPanel";
 import { SchemaBrowser } from "./SchemaBrowser";
 import { MappingBuilder } from "./MappingBuilder";
 import { TimelineSlider } from "./TimelineSlider";
+import { ResizablePanels } from "./ResizablePanels";
 import { PreviewPanel } from "./PreviewPanel";
-import type { MappingConfig } from "../../types/mapper";
+import type { MappingConfig, RawDataSource } from "../../types/mapper";
 
 interface Agent {
   agent_id: string;
@@ -59,10 +60,8 @@ export function MapperPage() {
   const [lastReplayAt, setLastReplayAt] = useState<string | null>(null);
   const [deactivateClearLoading, setDeactivateClearLoading] = useState(false);
 
-  // Mobile panel state
   const [activePanel, setActivePanel] = useState<MobilePanel>("data");
 
-  // Load applications first
   useEffect(() => {
     async function loadApplications() {
       try {
@@ -75,7 +74,6 @@ export function MapperPage() {
     loadApplications();
   }, []);
 
-  // Load agents
   useEffect(() => {
     async function loadAgents() {
       try {
@@ -88,12 +86,10 @@ export function MapperPage() {
     loadAgents();
   }, []);
 
-  // Filter agents by selected application
   const filteredAgents = selectedAppId
     ? agents.filter((a) => a.app_id === selectedAppId)
     : agents;
 
-  // Load active mapping and available mappings when agent changes
   useEffect(() => {
     async function loadMappings() {
       if (!selectedAgent) {
@@ -104,15 +100,12 @@ export function MapperPage() {
 
       setMappingsLoading(true);
       try {
-        // Load active mapping for this source type
         const active = await mapperApi.getActiveMapping(selectedAgent.source_type);
         setActiveMapping(active);
-        // Load active mapping into draft for editing
         if (active) {
           setDraftMapping(active);
         }
 
-        // Load all mappings for this source type
         const response = await mapperApi.listMappings({
           source_type: selectedAgent.source_type,
           limit: 50,
@@ -127,7 +120,6 @@ export function MapperPage() {
     loadMappings();
   }, [selectedAgent, setDraftMapping]);
 
-  // Load chunks when agent is selected
   useEffect(() => {
     async function loadChunks() {
       if (!selectedAgent) {
@@ -137,7 +129,7 @@ export function MapperPage() {
       setChunksLoading(true);
       try {
         const response = await mapperApi.listChunks({
-          agent_id: selectedAgent.agent_id,
+          source_type: selectedAgent.source_type as RawDataSource,
           limit: 100,
         });
         setChunks(response.chunks);
@@ -153,14 +145,11 @@ export function MapperPage() {
     loadChunks();
   }, [selectedAgent, setChunks, setChunksLoading, selectChunk, selectedChunk]);
 
-  // Activate and load a mapping for editing
   const handleActivate = useCallback(async (mappingId: string) => {
     try {
       const updated = await mapperApi.activateMapping(mappingId);
       setActiveMapping(updated);
-      // Load into draft for editing
       setDraftMapping(updated);
-      // Refresh list
       if (selectedAgent) {
         const response = await mapperApi.listMappings({
           source_type: selectedAgent.source_type,
@@ -173,7 +162,6 @@ export function MapperPage() {
     }
   }, [selectedAgent, setDraftMapping]);
 
-  // Load a mapping for viewing/editing without activating
   const handleSelectMapping = useCallback((mapping: MappingConfig) => {
     setDraftMapping(mapping);
   }, [setDraftMapping]);
@@ -195,7 +183,6 @@ export function MapperPage() {
     }
   }, [activeMapping]);
 
-  // Create new mapping from selected chunk
   const handleNewMapping = useCallback(() => {
     setDraftMapping({
       name: "New Mapping",
@@ -336,11 +323,11 @@ export function MapperPage() {
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="h-full flex flex-col bg-slate-900">
-        {/* Toolbar */}
+        
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-slate-800/50 border-b border-slate-700/50 shrink-0">
-          {/* Selectors - stack on mobile */}
+          
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            {/* Application Selector */}
+            
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <span className="text-xs text-slate-500 uppercase tracking-wide hidden sm:inline">App:</span>
               <select
@@ -361,7 +348,7 @@ export function MapperPage() {
               </select>
             </div>
 
-            {/* Agent Selector */}
+            
             <div className="flex items-center gap-2 w-full sm:w-auto">
               <span className="text-xs text-slate-500 uppercase tracking-wide hidden sm:inline">Agent:</span>
               <select
@@ -385,7 +372,7 @@ export function MapperPage() {
 
           <div className="hidden sm:block flex-1" />
 
-          {/* Active Mapping Status */}
+          
           {selectedAgent && (
             <div className="flex items-center gap-2 text-sm">
               {activeMapping ? (
@@ -409,7 +396,7 @@ export function MapperPage() {
           )}
         </div>
 
-        {/* Mobile panel switcher */}
+        
         <div className="flex lg:hidden border-b border-slate-700/50 bg-slate-800/30 shrink-0">
           {(["mappings", "data", "config"] as const).map((panel) => (
             <button
@@ -427,174 +414,180 @@ export function MapperPage() {
           ))}
         </div>
 
-        {/* Main Content - responsive layout */}
+        
         <div className="flex-1 flex overflow-hidden min-h-0">
-          {/* Left: Mappings List */}
-          <section
-            className={[
-              "border-r border-slate-700/50 bg-slate-900 flex flex-col shrink-0",
-              activePanel === "mappings" ? "flex w-full lg:w-56 xl:w-64" : "hidden lg:flex lg:w-56 xl:w-64",
-            ].join(" ")}
+          <ResizablePanels
+            initialSizes={[15, 50, 35]}
+            minSizes={[200, 300, 250]}
+            className="flex-1"
           >
-            <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
-              <h2 className="text-sm font-semibold text-slate-300">Mappings</h2>
-              <p className="text-xs text-slate-500">
-                {selectedAgent?.source_type || "Select agent"}
-              </p>
-            </div>
-            <div className="flex-1 overflow-auto p-2 space-y-1">
-              {mappingsLoading ? (
-                <div className="text-slate-500 text-sm text-center py-4">Loading...</div>
-              ) : availableMappings.length === 0 ? (
-                <div className="text-slate-500 text-sm text-center py-4">
-                  No mappings for this source type
-                </div>
-              ) : (
-                availableMappings.map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => handleSelectMapping(m)}
-                    onDoubleClick={() => handleActivate(m.id)}
-                    className={[
-                      "w-full text-left px-3 py-2 rounded text-sm transition-colors",
-                      m.id === activeMapping?.id
-                        ? "bg-emerald-600/30 border border-emerald-500/50 text-emerald-300"
-                        : m.id === draftMapping?.id
-                        ? "bg-blue-600/20 border border-blue-500/50 text-blue-200"
-                        : "bg-slate-800/50 hover:bg-slate-700/50 text-slate-300",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-center gap-2">
-                      {m.id === activeMapping?.id && (
-                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                      )}
-                      <span className="font-medium">{m.name}</span>
-                    </div>
-                    <div className="text-xs text-slate-500 mt-0.5">
-                      {m.field_mappings?.length || 0} fields
-                      {m.sample_chunk_id && (
-                        <span className="text-blue-400 ml-2">
-                          • from chunk
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                ))
-              )}
+            
+            <section className="border-r border-slate-700/50 bg-slate-900 flex flex-col">
+              <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
+                <h2 className="text-sm font-semibold text-slate-300">Mappings</h2>
+                <p className="text-xs text-slate-500">
+                  {selectedAgent?.source_type || "Select agent"}
+                </p>
+              </div>
+              <div className="flex-1 overflow-auto p-2 space-y-1">
+                {mappingsLoading ? (
+                  <div className="text-slate-500 text-sm text-center py-4">Loading...</div>
+                ) : availableMappings.length === 0 ? (
+                  <div className="text-slate-500 text-sm text-center py-4">
+                    No mappings for this source type
+                  </div>
+                ) : (
+                  availableMappings.map((m) => (
+                    <button
+                      key={m.id}
+                      onClick={() => handleSelectMapping(m)}
+                      onDoubleClick={() => handleActivate(m.id)}
+                      className={[
+                        "w-full text-left px-3 py-2 rounded text-sm transition-colors",
+                        m.id === activeMapping?.id
+                          ? "bg-emerald-600/30 border border-emerald-500/50 text-emerald-300"
+                          : "bg-slate-800/50 hover:bg-slate-700/50 text-slate-300",
+                      ].join(" ")}
+                    >
+                      <div className="flex items-center gap-2">
+                        {m.id === activeMapping?.id && (
+                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                        )}
+                        <span className="font-medium">{m.name}</span>
+                      </div>
+                      <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
+                        <span>{m.field_mappings?.length || 0} fields</span>
+                        {m.sample_chunk_id && (
+                          <span className="text-blue-400 font-mono" title={m.sample_chunk_id}>
+                            • chunk: {m.sample_chunk_id.slice(0, 8)}...
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  ))
+                )}
 
-              <button
-                onClick={handleNewMapping}
-                disabled={!selectedAgent}
-                className="w-full mt-2 bg-slate-800/50 hover:bg-slate-700/50 disabled:opacity-50 text-slate-300 px-3 py-2 rounded text-sm border border-dashed border-slate-600"
-              >
-                + Create New Mapping
-              </button>
-            </div>
-          </section>
+                <button
+                  onClick={handleNewMapping}
+                  disabled={!selectedAgent}
+                  className="w-full mt-2 bg-slate-800/50 hover:bg-slate-700/50 disabled:opacity-50 text-slate-300 px-3 py-2 rounded text-sm border border-dashed border-slate-600"
+                >
+                  + Create New Mapping
+                </button>
+              </div>
+            </section>
 
-          {/* Center: Timeline & Raw Data */}
-          <section
-            className={[
-              "flex-1 flex flex-col min-w-0",
-              activePanel === "data" ? "flex" : "hidden lg:flex",
-            ].join(" ")}
-          >
-            {/* Timeline */}
-            <TimelineSlider
-              chunks={chunks}
-              selectedChunk={selectedChunk}
-              onSelectChunk={selectChunk}
-              loading={chunksLoading}
-            />
+            
+            <section className="flex flex-col min-w-0 bg-slate-900">
+              
+              <TimelineSlider
+                chunks={chunks}
+                selectedChunk={selectedChunk}
+                onSelectChunk={selectChunk}
+                loading={chunksLoading}
+                sampleChunkId={draftMapping?.sample_chunk_id}
+              />
 
-            {/* Raw Data Preview */}
-            <div className="flex-1 overflow-auto">
-              {selectedChunk ? (
-                <RawDataPanel
-                  data={selectedChunk.data}
-                  chunkId={selectedChunk.id}
-                  onCreateMapping={handleNewMapping}
-                />
-              ) : (
-                <div className="p-8 text-slate-500 text-center text-sm">
-                  {chunksLoading ? (
-                    <div className="flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin" />
-                      Loading data...
-                    </div>
-                  ) : selectedAgent ? (
-                    <div className="space-y-2">
-                      <div className="text-slate-400">No data chunks available</div>
-                      <div className="text-xs text-slate-600">The agent has not sent any data yet</div>
+              
+              <div className="flex-1 overflow-auto">
+                {selectedChunk ? (
+                  <RawDataPanel
+                    data={selectedChunk.data}
+                    chunkId={selectedChunk.id}
+                    onCreateMapping={handleNewMapping}
+                    fieldMappings={draftMapping?.field_mappings || []}
+                  />
+                ) : (
+                  <div className="p-8 text-slate-500 text-center text-sm">
+                    {chunksLoading ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin" />
+                        Loading data...
+                      </div>
+                    ) : selectedAgent ? (
+                      <div className="space-y-2">
+                        <div className="text-slate-400">No data chunks available</div>
+                        <div className="text-xs text-slate-600">The agent has not sent any data yet</div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="text-slate-400">Select an agent to view data</div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </section>
+
+            
+            <section className="bg-slate-900 flex flex-col border-l border-slate-700/50">
+              <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
+                <h2 className="text-sm font-semibold text-slate-300">
+                  {activeMapping ? `Edit: ${activeMapping.name}` : "New Mapping"}
+                </h2>
+              </div>
+              <div className="flex-1 flex flex-col min-h-0">
+                <ResizablePanels
+                  direction="vertical"
+                  initialSizes={[50, 50]}
+                  minSizes={[150, 150]}
+                  className="flex-1"
+                >
+                  
+                  <div className="overflow-auto min-h-0">
+                    <SchemaBrowser />
+                  </div>
+                  
+                  {draftMapping ? (
+                    <div className="overflow-auto min-h-0 bg-slate-800/20">
+                      <MappingBuilder onSaved={refreshMappings} />
                     </div>
                   ) : (
-                    <div className="space-y-2">
-                      <div className="text-slate-400">Select an agent to view data</div>
+                    <div className="flex items-center justify-center text-slate-500 text-sm">
+                      No mapping selected
                     </div>
                   )}
+                </ResizablePanels>
+              </div>
+
+              {draftMapping && (
+                <div className="border-t border-slate-700/50 bg-slate-800/10 shrink-0">
+                  <div className="px-3 py-2 border-b border-slate-700/50 flex items-center gap-2">
+                    <button
+                      onClick={handlePreview}
+                      disabled={!selectedChunk || previewLoading || replayLoading}
+                      className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                    >
+                      Preview
+                    </button>
+                    <button
+                      onClick={handleApply}
+                      disabled={!selectedChunk || previewLoading || replayLoading}
+                      className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                    >
+                      Apply
+                    </button>
+                    <button
+                      onClick={handleReplay}
+                      disabled={!draftMapping || previewLoading || replayLoading}
+                      className="text-xs bg-violet-600 hover:bg-violet-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                    >
+                      {replayLoading ? "Replaying..." : "Replay"}
+                    </button>
+                    {actionMessage && (
+                      <span className="text-xs text-slate-400">{actionMessage}</span>
+                    )}
+                    {lastReplayAt && (
+                      <span className="text-xs text-slate-500">Last replay: {lastReplayAt}</span>
+                    )}
+                  </div>
+                  <div className="max-h-60 overflow-auto">
+                    <PreviewPanel loading={previewLoading} />
+                  </div>
                 </div>
               )}
-            </div>
-          </section>
-
-          {/* Right: Mapping Config */}
-          <section
-            className={[
-              "bg-slate-900 flex flex-col border-l border-slate-700/50 shrink-0",
-              activePanel === "config" ? "flex w-full lg:w-72 xl:w-80" : "hidden lg:flex lg:w-72 xl:w-80",
-            ].join(" ")}
-          >
-            <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
-              <h2 className="text-sm font-semibold text-slate-300">
-                {activeMapping ? `Edit: ${activeMapping.name}` : "New Mapping"}
-              </h2>
-            </div>
-            <div className="flex-1 overflow-auto">
-              <SchemaBrowser />
-            </div>
-            {draftMapping && (
-              <div className="border-t border-slate-700/50 bg-slate-800/20 max-h-[50%] overflow-auto shrink-0">
-                <MappingBuilder onSaved={refreshMappings} />
-              </div>
-            )}
-
-            {draftMapping && (
-              <div className="border-t border-slate-700/50 bg-slate-800/10 shrink-0">
-                <div className="px-3 py-2 border-b border-slate-700/50 flex items-center gap-2">
-                  <button
-                    onClick={handlePreview}
-                    disabled={!selectedChunk || previewLoading || replayLoading}
-                    className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
-                  >
-                    Preview
-                  </button>
-                  <button
-                    onClick={handleApply}
-                    disabled={!selectedChunk || previewLoading || replayLoading}
-                    className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
-                  >
-                    Apply
-                  </button>
-                  <button
-                    onClick={handleReplay}
-                    disabled={!draftMapping || previewLoading || replayLoading}
-                    className="text-xs bg-violet-600 hover:bg-violet-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
-                  >
-                    {replayLoading ? "Replaying..." : "Replay"}
-                  </button>
-                  {actionMessage && (
-                    <span className="text-xs text-slate-400">{actionMessage}</span>
-                  )}
-                  {lastReplayAt && (
-                    <span className="text-xs text-slate-500">Last replay: {lastReplayAt}</span>
-                  )}
-                </div>
-                <div className="max-h-60 overflow-auto">
-                  <PreviewPanel loading={previewLoading} />
-                </div>
-              </div>
-            )}
-          </section>
+            </section>
+          </ResizablePanels>
         </div>
       </div>
     </DndProvider>

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useDrag } from "react-dnd";
 import { useMapperStore } from "../../store/mapperStore";
+import type { FieldMapping } from "../../types/mapper";
 
 interface DragItem {
   type: "FIELD";
@@ -13,19 +14,21 @@ interface RawDataPanelProps {
   data: Record<string, unknown>;
   chunkId?: string;
   onCreateMapping?: () => void;
+  fieldMappings?: FieldMapping[];
 }
 
-// Draggable field component
 function DraggableField({
   path,
   value,
   dataType,
   children,
+  isMapped,
 }: {
   path: string;
   value: unknown;
   dataType: string;
   children: React.ReactNode;
+  isMapped?: boolean;
 }) {
   const ref = useRef<HTMLSpanElement>(null);
 
@@ -39,10 +42,14 @@ function DraggableField({
 
   drag(ref);
 
+  const bgColor = isMapped
+    ? "bg-emerald-500/20 border-b border-emerald-500/50"
+    : "hover:bg-blue-500/20";
+
   return (
     <span
       ref={ref}
-      className={`cursor-grab active:cursor-grabbing hover:bg-blue-500/20 px-1 rounded transition-colors ${
+      className={`cursor-grab active:cursor-grabbing ${bgColor} px-1 rounded transition-colors ${
         isDragging ? "opacity-50 bg-blue-500/30" : ""
       }`}
       title={`Drag to map: ${path}`}
@@ -52,7 +59,6 @@ function DraggableField({
   );
 }
 
-// Get data type for display
 function getDataType(value: unknown): string {
   if (value === null) return "null";
   if (Array.isArray(value)) return "array";
@@ -60,14 +66,12 @@ function getDataType(value: unknown): string {
   return typeof value;
 }
 
-// Get nested object count
 function getNestedCount(value: unknown): number {
   if (Array.isArray(value)) return value.length;
   if (typeof value === "object" && value !== null) return Object.keys(value).length;
   return 0;
 }
 
-// Build path segments for breadcrumb
 function buildPathSegments(currentPath: string): { segment: string; fullPath: string }[] {
   if (!currentPath) return [];
   const parts = currentPath.split(/[.[\]]/).filter(Boolean);
@@ -88,11 +92,20 @@ function buildPathSegments(currentPath: string): { segment: string; fullPath: st
   return result;
 }
 
-export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelProps) {
+function getMappingInfo(path: string, mappings: FieldMapping[]): { mapping: FieldMapping; index: number } | null {
+  for (let i = 0; i < mappings.length; i++) {
+    const mapping = mappings[i];
+    if (mapping.source_path === path) {
+      return { mapping, index: i };
+    }
+  }
+  return null;
+}
+
+export function RawDataPanel({ data, chunkId, onCreateMapping, fieldMappings = [] }: RawDataPanelProps) {
   const { expandedJsonPaths, toggleJsonPath, expandAllPaths, collapseAllPaths } = useMapperStore();
   const [navigationPath, setNavigationPath] = useState<string>("");
 
-  // Get value at current navigation path
   const currentData = useMemo(() => {
     if (!navigationPath) return data;
     const parts = navigationPath.split(/[.[\]]/).filter(Boolean);
@@ -110,7 +123,6 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
     return current;
   }, [data, navigationPath]);
 
-  // Navigate into a key
   const navigateInto = useCallback((key: string) => {
     setNavigationPath((prev) => {
       if (!prev) return key;
@@ -121,12 +133,10 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
     });
   }, []);
 
-  // Navigate back to path segment
   const navigateTo = useCallback((path: string) => {
     setNavigationPath(path);
   }, []);
 
-  // Go up one level
   const navigateUp = useCallback(() => {
     setNavigationPath((prev) => {
       if (!prev) return "";
@@ -148,37 +158,57 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
   ): React.ReactNode => {
     const indent = depth * 12;
     const dataType = getDataType(value);
+    const mappingInfo = getMappingInfo(path, fieldMappings);
+    const isMapped = mappingInfo !== null;
+
+    const renderMappingArrow = () => isMapped ? (
+      <span className="ml-2 text-emerald-400 text-xs">
+        → {mappingInfo!.mapping.target_node_type}.{mappingInfo!.mapping.target_field}
+      </span>
+    ) : null;
 
     if (value === null) {
       return (
-        <DraggableField path={path} value={value} dataType={dataType}>
-          <span className="text-slate-500 italic">null</span>
-        </DraggableField>
+        <>
+          <DraggableField path={path} value={value} dataType={dataType} isMapped={isMapped}>
+            <span className="text-slate-500 italic">null</span>
+          </DraggableField>
+          {renderMappingArrow()}
+        </>
       );
     }
 
     if (typeof value === "boolean") {
       return (
-        <DraggableField path={path} value={value} dataType={dataType}>
-          <span className="text-purple-400">{value.toString()}</span>
-        </DraggableField>
+        <>
+          <DraggableField path={path} value={value} dataType={dataType} isMapped={isMapped}>
+            <span className="text-purple-400">{value.toString()}</span>
+          </DraggableField>
+          {renderMappingArrow()}
+        </>
       );
     }
 
     if (typeof value === "number") {
       return (
-        <DraggableField path={path} value={value} dataType={dataType}>
-          <span className="text-blue-400">{value}</span>
-        </DraggableField>
+        <>
+          <DraggableField path={path} value={value} dataType={dataType} isMapped={isMapped}>
+            <span className="text-blue-400">{value}</span>
+          </DraggableField>
+          {renderMappingArrow()}
+        </>
       );
     }
 
     if (typeof value === "string") {
       const truncated = value.length > 60 ? value.slice(0, 60) + "..." : value;
       return (
-        <DraggableField path={path} value={value} dataType={dataType}>
-          <span className="text-green-400" title={value}>"{truncated}"</span>
-        </DraggableField>
+        <>
+          <DraggableField path={path} value={value} dataType={dataType} isMapped={isMapped}>
+            <span className="text-green-400" title={value}>"{truncated}"</span>
+          </DraggableField>
+          {renderMappingArrow()}
+        </>
       );
     }
 
@@ -220,20 +250,27 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
           </span>
           {isExpanded && (
             <div className="border-l-2 border-slate-700 ml-2 pl-2 mt-1">
-              {entries.map(([key, val]) => (
-                <div key={key} style={{ marginLeft: indent }} className="py-0.5">
-                  <DraggableField
-                    path={path ? `${path}.${key}` : key}
-                    value={val}
-                    dataType={getDataType(val)}
-                  >
-                    <span className="text-amber-400 font-medium hover:text-amber-300">
-                      {key}:
-                    </span>
-                  </DraggableField>{" "}
-                  {renderValue(val, path ? `${path}.${key}` : key, depth + 1)}
-                </div>
-              ))}
+              {entries.map(([key, val]) => {
+                const fieldPath = path ? `${path}.${key}` : key;
+                const fieldMappingInfo = getMappingInfo(fieldPath, fieldMappings);
+                const fieldIsMapped = fieldMappingInfo !== null;
+
+                return (
+                  <div key={key} style={{ marginLeft: indent }} className="py-0.5">
+                    <DraggableField
+                      path={fieldPath}
+                      value={val}
+                      dataType={getDataType(val)}
+                      isMapped={fieldIsMapped}
+                    >
+                      <span className="text-amber-400 font-medium hover:text-amber-300">
+                        {key}:
+                      </span>
+                    </DraggableField>{" "}
+                    {renderValue(val, fieldPath, depth + 1)}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -243,7 +280,6 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
     return <span className="text-slate-400">{String(value)}</span>;
   };
 
-  // Render navigation item with click-to-navigate
   const renderNavigationItem = (
     key: string,
     value: unknown,
@@ -252,15 +288,19 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
     const dataType = getDataType(value);
     const isObject = dataType === "object" || dataType === "array";
     const nestedCount = getNestedCount(value);
+    const mappingInfo = getMappingInfo(path, fieldMappings);
+    const isMapped = mappingInfo !== null;
 
     return (
       <div
         key={key}
-        className="group flex items-center gap-2 py-1.5 px-2 hover:bg-slate-700/30 rounded cursor-pointer border border-transparent hover:border-slate-600/50"
+        className={`group flex items-center gap-2 py-1.5 px-2 hover:bg-slate-700/30 rounded cursor-pointer border ${
+          isMapped ? "border-emerald-500/30 bg-emerald-500/10" : "border-transparent hover:border-slate-600/50"
+        }`}
         onClick={() => isObject && navigateInto(key)}
       >
-        <DraggableField path={path} value={value} dataType={dataType}>
-          <span className="text-amber-400 font-medium group-hover:text-amber-300">
+        <DraggableField path={path} value={value} dataType={dataType} isMapped={isMapped}>
+          <span className={`font-medium group-hover:text-amber-300 ${isMapped ? "text-emerald-400" : "text-amber-400"}`}>
             {key}
           </span>
         </DraggableField>
@@ -284,24 +324,51 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
           </>
         )}
         {dataType === "string" && typeof value === "string" && (
-          <span className="text-green-400 text-xs truncate max-w-[150px]">
-            "{value.length > 30 ? value.slice(0, 30) + "..." : value}"
-          </span>
+          <>
+            <span className="text-green-400 text-xs truncate max-w-[150px]">
+              "{value.length > 30 ? value.slice(0, 30) + "..." : value}"
+            </span>
+            {isMapped && (
+              <span className="text-emerald-400 text-xs ml-auto">
+                → {mappingInfo!.mapping.target_node_type}.{mappingInfo!.mapping.target_field}
+              </span>
+            )}
+          </>
         )}
         {dataType === "number" && typeof value === "number" && (
-          <span className="text-blue-400 text-xs">{value}</span>
+          <>
+            <span className="text-blue-400 text-xs">{value}</span>
+            {isMapped && (
+              <span className="text-emerald-400 text-xs ml-auto">
+                → {mappingInfo!.mapping.target_node_type}.{mappingInfo!.mapping.target_field}
+              </span>
+            )}
+          </>
         )}
         {dataType === "boolean" && (
-          <span className="text-purple-400 text-xs">{value ? "true" : "false"}</span>
+          <>
+            <span className="text-purple-400 text-xs">{value ? "true" : "false"}</span>
+            {isMapped && (
+              <span className="text-emerald-400 text-xs ml-auto">
+                → {mappingInfo!.mapping.target_node_type}.{mappingInfo!.mapping.target_field}
+              </span>
+            )}
+          </>
         )}
         {dataType === "null" && (
-          <span className="text-slate-500 text-xs italic">null</span>
+          <>
+            <span className="text-slate-500 text-xs italic">null</span>
+            {isMapped && (
+              <span className="text-emerald-400 text-xs ml-auto">
+                → {mappingInfo!.mapping.target_node_type}.{mappingInfo!.mapping.target_field}
+              </span>
+            )}
+          </>
         )}
       </div>
     );
   };
 
-  // Current level data
   const currentEntries = useMemo(() => {
     if (currentData === null || currentData === undefined) return [];
     if (Array.isArray(currentData)) {
@@ -317,7 +384,7 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
 
   return (
     <div className="h-full flex flex-col">
-      {/* Toolbar */}
+      
       <div className="flex items-center gap-2 px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
         <span className="text-xs text-slate-500">Drag fields to schema →</span>
         <div className="flex-1" />
@@ -343,7 +410,7 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
         </button>
       </div>
 
-      {/* Breadcrumb Navigation */}
+      
       {navigationPath && (
         <div className="flex items-center gap-1 px-3 py-2 bg-slate-800/50 border-b border-slate-700/50 text-xs overflow-x-auto shrink-0">
           <button
@@ -374,10 +441,9 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
         </div>
       )}
 
-      {/* Content */}
+      
       <div className="flex-1 overflow-auto">
         {navigationPath ? (
-          // Navigation mode - show items as clickable cards
           <div className="p-2 space-y-0.5">
             {currentEntries.map(([key, value]) =>
               renderNavigationItem(key, value, navigationPath ? `${navigationPath}.${key}` : key)
@@ -389,14 +455,13 @@ export function RawDataPanel({ data, chunkId, onCreateMapping }: RawDataPanelPro
             )}
           </div>
         ) : (
-          // Tree mode - show full expanded tree
           <div className="p-3 font-mono text-sm">
             {renderValue(data, "", 0)}
           </div>
         )}
       </div>
 
-      {/* Footer with context */}
+      
       <div className="px-3 py-1.5 bg-slate-800/30 border-t border-slate-700/50 text-xs text-slate-500 shrink-0 flex items-center gap-4">
         <span>
           {navigationPath ? (

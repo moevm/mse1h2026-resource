@@ -43,6 +43,7 @@ export function Spinner({ size = "md", className = "", label }: Readonly<Spinner
                         d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                     />
                 </svg>
+                
                 <div
                     className={`absolute inset-0 rounded-full bg-blue-500/20 blur-md animate-pulse`}
                     style={{ transform: "scale(0.8)" }}
