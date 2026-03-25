@@ -9,3 +9,4 @@ numpy>=2.0,<3
 scipy>=1.10,<2
 redis>=5.0,<6
 jmespath>=1.0,<2
+requests>=2.31,<3
