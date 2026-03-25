@@ -21,7 +21,6 @@ def register_application(
     description: Optional[str] = None,
     owner: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Register a new application and return its details with token."""
     app_id = str(uuid.uuid4())
     app_token = str(uuid.uuid4())
     now = _now_iso()
@@ -42,7 +41,6 @@ def _register_app_tx(
     owner: Optional[str],
     now: str,
 ) -> Dict[str, Any]:
-    # MERGE by name - idempotent registration
     result = tx.run(
         "MERGE (app:Application {name: $name}) "
         "ON CREATE SET "
@@ -64,7 +62,6 @@ def _register_app_tx(
 
 
 def get_by_token(app_token: str) -> Optional[Dict[str, Any]]:
-    """Get application by its token."""
     with neo4j_driver.session() as session:
         return session.execute_read(_get_by_token_tx, app_token)
 
@@ -79,7 +76,6 @@ def _get_by_token_tx(tx: ManagedTransaction, app_token: str) -> Optional[Dict[st
 
 
 def get_by_id(app_id: str) -> Optional[Dict[str, Any]]:
-    """Get application by ID."""
     with neo4j_driver.session() as session:
         return session.execute_read(_get_by_id_tx, app_id)
 
@@ -94,7 +90,6 @@ def _get_by_id_tx(tx: ManagedTransaction, app_id: str) -> Optional[Dict[str, Any
 
 
 def list_applications() -> List[Dict[str, Any]]:
-    """List all applications with agent counts."""
     with neo4j_driver.session() as session:
         return session.execute_read(_list_apps_tx)
 
@@ -115,7 +110,6 @@ def _list_apps_tx(tx: ManagedTransaction) -> List[Dict[str, Any]]:
 
 
 def get_application_detail(app_id: str) -> Optional[Dict[str, Any]]:
-    """Get application with its agents."""
     with neo4j_driver.session() as session:
         return session.execute_read(_get_detail_tx, app_id)
 
@@ -137,7 +131,6 @@ def _get_detail_tx(tx: ManagedTransaction, app_id: str) -> Optional[Dict[str, An
 
 
 def bind_agent_to_application(app_id: str, agent_id: str) -> bool:
-    """Create HAS_AGENT relationship between application and agent."""
     with neo4j_driver.session() as session:
         return session.execute_write(_bind_agent_tx, app_id, agent_id)
 
@@ -155,7 +148,6 @@ def _bind_agent_tx(tx: ManagedTransaction, app_id: str, agent_id: str) -> bool:
 
 
 def get_agent_ids_for_application(app_id: str) -> List[str]:
-    """Get all agent IDs for an application."""
     with neo4j_driver.session() as session:
         return session.execute_read(_get_agent_ids_tx, app_id)
 
@@ -170,7 +162,6 @@ def _get_agent_ids_tx(tx: ManagedTransaction, app_id: str) -> List[str]:
 
 
 def get_agent_names_for_application(app_id: str) -> List[str]:
-    """Get all agent names for an application (for graph filtering)."""
     with neo4j_driver.session() as session:
         return session.execute_read(_get_agent_names_tx, app_id)
 
@@ -185,7 +176,6 @@ def _get_agent_names_tx(tx: ManagedTransaction, app_id: str) -> List[str]:
 
 
 def ensure_application_indexes() -> None:
-    """Create indexes for Application nodes."""
     with neo4j_driver.session() as session:
         session.run(
             "CREATE CONSTRAINT app_token_unique IF NOT EXISTS "

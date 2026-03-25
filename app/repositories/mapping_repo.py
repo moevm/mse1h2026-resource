@@ -12,11 +12,8 @@ from app.repositories.neo4j_connection import neo4j_driver
 
 
 class MappingRepository:
-    """Repository for storing and retrieving mapping configurations in Neo4j."""
-
     @staticmethod
     def _dump_model_or_dict(item: Any) -> Dict[str, Any]:
-        """Serialize an item that may be a Pydantic model or plain dict."""
         if hasattr(item, "model_dump"):
             return item.model_dump()
         if isinstance(item, dict):
@@ -24,7 +21,6 @@ class MappingRepository:
         raise TypeError(f"Unsupported mapping item type: {type(item).__name__}")
 
     def _serialize_mapping(self, mapping: MappingConfig) -> Dict[str, Any]:
-        """Convert MappingConfig to Neo4j-compatible dict."""
         return {
             "id": mapping.id,
             "name": mapping.name,
@@ -53,7 +49,6 @@ class MappingRepository:
         }
 
     def _deserialize_mapping(self, data: Dict[str, Any]) -> MappingConfig:
-        """Convert Neo4j result to MappingConfig."""
         field_mappings = [
             FieldMapping(**fm) for fm in json.loads(data.get("field_mappings", "[]"))
         ]
@@ -86,7 +81,6 @@ class MappingRepository:
         )
 
     def ensure_indexes(self) -> None:
-        """Create indexes for MappingConfig nodes."""
         with neo4j_driver.driver.session() as session:
             session.run(
                 "CREATE CONSTRAINT mapping_id_unique IF NOT EXISTS "
@@ -102,7 +96,6 @@ class MappingRepository:
             )
 
     def create(self, mapping: MappingConfig) -> MappingConfig:
-        """Create a new mapping configuration."""
         if not mapping.id:
             mapping.id = str(uuid.uuid4())
         mapping.created_at = datetime.utcnow()
@@ -120,7 +113,6 @@ class MappingRepository:
         return mapping
 
     def get(self, mapping_id: str) -> Optional[MappingConfig]:
-        """Get a mapping configuration by ID."""
         with neo4j_driver.driver.session() as session:
             result = session.run(
                 "MATCH (m:MappingConfig {id: $id}) RETURN m",
@@ -132,7 +124,6 @@ class MappingRepository:
         return None
 
     def get_by_name(self, name: str) -> Optional[MappingConfig]:
-        """Get a mapping configuration by name."""
         with neo4j_driver.driver.session() as session:
             result = session.run(
                 "MATCH (m:MappingConfig {name: $name}) RETURN m",
@@ -149,7 +140,6 @@ class MappingRepository:
         is_active: Optional[bool] = None,
         limit: int = 100,
     ) -> MappingListResponse:
-        """List mapping configurations with optional filters."""
         conditions = []
         params: Dict[str, Any] = {"limit": limit}
 
@@ -171,14 +161,6 @@ class MappingRepository:
                 RETURN m
                 ORDER BY m.updated_at DESC
                 LIMIT $limit
-                """,
-                **params,
-            )
-            mappings = [self._deserialize_mapping(dict(record["m"])) for record in result]
-
-            # Get total count
-            count_result = session.run(
-                f"""
                 MATCH (m:MappingConfig)
                 WHERE {where_clause}
                 RETURN count(m) as total
@@ -191,7 +173,6 @@ class MappingRepository:
         return MappingListResponse(mappings=mappings, total=total)
 
     def update(self, mapping_id: str, mapping: MappingConfig) -> Optional[MappingConfig]:
-        """Update a mapping configuration."""
         mapping.updated_at = datetime.utcnow()
         data = self._serialize_mapping(mapping)
 
@@ -211,7 +192,6 @@ class MappingRepository:
         return None
 
     def delete(self, mapping_id: str) -> bool:
-        """Delete a mapping configuration."""
         with neo4j_driver.driver.session() as session:
             result = session.run(
                 "MATCH (m:MappingConfig {id: $id}) DELETE m RETURN count(m) as deleted",
@@ -221,7 +201,6 @@ class MappingRepository:
             return record and record["deleted"] > 0
 
     def set_active(self, mapping_id: str, is_active: bool) -> Optional[MappingConfig]:
-        """Activate or deactivate a mapping."""
         with neo4j_driver.driver.session() as session:
             result = session.run(
                 """
@@ -239,7 +218,6 @@ class MappingRepository:
         return None
 
     def get_active_for_source(self, source_type: str) -> Optional[MappingConfig]:
-        """Get the active mapping for a specific source type."""
         with neo4j_driver.driver.session() as session:
             result = session.run(
                 """
@@ -256,10 +234,6 @@ class MappingRepository:
         return None
 
     def deactivate_all_for_source(self, source_type: str) -> int:
-        """Deactivate all mappings for a source type.
-
-        Used when activating a new mapping to ensure only one is active.
-        """
         with neo4j_driver.driver.session() as session:
             result = session.run(
                 """
@@ -275,18 +249,12 @@ class MappingRepository:
             return record["deactivated"] if record else 0
 
     def activate_for_source(self, mapping_id: str) -> Optional[MappingConfig]:
-        """Activate a mapping and deactivate others with same source_type.
-
-        Ensures only one mapping is active per source type.
-        """
         mapping = self.get(mapping_id)
         if not mapping:
             return None
 
-        # Deactivate others
         self.deactivate_all_for_source(mapping.source_type)
 
-        # Activate this one
         return self.set_active(mapping_id, True)
 
 

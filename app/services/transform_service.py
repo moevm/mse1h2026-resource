@@ -12,13 +12,10 @@ log = logging.getLogger(__name__)
 
 
 class TransformService:
-    """Service for JMESPath extraction and value transformations."""
-
     def __init__(self) -> None:
         self._cache: Dict[str, jmespath.parser.ParsedResult] = {}
 
     def compile(self, expression: str) -> jmespath.parser.ParsedResult:
-        """Compile and cache a JMESPath expression."""
         if expression not in self._cache:
             try:
                 self._cache[expression] = jmespath.compile(expression)
@@ -28,10 +25,6 @@ class TransformService:
         return self._cache[expression]
 
     def extract(self, data: Dict[str, Any], path: str) -> Optional[Any]:
-        """Extract value using JMESPath expression.
-
-        Returns None if extraction fails or path not found.
-        """
         if not path:
             return None
 
@@ -52,17 +45,6 @@ class TransformService:
         mapping: FieldMapping,
         context: Dict[str, Any],
     ) -> Any:
-        """Apply transformation to extracted value.
-
-        Args:
-            value: The extracted value from source data
-            mapping: The field mapping configuration
-            context: Additional context for transformations (source_data, etc.)
-
-        Returns:
-            Transformed value, or default if value is None
-        """
-        # Use default value if extraction returned None
         if value is None:
             if mapping.default_value is not None:
                 return mapping.default_value
@@ -85,7 +67,6 @@ class TransformService:
         elif transform_type == TransformType.CONDITIONAL:
             return self._apply_conditional_transform(value, mapping, context)
 
-        # Unknown transform type, return as-is
         return value
 
     def _apply_template_transform(
@@ -94,7 +75,6 @@ class TransformService:
         mapping: FieldMapping,
         context: Dict[str, Any],
     ) -> str:
-        """Apply string template transformation."""
         template = mapping.transform_config.get("template", "{value}")
         try:
             return template.format(value=value, **context)
@@ -107,7 +87,6 @@ class TransformService:
         value: Any,
         mapping: FieldMapping,
     ) -> Any:
-        """Apply lookup table transformation."""
         lookup_table = mapping.transform_config.get("table", {})
         return lookup_table.get(str(value), mapping.default_value)
 
@@ -117,15 +96,9 @@ class TransformService:
         mapping: FieldMapping,
         context: Dict[str, Any],
     ) -> Any:
-        """Apply custom expression transformation.
-
-        Uses a safe expression evaluator.
-        """
         expression = mapping.transform_config.get("expression", "value")
 
-        # Safe evaluation using a restricted namespace
         try:
-            # Only allow basic operations
             allowed_names = {
                 "value": value,
                 "str": str,
@@ -136,8 +109,6 @@ class TransformService:
                 **context,
             }
 
-            # Simple evaluation for basic expressions
-            # For complex needs, consider using simpleeval library
             if expression == "value":
                 return value
             elif expression.startswith("int("):
@@ -147,8 +118,7 @@ class TransformService:
             elif expression.startswith("float("):
                 return float(value)
             else:
-                # Try direct evaluation for simple cases
-                return eval(expression, {"__builtins__": {}}, allowed_names)  # nosec B307
+                return eval(expression, {"__builtins__": {}}, allowed_names)
 
         except Exception as e:
             log.warning(f"Expression transform failed: {e}")
@@ -160,7 +130,6 @@ class TransformService:
         mapping: FieldMapping,
         context: Dict[str, Any],
     ) -> Any:
-        """Apply conditional transformation based on value."""
         conditions = mapping.transform_config.get("conditions", [])
         default_result = mapping.transform_config.get("default", value)
 
@@ -168,11 +137,9 @@ class TransformService:
             condition_expr = condition.get("condition", "")
             result_value = condition.get("value")
 
-            # Simple equality check
             if condition_expr == value or condition_expr == str(value):
                 return result_value
 
-            # JMESPath-like condition
             if "==" in condition_expr:
                 parts = condition_expr.split("==")
                 if len(parts) == 2:
@@ -187,27 +154,10 @@ class TransformService:
         data: Dict[str, Any],
         condition: str,
     ) -> bool:
-        """Evaluate a boolean condition.
-
-        Supports:
-        - Simple JMESPath extraction (truthy check)
-        - Equality: "field == 'value'" or "field == value"
-        - Inequality: "field != 'value'"
-        - JMESPath filter expressions
-
-        Args:
-            data: Source data to evaluate against
-            condition: Condition expression
-
-        Returns:
-            True if condition matches, False otherwise
-        """
         if not condition:
             return False
 
         try:
-            # Check for simple equality/inequality pattern
-            # Pattern: field == 'value' or field == value or field != 'value'
             import re
             eq_match = re.match(r"^([\w.]+)\s*==\s*['\"]?(.+?)['\"]?$", condition.strip())
             neq_match = re.match(r"^([\w.]+)\s*!=\s*['\"]?(.+?)['\"]?$", condition.strip())
@@ -224,9 +174,7 @@ class TransformService:
                 actual = self.extract(data, field_path)
                 return str(actual) != expected
 
-            # Fallback to JMESPath extraction
             result = self.extract(data, condition)
-            # Check if result is truthy
             if result is None:
                 return False
             if isinstance(result, bool):
@@ -244,15 +192,6 @@ class TransformService:
         data: Dict[str, Any],
         paths: list[str],
     ) -> Dict[str, Any]:
-        """Extract multiple values from data.
-
-        Args:
-            data: Source data
-            paths: Dict of field_name -> JMESPath expression
-
-        Returns:
-            Dict of field_name -> extracted value
-        """
         results = {}
         for field_name, path in paths.items():
             results[field_name] = self.extract(data, path)

@@ -1,15 +1,3 @@
-"""Built-in automatic edge creation rules.
-
-These rules define how edges are automatically created between nodes
-based on their field values. For example, a Pod with a 'node_name' field
-will automatically get a 'deployedon' edge to the Node with matching 'name'.
-
-All 11 edge types are covered:
-- deployedon, ownedby, calls, reads, writes
-- publishesto, consumesfrom, dependson
-- authenticatesvia, ratelimitedby, fails_over_to
-"""
-
 from __future__ import annotations
 
 from typing import List
@@ -18,8 +6,6 @@ from app.models.mapper.mapping import AutoEdgeRule
 
 
 BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
-    # ========== DEPLOYEDON (resource placement) ==========
-    # Pod → Node (which node the pod runs on)
     AutoEdgeRule(
         id="pod-to-node",
         source_type="Pod",
@@ -28,7 +14,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="deployedon",
     ),
-    # Service → Deployment (via deployment_name)
     AutoEdgeRule(
         id="service-to-deployment",
         source_type="Service",
@@ -37,7 +22,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="deployedon",
     ),
-    # Deployment → RegionCluster (which cluster)
     AutoEdgeRule(
         id="deployment-to-cluster",
         source_type="Deployment",
@@ -46,7 +30,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="cluster_id",
         edge_type="deployedon",
     ),
-    # Pod → Deployment (which deployment owns this pod)
     AutoEdgeRule(
         id="pod-to-deployment",
         source_type="Pod",
@@ -56,8 +39,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="deployedon",
     ),
 
-    # ========== OWNEDBY (resource ownership) ==========
-    # Service → TeamOwner
     AutoEdgeRule(
         id="service-to-team",
         source_type="Service",
@@ -66,7 +47,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="ownedby",
     ),
-    # Database → TeamOwner
     AutoEdgeRule(
         id="database-to-team",
         source_type="Database",
@@ -75,7 +55,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="ownedby",
     ),
-    # QueueTopic → TeamOwner
     AutoEdgeRule(
         id="queue-to-team",
         source_type="QueueTopic",
@@ -84,7 +63,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="ownedby",
     ),
-    # Cache → TeamOwner
     AutoEdgeRule(
         id="cache-to-team",
         source_type="Cache",
@@ -93,7 +71,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="ownedby",
     ),
-    # Endpoint → Service (service owns endpoint)
     AutoEdgeRule(
         id="endpoint-to-service",
         source_type="Endpoint",
@@ -103,8 +80,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="ownedby",
     ),
 
-    # ========== CALLS (HTTP/gRPC calls) ==========
-    # Service → Service (via calls_services - array of service names)
     AutoEdgeRule(
         id="service-calls-service",
         source_type="Service",
@@ -113,7 +88,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="calls",
     ),
-    # Service → ExternalAPI
     AutoEdgeRule(
         id="service-calls-external",
         source_type="Service",
@@ -122,7 +96,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="calls",
     ),
-    # Service → Endpoint
     AutoEdgeRule(
         id="service-calls-endpoint",
         source_type="Service",
@@ -132,8 +105,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="calls",
     ),
 
-    # ========== READS (data reading) ==========
-    # Service → Database
     AutoEdgeRule(
         id="service-reads-database",
         source_type="Service",
@@ -142,7 +113,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="reads",
     ),
-    # Service → Table
     AutoEdgeRule(
         id="service-reads-table",
         source_type="Service",
@@ -151,7 +121,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="reads",
     ),
-    # Service → Cache
     AutoEdgeRule(
         id="service-reads-cache",
         source_type="Service",
@@ -161,8 +130,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="reads",
     ),
 
-    # ========== WRITES (data writing) ==========
-    # Service → Database
     AutoEdgeRule(
         id="service-writes-database",
         source_type="Service",
@@ -171,7 +138,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="writes",
     ),
-    # Service → Table
     AutoEdgeRule(
         id="service-writes-table",
         source_type="Service",
@@ -180,7 +146,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="writes",
     ),
-    # Service → Cache
     AutoEdgeRule(
         id="service-writes-cache",
         source_type="Service",
@@ -190,8 +155,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="writes",
     ),
 
-    # ========== PUBISHESTO (message publishing) ==========
-    # Service → QueueTopic
     AutoEdgeRule(
         id="service-publishes-queue",
         source_type="Service",
@@ -201,8 +164,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="publishesto",
     ),
 
-    # ========== CONSUMESFROM (message consumption) ==========
-    # Service → QueueTopic
     AutoEdgeRule(
         id="service-consumes-queue",
         source_type="Service",
@@ -212,8 +173,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="consumesfrom",
     ),
 
-    # ========== DEPENDSON (infrastructure dependencies) ==========
-    # Service → Database
     AutoEdgeRule(
         id="service-depends-database",
         source_type="Service",
@@ -222,7 +181,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="dependson",
     ),
-    # Service → Cache
     AutoEdgeRule(
         id="service-depends-cache",
         source_type="Service",
@@ -231,7 +189,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="dependson",
     ),
-    # Service → Library
     AutoEdgeRule(
         id="service-depends-library",
         source_type="Service",
@@ -241,8 +198,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="dependson",
     ),
 
-    # ========== AUTHENTICATESVIA (authentication) ==========
-    # Service → SecretConfig
     AutoEdgeRule(
         id="service-auth-secret",
         source_type="Service",
@@ -251,7 +206,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="authenticatesvia",
     ),
-    # Pod → SecretConfig (service account)
     AutoEdgeRule(
         id="pod-auth-secret",
         source_type="Pod",
@@ -261,8 +215,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="authenticatesvia",
     ),
 
-    # ========== RATELIMITEDBY (rate limiting) ==========
-    # Service → SecretConfig
     AutoEdgeRule(
         id="service-ratelimit-secret",
         source_type="Service",
@@ -271,7 +223,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="ratelimitedby",
     ),
-    # Endpoint → SecretConfig
     AutoEdgeRule(
         id="endpoint-ratelimit-secret",
         source_type="Endpoint",
@@ -281,8 +232,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         edge_type="ratelimitedby",
     ),
 
-    # ========== FAILS_OVER_TO (failover) ==========
-    # Service → Service (backup service)
     AutoEdgeRule(
         id="service-failover",
         source_type="Service",
@@ -295,10 +244,8 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
 
 
 def get_rules_for_source_type(source_type: str) -> List[AutoEdgeRule]:
-    """Get all rules that apply to a specific source node type."""
     return [rule for rule in BUILTIN_EDGE_RULES if rule.source_type == source_type]
 
 
 def get_rules_for_edge_type(edge_type: str) -> List[AutoEdgeRule]:
-    """Get all rules that create a specific edge type."""
     return [rule for rule in BUILTIN_EDGE_RULES if rule.edge_type == edge_type]

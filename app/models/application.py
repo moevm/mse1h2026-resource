@@ -32,6 +32,5 @@ class ApplicationDetail(ApplicationInfo):
     agents: List["AgentInfo"] = []
 
 
-# Import here to avoid circular import
 from app.models.agent import AgentInfo
 ApplicationDetail.model_rebuild()

@@ -11,19 +11,15 @@ from app.repositories.neo4j_connection import neo4j_driver
 
 log = logging.getLogger(__name__)
 
-# Directory for JSON presets
 PRESETS_DIR = Path(__file__).parent.parent.parent / "edge_presets"
 
 
 class EdgePresetRepository:
-    """Repository for edge presets."""
-
     def __init__(self):
         self._builtin_loaded = False
         self._builtin_presets: List[EdgePreset] = []
 
     def _load_builtin_presets(self) -> None:
-        """Load built-in presets from JSON files."""
         if self._builtin_loaded:
             return
 
@@ -47,7 +43,6 @@ class EdgePresetRepository:
         self._builtin_loaded = True
 
     def _parse_rules(self, rules_data) -> List[AutoEdgeRule]:
-        """Parse rules from Neo4j (can be JSON string or list)."""
         if not rules_data:
             return []
         if isinstance(rules_data, str):
@@ -57,16 +52,13 @@ class EdgePresetRepository:
         return [AutoEdgeRule(**r) for r in rules_list]
 
     def list_all(self) -> List[EdgePreset]:
-        """List all presets (built-in + custom from Neo4j)."""
         self._load_builtin_presets()
 
-        # Get custom presets from Neo4j
         custom_presets = self._list_custom()
 
         return self._builtin_presets + custom_presets
 
     def _list_custom(self) -> List[EdgePreset]:
-        """List custom presets stored in Neo4j."""
         with neo4j_driver.session() as session:
             result = session.run(
                 "MATCH (p:EdgePreset) "
@@ -90,15 +82,12 @@ class EdgePresetRepository:
             return presets
 
     def get(self, preset_id: str) -> Optional[EdgePreset]:
-        """Get a preset by ID."""
         self._load_builtin_presets()
 
-        # Check built-in first
         for preset in self._builtin_presets:
             if preset.id == preset_id:
                 return preset
 
-        # Check Neo4j for custom preset
         with neo4j_driver.session() as session:
             result = session.run(
                 "MATCH (p:EdgePreset {id: $id}) "
@@ -124,14 +113,12 @@ class EdgePresetRepository:
             )
 
     def create(self, data: EdgePresetCreate, created_by: str = "user") -> EdgePreset:
-        """Create a new custom preset."""
         from datetime import datetime
         import json
 
         preset_id = f"custom-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
         now = datetime.utcnow().isoformat()
 
-        # Serialize rules to JSON string for Neo4j storage
         rules_json = json.dumps([r.model_dump() for r in data.rules])
 
         with neo4j_driver.session() as session:
@@ -148,10 +135,9 @@ class EdgePresetRepository:
                 created_by=created_by,
             )
 
-        return self.get(preset_id)  # type: ignore
+        return self.get(preset_id)
 
     def update(self, preset_id: str, data: EdgePresetUpdate) -> Optional[EdgePreset]:
-        """Update a custom preset."""
         preset = self.get(preset_id)
         if not preset:
             return None
@@ -168,7 +154,6 @@ class EdgePresetRepository:
         if data.description is not None:
             updates["description"] = data.description
         if data.rules is not None:
-            # Serialize rules to JSON string
             updates["rules"] = json.dumps([r.model_dump() for r in data.rules])
 
         if not updates:
@@ -188,7 +173,6 @@ class EdgePresetRepository:
         return self.get(preset_id)
 
     def delete(self, preset_id: str) -> bool:
-        """Delete a custom preset."""
         preset = self.get(preset_id)
         if not preset:
             return False
@@ -205,10 +189,8 @@ class EdgePresetRepository:
             return record["deleted"] > 0 if record else False
 
     def get_rules(self, preset_id: str) -> List[AutoEdgeRule]:
-        """Get rules from a preset by ID. Returns empty list if not found."""
         preset = self.get(preset_id)
         return preset.rules if preset else []
 
 
-# Singleton instance
 edge_preset_repo = EdgePresetRepository()

@@ -25,7 +25,6 @@ from app.models.edges import (
 
 router = APIRouter()
 
-# Node type dispatch map
 NODE_TYPE_MAP = {
     "Service": ServiceNode,
     "Endpoint": EndpointNode,
@@ -44,7 +43,6 @@ NODE_TYPE_MAP = {
     "RegionCluster": RegionClusterNode,
 }
 
-# Edge type dispatch map
 EDGE_TYPE_MAP = {
     "calls": CallsEdge,
     "publishesto": PublishesToEdge,
@@ -61,15 +59,11 @@ EDGE_TYPE_MAP = {
 
 
 class PreviewRequest(BaseModel):
-    """Request for previewing or applying a mapping."""
-
     chunk_id: str = Field(..., description="ID of the raw data chunk")
     mapping_id: str = Field(..., description="ID of the mapping to apply")
 
 
 class PreviewResponse(BaseModel):
-    """Response for preview endpoint."""
-
     chunk_id: str
     mapping_id: str
     nodes: List[Dict[str, Any]]
@@ -79,8 +73,6 @@ class PreviewResponse(BaseModel):
 
 
 class ApplyResponse(BaseModel):
-    """Response for apply endpoint."""
-
     chunk_id: str
     mapping_id: str
     nodes_processed: int
@@ -96,12 +88,6 @@ class ApplyResponse(BaseModel):
     summary="Preview mapping result without persisting",
 )
 async def preview_mapping(request: PreviewRequest):
-    """Preview how raw data would be transformed by a mapping.
-
-    Returns the nodes and edges that would be created without
-    actually persisting them to the graph.
-    """
-    # Get the chunk
     chunk_data = await raw_data_repo.get_chunk(request.chunk_id)
     if not chunk_data:
         raise HTTPException(
@@ -109,7 +95,6 @@ async def preview_mapping(request: PreviewRequest):
             detail="Chunk not found or expired",
         )
 
-    # Get the mapping
     mapping = mapping_repo.get(request.mapping_id)
     if not mapping:
         raise HTTPException(
@@ -117,13 +102,10 @@ async def preview_mapping(request: PreviewRequest):
             detail="Mapping not found",
         )
 
-    # Convert chunk data to RawDataChunk
     chunk = RawDataChunk(**chunk_data)
 
-    # Apply mapping
     nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
 
-    # Generate warnings
     warnings = []
     if not nodes:
         warnings.append("No nodes generated from this mapping")
@@ -131,7 +113,6 @@ async def preview_mapping(request: PreviewRequest):
         if not node.get("id"):
             warnings.append(f"Node missing id: {node.get('type', 'unknown')}")
 
-    # Add warnings for unresolved references
     for ref in unresolved:
         warnings.append(
             f"{ref.source_node_type} '{ref.source_node_id.split(':')[-1]}' "
@@ -155,12 +136,6 @@ async def preview_mapping(request: PreviewRequest):
     summary="Apply mapping and ingest into graph",
 )
 async def apply_mapping(request: PreviewRequest):
-    """Apply a mapping to a chunk and persist the result to Neo4j.
-
-    The mapped data is ingested into the graph database and the
-    chunk is marked as processed.
-    """
-    # Get the chunk
     chunk_data = await raw_data_repo.get_chunk(request.chunk_id)
     if not chunk_data:
         raise HTTPException(
@@ -168,7 +143,6 @@ async def apply_mapping(request: PreviewRequest):
             detail="Chunk not found or expired",
         )
 
-    # Get the mapping
     mapping = mapping_repo.get(request.mapping_id)
     if not mapping:
         raise HTTPException(
@@ -176,10 +150,8 @@ async def apply_mapping(request: PreviewRequest):
             detail="Mapping not found",
         )
 
-    # Convert chunk data to RawDataChunk
     chunk = RawDataChunk(**chunk_data)
 
-    # Apply mapping
     nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
 
     if not nodes and not edges:
@@ -193,33 +165,27 @@ async def apply_mapping(request: PreviewRequest):
             unresolved_references=unresolved,
         )
 
-    # Convert to Pydantic models for ingest service
     try:
         node_models = []
         for n in nodes:
-            # Determine the correct node type and instantiate
             node_type = n.get("type", "Service")
             node_class = NODE_TYPE_MAP.get(node_type, ServiceNode)
             node_models.append(node_class(**n))
 
         edge_models = []
         for e in edges:
-            # Determine the correct edge type and instantiate
             edge_type = e.get("type", "dependson")
             edge_class = EDGE_TYPE_MAP.get(edge_type, DependsOnEdge)
             edge_models.append(edge_class(**e))
 
-        # Create topology update
         update = TopologyUpdate(
             source=f"mapper:{mapping.name}",
             nodes=node_models,
             edges=edge_models,
         )
 
-        # Process through existing ingest service
         result = process_topology_update(update)
 
-        # Mark chunk as processed
         await raw_data_repo.mark_processed(request.chunk_id, request.mapping_id)
 
         return ApplyResponse(
@@ -248,11 +214,6 @@ async def preview_raw_data(
     raw_data: Dict[str, Any],
     mapping_id: str,
 ):
-    """Preview mapping with raw JSON data (not stored chunk).
-
-    Useful for testing mappings before receiving actual data.
-    """
-    # Get the mapping
     mapping = mapping_repo.get(mapping_id)
     if not mapping:
         raise HTTPException(
@@ -260,7 +221,6 @@ async def preview_raw_data(
             detail="Mapping not found",
         )
 
-    # Create temporary chunk
     from app.models.mapper.raw_data import RawDataSource
     chunk = RawDataChunk(
         id="preview",
@@ -269,7 +229,6 @@ async def preview_raw_data(
         data=raw_data,
     )
 
-    # Apply mapping
     nodes, edges, warnings, unresolved = mapper_service.preview(raw_data, mapping)
 
     return PreviewResponse(
