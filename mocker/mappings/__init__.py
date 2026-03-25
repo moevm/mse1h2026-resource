@@ -1,0 +1,43 @@
+from .kubernetes_api import KUBERNETES_API_MAPPING
+from .opentelemetry_traces import OTLP_TRACES_MAPPING
+from .opentelemetry_metrics import OTLP_METRICS_MAPPING
+from .istio_access_logs import ISTIO_ACCESS_LOGS_MAPPING
+from .istio_metrics import ISTIO_METRICS_MAPPING
+from .prometheus import PROMETHEUS_MAPPING
+from .prometheus_slo import PROMETHEUS_SLO_MAPPING
+from .terraform_state import TERRAFORM_STATE_MAPPING
+from .argocd import ARGOCD_MAPPING
+from .api_gateway import API_GATEWAY_MAPPING
+
+ALL_MAPPINGS = [
+    KUBERNETES_API_MAPPING,
+    OTLP_TRACES_MAPPING,
+    OTLP_METRICS_MAPPING,
+    ISTIO_ACCESS_LOGS_MAPPING,
+    ISTIO_METRICS_MAPPING,
+    PROMETHEUS_MAPPING,
+    PROMETHEUS_SLO_MAPPING,
+    TERRAFORM_STATE_MAPPING,
+    ARGOCD_MAPPING,
+    API_GATEWAY_MAPPING,
+]
+
+MAPPINGS_BY_SOURCE_TYPE = {
+    mapping["source_type"]: mapping
+    for mapping in ALL_MAPPINGS
+}
+
+__all__ = [
+    "ALL_MAPPINGS",
+    "MAPPINGS_BY_SOURCE_TYPE",
+    "KUBERNETES_API_MAPPING",
+    "OTLP_TRACES_MAPPING",
+    "OTLP_METRICS_MAPPING",
+    "ISTIO_ACCESS_LOGS_MAPPING",
+    "ISTIO_METRICS_MAPPING",
+    "PROMETHEUS_MAPPING",
+    "PROMETHEUS_SLO_MAPPING",
+    "TERRAFORM_STATE_MAPPING",
+    "ARGOCD_MAPPING",
+    "API_GATEWAY_MAPPING",
+]
