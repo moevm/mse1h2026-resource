@@ -29,6 +29,7 @@ interface Application {
 }
 
 type MobilePanel = "mappings" | "data" | "config";
+type MockerAction = "run" | "create" | null;
 
 export function MapperPage() {
   const {
@@ -59,91 +60,131 @@ export function MapperPage() {
   const [replayLoading, setReplayLoading] = useState(false);
   const [lastReplayAt, setLastReplayAt] = useState<string | null>(null);
   const [deactivateClearLoading, setDeactivateClearLoading] = useState(false);
+  const [mockerActionLoading, setMockerActionLoading] = useState<MockerAction>(null);
+  const [mockerMessage, setMockerMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   const [activePanel, setActivePanel] = useState<MobilePanel>("data");
 
-  useEffect(() => {
-    async function loadApplications() {
-      try {
-        const data = await fetchApplications();
-        setApplications(data);
-      } catch (error) {
-        console.error("Failed to load applications:", error);
-      }
+  const buildUniqueMappingName = useCallback(() => {
+    const baseName = selectedAgent ? `${selectedAgent.name} Mapping` : "New Mapping";
+    const existingNames = new Set(availableMappings.map((mapping) => mapping.name));
+
+    if (!existingNames.has(baseName)) {
+      return baseName;
     }
-    loadApplications();
+
+    let index = 2;
+    while (existingNames.has(`${baseName} ${index}`)) {
+      index += 1;
+    }
+
+    return `${baseName} ${index}`;
+  }, [availableMappings, selectedAgent]);
+
+  const loadApplicationsData = useCallback(async () => {
+    try {
+      const data = await fetchApplications();
+      setApplications(data);
+      return data;
+    } catch (error) {
+      console.error("Failed to load applications:", error);
+      return [] as Application[];
+    }
+  }, []);
+
+  const loadAgentsData = useCallback(async () => {
+    try {
+      const data = await fetchAgents();
+      setAgents(data);
+      return data;
+    } catch (error) {
+      console.error("Failed to load agents:", error);
+      return [] as Agent[];
+    }
   }, []);
 
   useEffect(() => {
-    async function loadAgents() {
-      try {
-        const data = await fetchAgents();
-        setAgents(data);
-      } catch (error) {
-        console.error("Failed to load agents:", error);
-      }
-    }
-    loadAgents();
-  }, []);
+    loadApplicationsData();
+  }, [loadApplicationsData]);
+
+  useEffect(() => {
+    loadAgentsData();
+  }, [loadAgentsData]);
 
   const filteredAgents = selectedAppId
     ? agents.filter((a) => a.app_id === selectedAppId)
     : agents;
+  const currentSelectedChunkId = selectedChunk?.id ?? null;
+
+  const loadMappingsForAgent = useCallback(async (agent: Agent | null) => {
+    if (!agent) {
+      setActiveMapping(null);
+      setAvailableMappings([]);
+      return;
+    }
+
+    setMappingsLoading(true);
+    try {
+      const active = await mapperApi.getActiveMapping(agent.source_type);
+      setActiveMapping(active);
+      if (active) {
+        setDraftMapping(active);
+      }
+
+      const response = await mapperApi.listMappings({
+        source_type: agent.source_type,
+        limit: 50,
+      });
+      setAvailableMappings(response.mappings);
+    } catch (error) {
+      console.error("Failed to load mappings:", error);
+    } finally {
+      setMappingsLoading(false);
+    }
+  }, [setDraftMapping]);
+
+  const loadChunksForAgent = useCallback(async (agent: Agent | null) => {
+    if (!agent) {
+      setChunks([]);
+      selectChunk(null);
+      return;
+    }
+
+    setChunksLoading(true);
+    try {
+      const response = await mapperApi.listChunks({
+        source_type: agent.source_type as RawDataSource,
+        limit: 100,
+      });
+      setChunks(response.chunks);
+
+      if (response.chunks.length === 0) {
+        if (currentSelectedChunkId !== null) {
+          selectChunk(null);
+        }
+      } else {
+        const selectedStillExists = currentSelectedChunkId
+          ? response.chunks.find((chunk) => chunk.id === currentSelectedChunkId)
+          : null;
+        const nextChunk = selectedStillExists || response.chunks[0];
+        if (nextChunk.id !== currentSelectedChunkId) {
+          selectChunk(nextChunk);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to load chunks:", error);
+    } finally {
+      setChunksLoading(false);
+    }
+  }, [currentSelectedChunkId, selectChunk, setChunks, setChunksLoading]);
 
   useEffect(() => {
-    async function loadMappings() {
-      if (!selectedAgent) {
-        setActiveMapping(null);
-        setAvailableMappings([]);
-        return;
-      }
-
-      setMappingsLoading(true);
-      try {
-        const active = await mapperApi.getActiveMapping(selectedAgent.source_type);
-        setActiveMapping(active);
-        if (active) {
-          setDraftMapping(active);
-        }
-
-        const response = await mapperApi.listMappings({
-          source_type: selectedAgent.source_type,
-          limit: 50,
-        });
-        setAvailableMappings(response.mappings);
-      } catch (error) {
-        console.error("Failed to load mappings:", error);
-      } finally {
-        setMappingsLoading(false);
-      }
-    }
-    loadMappings();
-  }, [selectedAgent, setDraftMapping]);
+    loadMappingsForAgent(selectedAgent);
+  }, [selectedAgent, loadMappingsForAgent]);
 
   useEffect(() => {
-    async function loadChunks() {
-      if (!selectedAgent) {
-        setChunks([]);
-        return;
-      }
-      setChunksLoading(true);
-      try {
-        const response = await mapperApi.listChunks({
-          source_type: selectedAgent.source_type as RawDataSource,
-          limit: 100,
-        });
-        setChunks(response.chunks);
-        if (response.chunks.length > 0 && !selectedChunk) {
-          selectChunk(response.chunks[0]);
-        }
-      } catch (error) {
-        console.error("Failed to load chunks:", error);
-      } finally {
-        setChunksLoading(false);
-      }
-    }
-    loadChunks();
-  }, [selectedAgent, setChunks, setChunksLoading, selectChunk, selectedChunk]);
+    loadChunksForAgent(selectedAgent);
+  }, [selectedAgent, loadChunksForAgent]);
 
   const handleActivate = useCallback(async (mappingId: string) => {
     try {
@@ -185,7 +226,7 @@ export function MapperPage() {
 
   const handleNewMapping = useCallback(() => {
     setDraftMapping({
-      name: "New Mapping",
+      name: buildUniqueMappingName(),
       source_type: selectedAgent?.source_type || "custom",
       field_mappings: [],
       conditional_rules: [],
@@ -194,7 +235,7 @@ export function MapperPage() {
     });
     clearPreview();
     setActionMessage(null);
-  }, [selectedAgent, selectedChunk, setDraftMapping]);
+  }, [buildUniqueMappingName, selectedAgent, selectedChunk, setDraftMapping]);
 
   const ensureDraftMappingId = useCallback(async (): Promise<string | null> => {
     if (!draftMapping) return null;
@@ -308,21 +349,85 @@ export function MapperPage() {
   }, [ensureDraftMappingId, selectedAgent?.agent_id]);
 
   const refreshMappings = useCallback(async () => {
-    if (!selectedAgent) return;
+    await loadMappingsForAgent(selectedAgent);
+  }, [loadMappingsForAgent, selectedAgent]);
+
+  const handleRunFullMocker = useCallback(async () => {
+    setMockerActionLoading("run");
+    setMockerMessage(null);
     try {
-      const response = await mapperApi.listMappings({
-        source_type: selectedAgent.source_type,
-        limit: 50,
+      const result = await mapperApi.runMockerFull();
+      setMockerMessage({
+        type: result.success ? "success" : "error",
+        text: result.success
+          ? "Raw data generation completed"
+          : `Raw data generation failed (exit code ${result.exit_code})`,
       });
-      setAvailableMappings(response.mappings);
+
+      if (result.success) {
+        await loadApplicationsData();
+        const updatedAgents = await loadAgentsData();
+
+        const refreshedSelectedAgent = selectedAgent
+          ? updatedAgents.find((agent) => agent.agent_id === selectedAgent.agent_id) || null
+          : updatedAgents[0] || null;
+
+        if ((selectedAgent?.agent_id || null) !== (refreshedSelectedAgent?.agent_id || null)) {
+          setSelectedAgent(refreshedSelectedAgent);
+        }
+
+        await Promise.all([
+          loadChunksForAgent(refreshedSelectedAgent),
+          loadMappingsForAgent(refreshedSelectedAgent),
+        ]);
+      }
     } catch (error) {
-      console.error("Failed to refresh mappings:", error);
+      setMockerMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Raw data generation failed",
+      });
+    } finally {
+      setMockerActionLoading(null);
     }
-  }, [selectedAgent]);
+  }, [
+    loadApplicationsData,
+    loadAgentsData,
+    loadChunksForAgent,
+    loadMappingsForAgent,
+    selectedAgent,
+  ]);
+
+  const handleCreateMappings = useCallback(async () => {
+    setMockerActionLoading("create");
+    setMockerMessage(null);
+    try {
+      const result = await mapperApi.createMappingsFromMocker();
+      setMockerMessage({
+        type: result.success ? "success" : "error",
+        text: result.success
+          ? "Mappings created successfully"
+          : `Mapping creation failed (exit code ${result.exit_code})`,
+      });
+
+      if (result.success) {
+        await Promise.all([
+          refreshMappings(),
+          loadChunksForAgent(selectedAgent),
+        ]);
+      }
+    } catch (error) {
+      setMockerMessage({
+        type: "error",
+        text: error instanceof Error ? error.message : "Mapping creation failed",
+      });
+    } finally {
+      setMockerActionLoading(null);
+    }
+  }, [refreshMappings, loadChunksForAgent, selectedAgent]);
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="h-full flex flex-col bg-slate-900">
+      <div className="h-full min-h-0 flex flex-col bg-slate-900">
         
         <div className="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-slate-800/50 border-b border-slate-700/50 shrink-0">
           
@@ -394,7 +499,37 @@ export function MapperPage() {
               )}
             </div>
           )}
+
+          <div className="flex items-center gap-2 ml-auto">
+            <button
+              onClick={handleRunFullMocker}
+              disabled={mockerActionLoading !== null}
+              className="text-xs bg-sky-600 hover:bg-sky-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+            >
+              {mockerActionLoading === "run" ? "Generating..." : "Generate mock data"}
+            </button>
+            <button
+              onClick={handleCreateMappings}
+              disabled={mockerActionLoading !== null}
+              className="text-xs bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+            >
+              {mockerActionLoading === "create" ? "Creating..." : "Create default mappings"}
+            </button>
+          </div>
         </div>
+
+        {mockerMessage && (
+          <div
+            className={[
+              "px-3 sm:px-4 py-2 text-xs border-b shrink-0",
+              mockerMessage.type === "success"
+                ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                : "bg-red-500/10 text-red-300 border-red-500/30",
+            ].join(" ")}
+          >
+            {mockerMessage.text}
+          </div>
+        )}
 
         
         <div className="flex lg:hidden border-b border-slate-700/50 bg-slate-800/30 shrink-0">
@@ -419,10 +554,10 @@ export function MapperPage() {
           <ResizablePanels
             initialSizes={[15, 50, 35]}
             minSizes={[200, 300, 250]}
-            className="flex-1"
+            className="flex-1 min-h-0"
           >
             
-            <section className="border-r border-slate-700/50 bg-slate-900 flex flex-col">
+            <section className="border-r border-slate-700/50 bg-slate-900 flex flex-col min-h-0">
               <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
                 <h2 className="text-sm font-semibold text-slate-300">Mappings</h2>
                 <p className="text-xs text-slate-500">
@@ -478,7 +613,7 @@ export function MapperPage() {
             </section>
 
             
-            <section className="flex flex-col min-w-0 bg-slate-900">
+            <section className="flex flex-col min-w-0 min-h-0 bg-slate-900">
               
               <TimelineSlider
                 chunks={chunks}
@@ -520,70 +655,85 @@ export function MapperPage() {
             </section>
 
             
-            <section className="bg-slate-900 flex flex-col border-l border-slate-700/50">
+            <section className="bg-slate-900 flex flex-col border-l border-slate-700/50 min-h-0">
               <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
                 <h2 className="text-sm font-semibold text-slate-300">
                   {activeMapping ? `Edit: ${activeMapping.name}` : "New Mapping"}
                 </h2>
               </div>
-              <div className="flex-1 flex flex-col min-h-0">
+              {draftMapping ? (
                 <ResizablePanels
                   direction="vertical"
-                  initialSizes={[50, 50]}
-                  minSizes={[150, 150]}
-                  className="flex-1"
+                  initialSizes={[70, 30]}
+                  minSizes={[220, 140]}
+                  className="flex-1 min-h-0"
                 >
-                  
-                  <div className="overflow-auto min-h-0">
-                    <SchemaBrowser />
+                  <div className="flex flex-col min-h-0">
+                    <ResizablePanels
+                      direction="vertical"
+                      initialSizes={[50, 50]}
+                      minSizes={[150, 150]}
+                      className="flex-1 min-h-0"
+                    >
+                      <div className="overflow-auto min-h-0">
+                        <SchemaBrowser />
+                      </div>
+                      <div className="overflow-auto min-h-0 bg-slate-800/20">
+                        <MappingBuilder onSaved={refreshMappings} />
+                      </div>
+                    </ResizablePanels>
                   </div>
-                  
-                  {draftMapping ? (
-                    <div className="overflow-auto min-h-0 bg-slate-800/20">
-                      <MappingBuilder onSaved={refreshMappings} />
+
+                  <div className="border-t border-slate-700/50 bg-slate-800/10 min-h-0 flex flex-col">
+                    <div className="px-3 py-2 border-b border-slate-700/50 flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={handlePreview}
+                        disabled={!selectedChunk || previewLoading || replayLoading}
+                        className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                      >
+                        Preview
+                      </button>
+                      <button
+                        onClick={handleApply}
+                        disabled={!selectedChunk || previewLoading || replayLoading}
+                        className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        onClick={handleReplay}
+                        disabled={!draftMapping || previewLoading || replayLoading}
+                        className="text-xs bg-violet-600 hover:bg-violet-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                      >
+                        {replayLoading ? "Replaying..." : "Replay"}
+                      </button>
+                      {actionMessage && (
+                        <span className="text-xs text-slate-400">{actionMessage}</span>
+                      )}
+                      {lastReplayAt && (
+                        <span className="text-xs text-slate-500">Last replay: {lastReplayAt}</span>
+                      )}
                     </div>
-                  ) : (
+                    <div className="flex-1 min-h-0 overflow-auto">
+                      <PreviewPanel loading={previewLoading} />
+                    </div>
+                  </div>
+                </ResizablePanels>
+              ) : (
+                <div className="flex-1 flex flex-col min-h-0">
+                  <ResizablePanels
+                    direction="vertical"
+                    initialSizes={[50, 50]}
+                    minSizes={[150, 150]}
+                    className="flex-1 min-h-0"
+                  >
+                    <div className="overflow-auto min-h-0">
+                      <SchemaBrowser />
+                    </div>
                     <div className="flex items-center justify-center text-slate-500 text-sm">
                       No mapping selected
                     </div>
-                  )}
-                </ResizablePanels>
-              </div>
-
-              {draftMapping && (
-                <div className="border-t border-slate-700/50 bg-slate-800/10 shrink-0">
-                  <div className="px-3 py-2 border-b border-slate-700/50 flex items-center gap-2">
-                    <button
-                      onClick={handlePreview}
-                      disabled={!selectedChunk || previewLoading || replayLoading}
-                      className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
-                    >
-                      Preview
-                    </button>
-                    <button
-                      onClick={handleApply}
-                      disabled={!selectedChunk || previewLoading || replayLoading}
-                      className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
-                    >
-                      Apply
-                    </button>
-                    <button
-                      onClick={handleReplay}
-                      disabled={!draftMapping || previewLoading || replayLoading}
-                      className="text-xs bg-violet-600 hover:bg-violet-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
-                    >
-                      {replayLoading ? "Replaying..." : "Replay"}
-                    </button>
-                    {actionMessage && (
-                      <span className="text-xs text-slate-400">{actionMessage}</span>
-                    )}
-                    {lastReplayAt && (
-                      <span className="text-xs text-slate-500">Last replay: {lastReplayAt}</span>
-                    )}
-                  </div>
-                  <div className="max-h-60 overflow-auto">
-                    <PreviewPanel loading={previewLoading} />
-                  </div>
+                  </ResizablePanels>
                 </div>
               )}
             </section>

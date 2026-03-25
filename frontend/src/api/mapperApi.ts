@@ -11,6 +11,7 @@ import type {
     EdgePresetCreate,
     EdgePresetUpdate,
     EdgePresetListResponse,
+    MockerCommandResponse,
 } from "../types/mapper";
 
 export async function listChunks(params?: {
@@ -157,6 +158,16 @@ export async function deleteEdgePreset(presetId: string): Promise<void> {
     await client.delete(`/edge-presets/${presetId}`);
 }
 
+export async function runMockerFull(): Promise<MockerCommandResponse> {
+    const res = await client.post("/mocker/run-full", undefined, { timeout: 10 * 60 * 1000 });
+    return res.data;
+}
+
+export async function createMappingsFromMocker(): Promise<MockerCommandResponse> {
+    const res = await client.post("/mocker/create-mappings", undefined, { timeout: 10 * 60 * 1000 });
+    return res.data;
+}
+
 export const mapperApi = {
     listChunks,
     getChunk,
@@ -179,4 +190,6 @@ export const mapperApi = {
     createEdgePreset,
     updateEdgePreset,
     deleteEdgePreset,
+    runMockerFull,
+    createMappingsFromMocker,
 };

@@ -161,6 +161,13 @@ class MappingRepository:
                 RETURN m
                 ORDER BY m.updated_at DESC
                 LIMIT $limit
+                """,
+                **params,
+            )
+            mappings = [self._deserialize_mapping(dict(record["m"])) for record in result]
+
+            count_result = session.run(
+                f"""
                 MATCH (m:MappingConfig)
                 WHERE {where_clause}
                 RETURN count(m) as total
@@ -193,12 +200,20 @@ class MappingRepository:
 
     def delete(self, mapping_id: str) -> bool:
         with neo4j_driver.driver.session() as session:
-            result = session.run(
-                "MATCH (m:MappingConfig {id: $id}) DELETE m RETURN count(m) as deleted",
+            check_result = session.run(
+                "MATCH (m:MappingConfig {id: $id}) RETURN count(m) as to_delete",
                 id=mapping_id,
             )
-            record = result.single()
-            return record and record["deleted"] > 0
+            check_record = check_result.single()
+            to_delete = check_record["to_delete"] if check_record else 0
+
+            if to_delete > 0:
+                session.run(
+                    "MATCH (m:MappingConfig {id: $id}) DETACH DELETE m",
+                    id=mapping_id,
+                )
+
+            return to_delete > 0
 
     def set_active(self, mapping_id: str, is_active: bool) -> Optional[MappingConfig]:
         with neo4j_driver.driver.session() as session:

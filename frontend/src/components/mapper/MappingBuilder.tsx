@@ -105,6 +105,7 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
   });
 
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [edgePresets, setEdgePresets] = useState<EdgePreset[]>([]);
   const [presetsLoading, setPresetsLoading] = useState(false);
 
@@ -158,9 +159,19 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
   const handleSave = useCallback(async () => {
     if (!draftMapping) return;
     setSaving(true);
+    setSaveError(null);
     try {
       await saveDraftMapping();
       await onSaved?.();
+    } catch (error) {
+      const detail =
+        typeof error === "object" &&
+        error !== null &&
+        "response" in error
+          ? (error as { response?: { data?: { detail?: unknown } } }).response?.data?.detail
+          : undefined;
+      const message = typeof detail === "string" ? detail : "Failed to create or save mapping";
+      setSaveError(message);
     } finally {
       setSaving(false);
     }
@@ -185,7 +196,10 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
         <input
           type="text"
           value={draftMapping?.name || ""}
-          onChange={(e) => updateDraftMapping({ name: e.target.value })}
+          onChange={(e) => {
+            setSaveError(null);
+            updateDraftMapping({ name: e.target.value });
+          }}
           className="flex-1 px-2 py-1 bg-slate-800 border border-slate-700 rounded text-sm text-slate-200"
           placeholder="Mapping name..."
         />
@@ -199,6 +213,12 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
           </button>
         )}
       </div>
+
+      {saveError && (
+        <div className="mb-2 text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded px-2 py-1">
+          {saveError}
+        </div>
+      )}
 
       
       <div className="mb-3 p-2 bg-emerald-900/20 border border-emerald-700/30 rounded shrink-0">

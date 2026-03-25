@@ -87,7 +87,7 @@ export function ResizablePanels({
   return (
     <div
       ref={containerRef}
-      className={`flex ${isHorizontal ? "flex-row" : "flex-col"} ${className}`}
+      className={`flex ${isHorizontal ? "flex-row" : "flex-col"} min-w-0 min-h-0 h-full w-full ${className}`}
     >
       {children.map((child, index) => (
         <div key={index} className="contents">

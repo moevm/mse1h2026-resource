@@ -154,6 +154,15 @@ export interface ApplyResponse {
   unresolved_references: UnresolvedReference[];
 }
 
+export interface MockerCommandResponse {
+  command: string;
+  success: boolean;
+  exit_code: number;
+  summary: string;
+  stdout: string;
+  stderr: string;
+}
+
 // Schema Types (for SchemaBrowser)
 export interface SchemaField {
   name: string;

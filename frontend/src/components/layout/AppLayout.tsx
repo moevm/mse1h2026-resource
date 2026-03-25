@@ -9,20 +9,20 @@ interface AppLayoutProps {
 
 export function AppLayout({ children, headerContent }: Readonly<AppLayoutProps>) {
     return (
-        <div className="flex h-screen w-screen overflow-hidden bg-slate-950">
+        <div className="flex h-screen w-screen overflow-hidden bg-slate-950 min-h-0">
             
             <MobileNav />
 
             
             <Sidebar />
 
-            <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+            <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
                 <Header>
                     
                     <div className="lg:hidden w-10 shrink-0" />
                     {headerContent}
                 </Header>
-                <main className="flex-1 overflow-hidden">{children}</main>
+                <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
             </div>
         </div>
     );
