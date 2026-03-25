@@ -27,7 +27,6 @@ python -m mocker.create_mappings --url http://localhost:8000
 Frontend: http://localhost:3000
 Backend API: http://localhost:8000
 API Documentation: http://localhost:8000/docs
-Neo4j Browser: http://localhost:7474
 
 ## Создание маппингов
 
