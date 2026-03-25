@@ -116,7 +116,16 @@ export const useMapperStore = create<MapperState>((set, get) => ({
     set((state) => ({
       draftMapping: {
         ...state.draftMapping,
-        field_mappings: [...(state.draftMapping?.field_mappings || []), mapping],
+        field_mappings: [
+          ...(state.draftMapping?.field_mappings || []).filter(
+            (existing) =>
+              !(
+                existing.target_node_type === mapping.target_node_type &&
+                existing.target_field === mapping.target_field
+              )
+          ),
+          mapping,
+        ],
       },
     })),
 
@@ -157,10 +166,13 @@ export const useMapperStore = create<MapperState>((set, get) => ({
             ? crypto.randomUUID()
             : `mapping-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
+        const normalizedName = (draft.name ?? "").trim();
+        const fallbackName = `Mapping ${new Date().toISOString().replace("T", " ").slice(0, 19)}`;
+
         const now = new Date().toISOString();
         const createPayload: MappingConfig = {
           id: generatedId,
-          name: draft.name ?? "New Mapping",
+          name: normalizedName || fallbackName,
           source_type: draft.source_type ?? "custom",
           version: draft.version ?? "1.0.0",
           is_active: draft.is_active ?? false,

@@ -68,11 +68,13 @@ function DroppableFieldRow({
   field,
   mappingInfo,
   onDrop,
+  onRemove,
 }: {
   nodeType: string;
   field: { name: string; type: string; required?: boolean; description?: string };
   mappingInfo: { mapping: FieldMapping } | null;
   onDrop: (nodeType: string, fieldName: string, item: DragItem) => void;
+  onRemove: (mappingId: string) => void;
 }) {
   const ref = useRef<HTMLTableRowElement>(null);
 
@@ -112,18 +114,31 @@ function DroppableFieldRow({
         {field.required && <span className="text-red-400 text-xs">*</span>}
       </td>
       <td className="py-1.5 text-xs">
-        {hasMapping && (
-          <span className="text-orange-400 font-mono">
-            ← {mappingInfo!.mapping.source_path}
-          </span>
-        )}
+        {hasMapping ? (
+          <div className="flex items-center gap-2">
+            <span className="text-orange-400 font-mono truncate" title={mappingInfo!.mapping.source_path}>
+              ← {mappingInfo!.mapping.source_path}
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRemove(mappingInfo!.mapping.id);
+              }}
+              className="text-red-400 hover:text-red-300 text-[11px] leading-none"
+              title="Remove mapping"
+            >
+              ×
+            </button>
+          </div>
+        ) : null}
       </td>
     </tr>
   );
 }
 
 export function SchemaBrowser() {
-  const { activeNodeTypes, toggleActiveNodeType, draftMapping, addFieldMapping } = useMapperStore();
+  const { activeNodeTypes, toggleActiveNodeType, draftMapping, addFieldMapping, removeFieldMapping } = useMapperStore();
   const [searchQuery, setSearchQuery] = useState("");
 
   const filteredTypes = NODE_TYPES.filter((type) =>
@@ -220,6 +235,7 @@ export function SchemaBrowser() {
                           field={field}
                           mappingInfo={getMappingInfo(nodeType, field.name)}
                           onDrop={handleDrop}
+                          onRemove={removeFieldMapping}
                         />
                       ))}
                     </tbody>

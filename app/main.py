@@ -14,6 +14,7 @@ from app.api.receiver import router as receiver_router
 from app.api.mapper_config import router as mapper_config_router
 from app.api.mapper_preview import router as mapper_preview_router
 from app.api.edge_presets import router as edge_presets_router
+from app.api.mocker import router as mocker_router
 from app.repositories.neo4j_connection import neo4j_driver
 from app.repositories import agent_repo, application_repo
 from app.repositories.mapping_repo import mapping_repo
@@ -54,6 +55,7 @@ app.include_router(receiver_router, prefix="/api/v1/receiver", tags=["Receiver"]
 app.include_router(mapper_config_router, prefix="/api/v1/mapper", tags=["Mapper"])
 app.include_router(mapper_preview_router, prefix="/api/v1/mapper", tags=["Mapper"])
 app.include_router(edge_presets_router, prefix="/api/v1/edge-presets", tags=["EdgePresets"])
+app.include_router(mocker_router, prefix="/api/v1/mocker", tags=["Mocker"])
 
 
 @app.get("/health", tags=["Health"])
