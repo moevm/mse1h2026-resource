@@ -10,15 +10,15 @@ interface AppLayoutProps {
 export function AppLayout({ children, headerContent }: Readonly<AppLayoutProps>) {
     return (
         <div className="flex h-screen w-screen overflow-hidden bg-slate-950">
-            {/* Mobile navigation drawer */}
+            
             <MobileNav />
 
-            {/* Desktop sidebar */}
+            
             <Sidebar />
 
             <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
                 <Header>
-                    {/* Spacer for hamburger button on mobile */}
+                    
                     <div className="lg:hidden w-10 shrink-0" />
                     {headerContent}
                 </Header>

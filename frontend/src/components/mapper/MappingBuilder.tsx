@@ -11,7 +11,6 @@ const TRANSFORM_TYPES: { value: TransformType; label: string }[] = [
   { value: "expression", label: "Expression" },
 ];
 
-// Mapping card component - compact version
 function MappingCard({
   mapping,
   onRemove,
@@ -109,7 +108,6 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
   const [edgePresets, setEdgePresets] = useState<EdgePreset[]>([]);
   const [presetsLoading, setPresetsLoading] = useState(false);
 
-  // Load edge presets
   useEffect(() => {
     async function loadPresets() {
       setPresetsLoading(true);
@@ -150,7 +148,6 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
     setSelectedFieldPath(null);
   }, [newMapping, addFieldMapping, setSelectedFieldPath]);
 
-  // Auto-fill source path from selected field
   const handleSourcePathFocus = useCallback(() => {
     if (selectedFieldPath) {
       setNewMapping((prev) => ({ ...prev, source_path: selectedFieldPath }));
@@ -172,7 +169,6 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
   const fieldMappings = draftMapping?.field_mappings || [];
   const saveButtonLabel = saving ? "..." : draftMapping?.id ? "Save" : "Create";
 
-  // Group mappings by node type
   const mappingsByNodeType = fieldMappings.reduce((acc, mapping) => {
     const type = mapping.target_node_type;
     if (!acc[type]) acc[type] = [];
@@ -180,13 +176,12 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
     return acc;
   }, {} as Record<string, FieldMapping[]>);
 
-  // Get selected preset info
   const selectedPreset = edgePresets.find(p => p.id === (draftMapping?.edge_preset_id || "default"));
 
   return (
-    <div className="p-3 text-sm">
-      {/* Mapping Name - Inline */}
-      <div className="flex items-center gap-2 mb-3">
+    <div className="h-full flex flex-col p-3 text-sm">
+      
+      <div className="flex items-center gap-2 mb-3 shrink-0">
         <input
           type="text"
           value={draftMapping?.name || ""}
@@ -205,8 +200,8 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
         )}
       </div>
 
-      {/* Auto Edge Creation - Always visible */}
-      <div className="mb-3 p-2 bg-emerald-900/20 border border-emerald-700/30 rounded">
+      
+      <div className="mb-3 p-2 bg-emerald-900/20 border border-emerald-700/30 rounded shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-emerald-400">⚡</span>
@@ -232,9 +227,9 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
         )}
       </div>
 
-      {/* Field Mappings List - Compact */}
-      <div className="mb-3">
-        <div className="flex items-center justify-between mb-1.5">
+      
+      <div className="flex-1 min-h-0 flex flex-col mb-3 overflow-hidden">
+        <div className="flex items-center justify-between mb-1.5 shrink-0">
           <span className="text-xs font-medium text-slate-400">
             Mapped Fields ({fieldMappings.length})
           </span>
@@ -245,10 +240,11 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
             Drag fields from Raw Data to Target Schema
           </div>
         ) : (
-          <div className="space-y-1 max-h-32 overflow-auto">
+          <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden pr-1">
+            <div className="space-y-1">
             {Object.entries(mappingsByNodeType).map(([nodeType, mappings]) => (
               <div key={nodeType}>
-                <div className="text-[10px] text-slate-600 mb-0.5 flex items-center gap-1">
+                <div className="text-[10px] text-slate-600 mb-0.5 flex items-center gap-1 sticky top-0 bg-slate-800/90 py-0.5 z-10">
                   <span className="px-1 py-0.5 bg-blue-500/20 text-blue-400 rounded font-medium">
                     {nodeType}
                   </span>
@@ -266,12 +262,13 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
                 </div>
               </div>
             ))}
+            </div>
           </div>
         )}
       </div>
 
-      {/* Quick Add - Inline */}
-      <div className="flex items-center gap-1.5">
+      
+      <div className="flex items-center gap-1.5 shrink-0">
         <input
           type="text"
           value={newMapping.source_path || ""}

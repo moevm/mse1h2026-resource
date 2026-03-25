@@ -6,6 +6,7 @@ interface TimelineSliderProps {
   selectedChunk: RawDataChunk | null;
   onSelectChunk: (chunk: RawDataChunk | null) => void;
   loading: boolean;
+  sampleChunkId?: string | null;
 }
 
 export function TimelineSlider({
@@ -13,7 +14,8 @@ export function TimelineSlider({
   selectedChunk,
   onSelectChunk,
   loading,
-}: Readonly<TimelineSliderProps>) {
+  sampleChunkId,
+}: TimelineSliderProps) {
   if (loading) {
     return (
       <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700/50 shrink-0">
@@ -38,7 +40,6 @@ export function TimelineSlider({
     });
   };
 
-  // Group chunks by date
   const chunksByDate = chunks.reduce((acc, chunk) => {
     const date = formatDate(chunk.timestamp);
     if (!acc[date]) {
@@ -48,50 +49,50 @@ export function TimelineSlider({
     return acc;
   }, {} as Record<string, RawDataChunk[]>);
 
-  const chunkLabel = `${chunks.length} chunk${chunks.length === 1 ? "" : "s"}`;
-
   return (
     <div className="bg-slate-800/50 px-4 py-2 border-b border-slate-700/50 shrink-0">
       <div className="flex items-center gap-4">
         <span className="text-sm text-slate-400 shrink-0">
-          {chunkLabel}
+          {chunks.length} chunk{chunks.length !== 1 ? "s" : ""}
         </span>
 
-        {/* Timeline */}
-        <div className="flex-1 flex items-center gap-1 overflow-x-auto py-1">
-          {Object.entries(chunksByDate).map(([date, dateChunks]) => (
-            <div key={date} className="flex items-center gap-1 shrink-0">
-              <span className="text-xs text-slate-600 px-2">{date}</span>
-              {dateChunks.map((chunk) => (
-                (() => {
-                  let chunkClassName = "bg-slate-700 text-slate-300 hover:bg-slate-600";
-                  if (selectedChunk?.id === chunk.id) {
-                    chunkClassName = "bg-blue-600 text-white";
-                  } else if (chunk.is_processed) {
-                    chunkClassName = "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30";
-                  }
+        
+        <div className="flex-1 overflow-x-auto overflow-y-hidden scrollbar-thin scrollbar-thumb-slate-600 scrollbar-track-transparent">
+          <div className="flex items-center gap-1 py-1">
+            {Object.entries(chunksByDate).map(([date, dateChunks]) => (
+              <div key={date} className="flex items-center gap-1 shrink-0">
+                <span className="text-xs text-slate-600 px-2">{date}</span>
+                {dateChunks.map((chunk) => {
+                  const isSelected = selectedChunk?.id === chunk.id;
+                  const isSample = sampleChunkId === chunk.id;
 
                   return (
                     <button
                       key={chunk.id}
                       onClick={() => onSelectChunk(chunk)}
-                      className={[
-                        "px-2 py-1 rounded text-xs font-mono transition-colors",
-                        chunkClassName,
-                      ].join(" ")}
-                      title={`${formatTime(chunk.timestamp)} - ${chunk.size_bytes} bytes`}
+                      className={`px-2 py-1 rounded text-xs font-mono transition-colors shrink-0 ${
+                        isSelected
+                          ? "bg-blue-600 text-white"
+                          : isSample
+                          ? "bg-purple-500/30 text-purple-300 border border-purple-500/50 hover:bg-purple-500/40"
+                          : chunk.is_processed
+                          ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
+                          : "bg-slate-700 text-slate-300 hover:bg-slate-600"
+                      }`}
+                      title={`${formatTime(chunk.timestamp)} - ${chunk.size_bytes} bytes${isSample ? ' (sample chunk)' : ''}`}
                     >
                       {formatTime(chunk.timestamp)}
+                      {isSample && " ★"}
                       {chunk.is_processed && " ✓"}
                     </button>
                   );
-                })()
-             ))}
-            </div>
-          ))}
+                })}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Selected chunk info */}
+        
         {selectedChunk && (
           <div className="text-xs text-slate-500 flex items-center gap-3 shrink-0">
             <span>

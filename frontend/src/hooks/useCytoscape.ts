@@ -329,7 +329,20 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
         const cy = cyRef.current;
         if (!isAlive(cy)) return;
         const node = cy.getElementById(nodeId);
-        if (node.length) cy.animate({ center: { eles: node }, zoom: 1.5 }, { duration: 400 });
+        if (node.length) {
+            const nodePos = node.position();
+            const zoom = 1.5;
+            cy.animate({
+                pan: {
+                    x: cy.width() / 2 - nodePos.x * zoom,
+                    y: cy.height() / 2 - nodePos.y * zoom,
+                },
+                zoom: zoom,
+            }, {
+                duration: 400,
+                easing: "ease-in-out",
+            });
+        }
     }, []);
 
     return { cyRef, fitGraph, runLayout, zoomIn, zoomOut, centerOn };
