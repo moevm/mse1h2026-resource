@@ -14,6 +14,8 @@
 ### Screencast-1:
 https://github.com/user-attachments/assets/b2d6f45d-9825-442a-96a5-72b5f9519c07
 
+## Itearation-2
+[presentation-2](https://github.com/moevm/mse1h2026-resource/blob/reports/docs/Mse1h2026-resource-iteration-2.pdf)
 ### Screencast-2:
 https://github.com/user-attachments/assets/f9ab6b2c-ada6-4d8a-97e6-c6a683e07ee1
 
