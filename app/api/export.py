@@ -31,7 +31,7 @@ router = APIRouter()
     },
 )
 async def export_download(user: CurrentUser, body: ExportRequest) -> Response:
-    content_bytes, content_type, filename = export_service.export_graph(body)
+    content_bytes, content_type, filename = export_service.export_graph(body, user_id=user["user_id"])
     return Response(
         content=content_bytes,
         media_type=content_type,

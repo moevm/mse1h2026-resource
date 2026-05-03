@@ -17,6 +17,15 @@ export function FilterPanel() {
     const nodeTypes = [...new Set(nodes.map((n) => n.type))].sort((a, b) => a.localeCompare(b));
     const edgeTypes = [...new Set(edges.map((e) => e.type))].sort((a, b) => a.localeCompare(b));
 
+    const selectAll = () => {
+        setHiddenNodeTypes([]);
+        setHiddenEdgeTypes([]);
+    };
+    const resetAll = () => {
+        setHiddenNodeTypes(nodeTypes);
+        setHiddenEdgeTypes(edgeTypes);
+    };
+
     if (nodeTypes.length === 0 && edgeTypes.length === 0) {
         return (
             <EmptyState
@@ -29,8 +38,23 @@ export function FilterPanel() {
 
     return (
         <div className="flex flex-col overflow-y-auto max-h-full">
+            {/* Bulk actions */}
+            <div className="flex gap-1.5 px-5 pt-4">
+                <button
+                    onClick={selectAll}
+                    className="flex-1 rounded-md bg-slate-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700/70"
+                >
+                    Select all
+                </button>
+                <button
+                    onClick={resetAll}
+                    className="flex-1 rounded-md bg-slate-800/60 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:bg-slate-700/70"
+                >
+                    Reset filters
+                </button>
+            </div>
             {/* Filter Mode Selection */}
-            <div className="px-5 pt-5 pb-4 border-b border-slate-800/70">
+            <div className="px-5 pt-4 pb-4 border-b border-slate-800/70">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
                     Filter Mode
                 </p>

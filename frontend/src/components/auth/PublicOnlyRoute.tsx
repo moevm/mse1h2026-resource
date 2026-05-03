@@ -1,11 +1,10 @@
-import { Navigate, useLocation } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { useAuthStore } from "../../store/authStore";
 import { Spinner } from "../common/Spinner";
 
-export function ProtectedRoute({ children }: Readonly<{ children: React.ReactNode }>) {
+export function PublicOnlyRoute({ children }: Readonly<{ children: React.ReactNode }>) {
     const user = useAuthStore((s) => s.user);
     const isInitialized = useAuthStore((s) => s.isInitialized);
-    const location = useLocation();
 
     if (!isInitialized) {
         return (
@@ -15,8 +14,8 @@ export function ProtectedRoute({ children }: Readonly<{ children: React.ReactNod
         );
     }
 
-    if (!user) {
-        return <Navigate to="/login" state={{ from: location }} replace />;
+    if (user) {
+        return <Navigate to="/" replace />;
     }
 
     return <>{children}</>;

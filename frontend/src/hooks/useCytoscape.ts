@@ -188,20 +188,7 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
 
         const style = buildCytoscapeStyles(hiddenNodeTypes, hiddenEdgeTypes, filterMode);
         cy.style(style as unknown as string);
-
-        if (filterMode === "exclude") {
-            stopLayout();
-            const visibleEles = cy.elements(":visible");
-            layoutRef.current = visibleEles.layout({
-                ...COSE_BASE,
-                name: "cose",
-                animate: false,
-                numIter: 500,
-                fit: true,
-            } as unknown as cytoscape.LayoutOptions);
-            layoutRef.current.run();
-        }
-    }, [hiddenNodeTypes, hiddenEdgeTypes, filterMode, cyGen, stopLayout]);
+    }, [hiddenNodeTypes, hiddenEdgeTypes, filterMode, cyGen]);
 
     useEffect(() => {
         const cy = cyRef.current;

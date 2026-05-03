@@ -4,6 +4,7 @@ from app.config import settings
 from app.repositories.redis_connection import redis_client
 
 REFRESH_PREFIX = "session:refresh:"
+REFRESH_REVOKED_PREFIX = "session:refresh_revoked:"
 BLACKLIST_PREFIX = "session:blacklist:"
 
 
@@ -15,15 +16,21 @@ async def store_refresh_token(user_id: str, jti: str) -> None:
 
 
 async def validate_refresh_token(user_id: str, jti: str) -> bool:
+    """Refresh tokens are valid as long as the JWT signature/expiry holds and they
+    are not explicitly revoked. We default-allow so that Redis data loss
+    (or migrations from a non-persistent Redis) doesn't sign every user out."""
     client = redis_client.client
-    key = f"{REFRESH_PREFIX}{user_id}:{jti}"
-    return await client.exists(key) > 0
+    revoked_key = f"{REFRESH_REVOKED_PREFIX}{user_id}:{jti}"
+    return await client.exists(revoked_key) == 0
 
 
 async def revoke_refresh_token(user_id: str, jti: str) -> None:
     client = redis_client.client
-    key = f"{REFRESH_PREFIX}{user_id}:{jti}"
-    await client.delete(key)
+    allow_key = f"{REFRESH_PREFIX}{user_id}:{jti}"
+    revoked_key = f"{REFRESH_REVOKED_PREFIX}{user_id}:{jti}"
+    ttl = settings.refresh_token_expire_days * 86400
+    await client.delete(allow_key)
+    await client.setex(revoked_key, ttl, "1")
 
 
 async def revoke_all_user_tokens(user_id: str) -> None:

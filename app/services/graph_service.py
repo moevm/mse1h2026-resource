@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import networkx as nx
 
-from app.repositories import neo4j_repo, application_repo
+from app.repositories import neo4j_repo, application_repo, agent_repo
 from app.models.topology import (
     GraphEdge,
     GraphNode,
@@ -77,6 +77,13 @@ def get_full_graph(
         raw_nodes, raw_edges = neo4j_repo.get_graph_by_sources(
             agent_names, limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
         )
+    elif user_id:
+        agent_names = agent_repo.get_agent_names_for_user(user_id)
+        if not agent_names:
+            return GraphResponse(nodes=[], edges=[], node_count=0, edge_count=0)
+        raw_nodes, raw_edges = neo4j_repo.get_graph_by_sources(
+            agent_names, limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
+        )
     else:
         raw_nodes, raw_edges = neo4j_repo.get_full_graph(
             limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
@@ -110,6 +117,21 @@ def get_impact(node_id: str, depth: int = 3, direction: str = "downstream",
 
 
 def get_stats(user_id: Optional[str] = None) -> GraphStatsResponse:
+    if user_id:
+        # Scope stats to this user's graph data
+        graph = get_full_graph(limit=5000, user_id=user_id)
+        node_types: Dict[str, int] = {}
+        edge_types: Dict[str, int] = {}
+        for n in graph.nodes:
+            node_types[n.type] = node_types.get(n.type, 0) + 1
+        for e in graph.edges:
+            edge_types[e.type.lower()] = edge_types.get(e.type.lower(), 0) + 1
+        return GraphStatsResponse(
+            total_nodes=graph.node_count,
+            total_edges=graph.edge_count,
+            nodes_by_type=node_types,
+            edges_by_type=edge_types,
+        )
     data = neo4j_repo.get_graph_stats()
     if "edges_by_type" in data:
         data["edges_by_type"] = {k.lower(): v for k, v in data["edges_by_type"].items()}

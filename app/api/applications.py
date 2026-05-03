@@ -33,6 +33,7 @@ async def register_application(user: CurrentUser, body: ApplicationRegisterReque
         name=body.name,
         description=body.description,
         owner=body.owner,
+        user_id=user["user_id"],
     )
     return ApplicationRegisterResponse(
         app_id=data["app_id"],
@@ -50,7 +51,7 @@ async def register_application(user: CurrentUser, body: ApplicationRegisterReque
     summary="List all applications",
 )
 async def list_applications(user: CurrentUser) -> List[ApplicationInfo]:
-    apps = application_repo.list_applications()
+    apps = application_repo.list_applications(user_id=user["user_id"])
     result = []
     for app in apps:
         result.append(
@@ -73,7 +74,7 @@ async def list_applications(user: CurrentUser) -> List[ApplicationInfo]:
 )
 async def get_application(user: CurrentUser, app_id: str) -> ApplicationDetail:
     data = application_repo.get_application_detail(app_id)
-    if not data:
+    if not data or data.get("user_id") != user["user_id"]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Application {app_id} not found"

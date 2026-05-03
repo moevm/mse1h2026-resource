@@ -29,6 +29,7 @@ async def lifespan(application: FastAPI):
     application_repo.ensure_application_indexes()
     mapping_repo.ensure_indexes()
     user_repo.ensure_user_indexes()
+    user_repo.ensure_default_admin()
     yield
     neo4j_driver.close()
 

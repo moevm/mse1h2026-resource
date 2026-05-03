@@ -62,8 +62,20 @@ client.interceptors.response.use(
         const originalRequest = err.config;
         const status = err.response?.status;
 
-        // Try token refresh on 401
-        if (status === 401 && originalRequest && !(originalRequest as { _retry?: boolean })._retry) {
+        // Try token refresh on 401 — but not for auth endpoints, where 401 means
+        // wrong credentials / invalid refresh token and refreshing makes no sense.
+        const reqUrl = originalRequest?.url ?? "";
+        const isAuthEndpoint =
+            reqUrl.includes("/auth/login") ||
+            reqUrl.includes("/auth/register") ||
+            reqUrl.includes("/auth/refresh");
+
+        if (
+            status === 401 &&
+            originalRequest &&
+            !isAuthEndpoint &&
+            !(originalRequest as { _retry?: boolean })._retry
+        ) {
             const refreshToken = useAuthStore.getState().refreshToken;
             if (!refreshToken) {
                 useAuthStore.getState().logout();
@@ -102,11 +114,20 @@ client.interceptors.response.use(
         if (typeof rawDetail === "string") {
             detail = rawDetail;
         } else if (Array.isArray(rawDetail)) {
-            detail = rawDetail.map((e: { msg?: string; message?: string } | string) =>
-                typeof e === "string" ? e : e.msg ?? e.message ?? JSON.stringify(e)
-            ).join("; ");
+            detail = rawDetail
+                .map((e: { msg?: string; message?: string; loc?: unknown[] } | string) => {
+                    if (typeof e === "string") return e;
+                    const field = Array.isArray(e.loc)
+                        ? e.loc.filter((p) => p !== "body").join(".")
+                        : "";
+                    const msg = e.msg ?? e.message ?? JSON.stringify(e);
+                    return field ? `${field}: ${msg}` : msg;
+                })
+                .join("; ");
         } else if (rawDetail && typeof rawDetail === "object") {
             detail = JSON.stringify(rawDetail);
+        } else if (status && status >= 500) {
+            detail = "Server error. Please try again later.";
         } else {
             detail = err.message ?? "Unknown error";
         }

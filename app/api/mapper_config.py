@@ -172,15 +172,15 @@ async def create_mapping(user: CurrentUser, config: MappingConfig):
     The mapping defines how to transform raw data from a specific
     source type into graph nodes and edges.
     """
-    # Check for duplicate name
-    existing = mapping_repo.get_by_name(config.name)
+    # Check for duplicate name within this user's mappings
+    existing = mapping_repo.get_by_name(config.name, user_id=user["user_id"])
     if existing:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Mapping with name '{config.name}' already exists",
         )
 
-    created = mapping_repo.create(config)
+    created = mapping_repo.create(config, user_id=user["user_id"])
     return created
 
 
@@ -200,6 +200,7 @@ async def list_mappings(
         source_type=source_type,
         is_active=is_active,
         limit=limit,
+        user_id=user["user_id"],
     )
 
 
@@ -267,7 +268,11 @@ async def get_active_mapping(user: CurrentUser, source_type: str):
 
     Returns null if no mapping is active for this source type.
     """
-    return mapping_repo.get_active_for_source(source_type)
+    mapping = mapping_repo.get_active_for_source(source_type)
+    if mapping is None:
+        return None
+    raw = mapping_repo.get(mapping.id, user_id=user["user_id"])
+    return raw
 
 
 # ============================================================================
@@ -281,7 +286,7 @@ async def get_active_mapping(user: CurrentUser, source_type: str):
 )
 async def get_mapping(user: CurrentUser, mapping_id: str):
     """Get a mapping configuration by ID."""
-    mapping = mapping_repo.get(mapping_id)
+    mapping = mapping_repo.get(mapping_id, user_id=user["user_id"])
     if not mapping:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -298,7 +303,7 @@ async def get_mapping(user: CurrentUser, mapping_id: str):
 async def update_mapping(user: CurrentUser, mapping_id: str, updates: MappingUpdate):
     """Update an existing mapping configuration (partial update)."""
     # Get existing mapping
-    existing = mapping_repo.get(mapping_id)
+    existing = mapping_repo.get(mapping_id, user_id=user["user_id"])
     if not existing:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -321,6 +326,8 @@ async def update_mapping(user: CurrentUser, mapping_id: str, updates: MappingUpd
 )
 async def delete_mapping(user: CurrentUser, mapping_id: str):
     """Delete a mapping configuration."""
+    if mapping_repo.get(mapping_id, user_id=user["user_id"]) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mapping not found")
     deleted = mapping_repo.delete(mapping_id)
     if not deleted:
         raise HTTPException(
@@ -341,6 +348,8 @@ async def activate_mapping(user: CurrentUser, mapping_id: str, background_tasks:
     Active mappings are automatically applied to incoming raw data.
     Also triggers a background replay on all historical data for this source type.
     """
+    if mapping_repo.get(mapping_id, user_id=user["user_id"]) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mapping not found")
     updated = mapping_repo.activate_for_source(mapping_id)
     if not updated:
         raise HTTPException(
@@ -367,6 +376,8 @@ async def activate_mapping(user: CurrentUser, mapping_id: str, background_tasks:
 )
 async def deactivate_mapping(user: CurrentUser, mapping_id: str):
     """Deactivate a mapping."""
+    if mapping_repo.get(mapping_id, user_id=user["user_id"]) is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mapping not found")
     updated = mapping_repo.set_active(mapping_id, False)
     if not updated:
         raise HTTPException(
@@ -383,7 +394,7 @@ async def deactivate_mapping(user: CurrentUser, mapping_id: str):
 )
 async def deactivate_and_clear_mapping(user: CurrentUser, mapping_id: str):
     """Deactivate mapping and delete graph data produced by same source_type agents."""
-    mapping = mapping_repo.get(mapping_id)
+    mapping = mapping_repo.get(mapping_id, user_id=user["user_id"])
     if not mapping:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -417,19 +428,6 @@ async def deactivate_and_clear_mapping(user: CurrentUser, mapping_id: str):
     )
 
 
-@router.get(
-    "/active/{source_type}",
-    response_model=Optional[MappingConfig],
-    summary="Get active mapping for source type",
-)
-async def get_active_mapping(user: CurrentUser, source_type: str):
-    """Get the currently active mapping for a source type.
-
-    Returns null if no mapping is active for this source type.
-    """
-    return mapping_repo.get_active_for_source(source_type)
-
-
 @router.post(
     "/{mapping_id}/replay",
     response_model=ReplayResponse,
@@ -445,7 +443,7 @@ async def replay_mapping(user: CurrentUser, mapping_id: str, request: ReplayRequ
 
     request = request or ReplayRequest()
 
-    mapping = mapping_repo.get(mapping_id)
+    mapping = mapping_repo.get(mapping_id, user_id=user["user_id"])
     if not mapping:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -10,6 +10,7 @@ interface AuthState {
     accessToken: string | null;
     refreshToken: string | null;
     isLoading: boolean;
+    isInitialized: boolean;
     error: string | null;
 
     login: (data: LoginRequest) => Promise<void>;
@@ -25,6 +26,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     accessToken: localStorage.getItem(ACCESS_TOKEN_KEY),
     refreshToken: localStorage.getItem(REFRESH_TOKEN_KEY),
     isLoading: false,
+    isInitialized: false,
     error: null,
 
     setTokens: (access: string, refresh: string) => {
@@ -107,32 +109,50 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     initializeAuth: async () => {
         const { accessToken, refreshToken } = get();
-        if (!accessToken && !refreshToken) return;
 
-        // Try to use existing access token or refresh
-        if (accessToken) {
-            try {
-                const payload = JSON.parse(atob(accessToken.split(".")[1]));
-                const exp = payload.exp * 1000;
-                if (exp > Date.now()) {
-                    set({
-                        user: {
-                            user_id: payload.sub,
-                            email: "",
-                            username: "",
-                            is_active: true,
-                            created_at: null,
-                        },
-                    });
-                    return;
+        try {
+            if (accessToken) {
+                try {
+                    const payload = JSON.parse(atob(accessToken.split(".")[1]));
+                    const exp = payload.exp * 1000;
+                    if (exp > Date.now()) {
+                        set({
+                            user: {
+                                user_id: payload.sub,
+                                email: "",
+                                username: "",
+                                is_active: true,
+                                created_at: null,
+                            },
+                        });
+                        return;
+                    }
+                } catch {
+                    // Token is malformed, try refresh
                 }
-            } catch {
-                // Token is malformed, try refresh
             }
-        }
 
-        if (refreshToken) {
-            await get().refreshAccessToken();
+            if (refreshToken) {
+                const newToken = await get().refreshAccessToken();
+                if (newToken) {
+                    try {
+                        const payload = JSON.parse(atob(newToken.split(".")[1]));
+                        set({
+                            user: {
+                                user_id: payload.sub,
+                                email: "",
+                                username: "",
+                                is_active: true,
+                                created_at: null,
+                            },
+                        });
+                    } catch {
+                        // ignore — user stays null, will be redirected to /login
+                    }
+                }
+            }
+        } finally {
+            set({ isInitialized: true });
         }
     },
 }));

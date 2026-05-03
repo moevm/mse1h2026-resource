@@ -3,18 +3,18 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
 
 
 class RegisterRequest(BaseModel):
-    email: str = Field(..., description="User email")
-    username: str = Field(..., min_length=3, max_length=50, description="Username")
-    password: str = Field(..., min_length=6, max_length=128, description="Password")
+    email: EmailStr = Field(..., max_length=254, description="User email")
+    username: str = Field(..., min_length=3, max_length=32, description="Username")
+    password: str = Field(..., min_length=5, max_length=72, description="Password")
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(..., description="User email")
-    password: str = Field(..., description="Password")
+    email: EmailStr = Field(..., max_length=254, description="User email")
+    password: str = Field(..., min_length=1, max_length=72, description="Password")
 
 
 class UserResponse(BaseModel):

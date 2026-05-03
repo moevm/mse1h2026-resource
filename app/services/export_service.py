@@ -17,9 +17,10 @@ from app.services.graph_service import get_full_graph
 
 log = logging.getLogger(__name__)
 
-def export_graph(request: ExportRequest) -> tuple[bytes, str, str]:
+def export_graph(request: ExportRequest, user_id: Optional[str] = None) -> tuple[bytes, str, str]:
     graph = get_full_graph(
         request.limit,
+        user_id=user_id,
         exclude_node_types=request.exclude_node_types,
         exclude_edge_types=request.exclude_edge_types,
         filter_mode=request.filter_mode,

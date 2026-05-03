@@ -1,9 +1,10 @@
 import { Suspense, lazy, useEffect } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AppLayout } from "./components/layout/AppLayout";
 import { ErrorBoundary } from "./components/common/ErrorBoundary";
 import { Spinner } from "./shared/components/Spinner";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
+import { PublicOnlyRoute } from "./components/auth/PublicOnlyRoute";
 import { LoginPage } from "./components/auth/LoginPage";
 import { RegisterPage } from "./components/auth/RegisterPage";
 import { useAuthStore } from "./store/authStore";
@@ -15,10 +16,19 @@ const MapperPage = lazy(() => import("./components/mapper/MapperPage").then((m) 
 
 function AuthInitializer({ children }: Readonly<{ children: React.ReactNode }>) {
     const initializeAuth = useAuthStore((s) => s.initializeAuth);
+    const isInitialized = useAuthStore((s) => s.isInitialized);
 
     useEffect(() => {
         void initializeAuth();
     }, [initializeAuth]);
+
+    if (!isInitialized) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <Spinner size="lg" label="Loading..." />
+            </div>
+        );
+    }
 
     return <>{children}</>;
 }
@@ -36,8 +46,22 @@ export default function App() {
                         }
                     >
                         <Routes>
-                            <Route path="/login" element={<LoginPage />} />
-                            <Route path="/register" element={<RegisterPage />} />
+                            <Route
+                                path="/login"
+                                element={
+                                    <PublicOnlyRoute>
+                                        <LoginPage />
+                                    </PublicOnlyRoute>
+                                }
+                            />
+                            <Route
+                                path="/register"
+                                element={
+                                    <PublicOnlyRoute>
+                                        <RegisterPage />
+                                    </PublicOnlyRoute>
+                                }
+                            />
                             <Route
                                 path="/graph"
                                 element={
@@ -76,6 +100,7 @@ export default function App() {
                                     </ProtectedRoute>
                                 }
                             />
+                            <Route path="*" element={<Navigate to="/" replace />} />
                         </Routes>
                     </Suspense>
                 </AuthInitializer>

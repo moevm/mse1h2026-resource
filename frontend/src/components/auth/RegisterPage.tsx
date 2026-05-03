@@ -20,6 +20,22 @@ export function RegisterPage() {
             setError("Passwords do not match");
             return;
         }
+        if (password.length < 5) {
+            setError("Password must be at least 5 characters");
+            return;
+        }
+        if (password.length > 72) {
+            setError("Password must be 72 characters or fewer");
+            return;
+        }
+        if (username.length < 3 || username.length > 32) {
+            setError("Username must be 3–32 characters");
+            return;
+        }
+        if (email.length > 254) {
+            setError("Email is too long");
+            return;
+        }
 
         try {
             await register({ email, username, password });
@@ -48,6 +64,7 @@ export function RegisterPage() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
+                            maxLength={254}
                             className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             placeholder="you@example.com"
                         />
@@ -61,8 +78,9 @@ export function RegisterPage() {
                             onChange={(e) => setUsername(e.target.value)}
                             required
                             minLength={3}
+                            maxLength={32}
                             className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            placeholder="Choose a username"
+                            placeholder="3–32 characters"
                         />
                     </div>
 
@@ -73,9 +91,10 @@ export function RegisterPage() {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             required
-                            minLength={6}
+                            minLength={5}
+                            maxLength={72}
                             className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                            placeholder="Min 6 characters"
+                            placeholder="5–72 characters"
                         />
                     </div>
 
@@ -86,6 +105,7 @@ export function RegisterPage() {
                             value={confirmPassword}
                             onChange={(e) => setConfirmPassword(e.target.value)}
                             required
+                            maxLength={72}
                             className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             placeholder="Repeat password"
                         />

@@ -2,7 +2,7 @@ services:
   redis:
     image: redis:7-alpine
     container_name: resource-redis
-    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    command: ["redis-server", "--save", "60", "1", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
     security_opt:

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useGraph } from "../../hooks/useGraph";
 import { useGraphStore } from "../../store/graphStore";
 import { useLogStore } from "../../store/logStore";
@@ -43,6 +43,13 @@ export function DashboardPage() {
         await Promise.all([loadStats(), loadAnalytics()]);
         setRefreshing(false);
     }, [loadStats, loadAnalytics]);
+
+    const autoLoadDone = useRef(false);
+    useEffect(() => {
+        if (autoLoadDone.current) return;
+        autoLoadDone.current = true;
+        void handleRefresh();
+    }, [handleRefresh]);
 
     const totalNodes = stats?.total_nodes ?? nodes.length;
     const totalEdges = stats?.total_edges ?? edges.length;

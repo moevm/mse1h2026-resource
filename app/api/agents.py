@@ -27,7 +27,7 @@ async def register_agent(user: CurrentUser, body: AgentRegisterRequest) -> Agent
     app_id = None
     if body.app_token:
         app = application_repo.get_by_token(body.app_token)
-        if not app:
+        if not app or app.get("user_id") != user["user_id"]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid app_token. Register application first at POST /api/v1/apps/register"
@@ -39,6 +39,7 @@ async def register_agent(user: CurrentUser, body: AgentRegisterRequest) -> Agent
         source_type=body.source_type,
         description=body.description,
         app_id=app_id,
+        user_id=user["user_id"],
     )
     return AgentRegisterResponse(
         agent_id=data["agent_id"],
@@ -55,7 +56,7 @@ async def register_agent(user: CurrentUser, body: AgentRegisterRequest) -> Agent
     summary="List all registered agents",
 )
 async def list_agents(user: CurrentUser) -> List[AgentInfo]:
-    agents = agent_repo.list_agents()
+    agents = agent_repo.list_agents(user_id=user["user_id"])
     result = []
     for a in agents:
         result.append(

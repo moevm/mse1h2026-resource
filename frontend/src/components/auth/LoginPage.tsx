@@ -42,6 +42,7 @@ export function LoginPage() {
                             value={email}
                             onChange={(e) => setEmail(e.target.value)}
                             required
+                            maxLength={254}
                             className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             placeholder="you@example.com"
                         />
@@ -54,6 +55,7 @@ export function LoginPage() {
                             value={password}
                             onChange={(e) => setPassword(e.target.value)}
                             required
+                            maxLength={72}
                             className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                             placeholder="Enter password"
                         />

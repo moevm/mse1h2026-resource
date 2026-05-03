@@ -52,6 +52,28 @@ def create_user(email: str, username: str, password_hash: str) -> Dict[str, Any]
     }
 
 
+def get_by_username(username: str) -> Optional[Dict[str, Any]]:
+    with neo4j_driver.session() as session:
+        result = session.run(
+            "MATCH (u:User {username: $username}) RETURN u",
+            username=username,
+        )
+        record = result.single()
+        if record is None:
+            return None
+        return dict(record["u"])
+
+
+def ensure_default_admin() -> None:
+    from app.core.security import hash_password
+
+    if get_by_username("admin") is not None:
+        return
+    if get_by_email("admin@example.com") is not None:
+        return
+    create_user("admin@example.com", "admin", hash_password("admin"))
+
+
 def get_by_email(email: str) -> Optional[Dict[str, Any]]:
     with neo4j_driver.session() as session:
         result = session.run(

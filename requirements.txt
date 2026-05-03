@@ -1,6 +1,6 @@
 fastapi>=0.110,<1
 uvicorn[standard]>=0.29,<1
-pydantic>=2.6,<3
+pydantic[email]>=2.6,<3
 pydantic-settings>=2.2,<3
 neo4j>=5.19,<6
 networkx>=3.2,<4

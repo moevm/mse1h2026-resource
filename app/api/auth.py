@@ -113,16 +113,19 @@ async def refresh(body: RefreshTokenRequest):
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
 async def logout(
-    user: CurrentUser,
     body: RefreshTokenRequest,
+    token: str = Depends(oauth2_scheme),
 ):
-    user_id = user["user_id"]
+    """Logout is best-effort — even if the access token is expired, we still
+    revoke the refresh token so the session ends server-side."""
+    if token:
+        access_payload = decode_token(token)
+        if access_payload and access_payload.get("type") == "access":
+            ttl = settings.access_token_expire_minutes * 60
+            await session_repo.blacklist_access_token(access_payload["jti"], ttl)
 
-    # Blacklist the current access token
-    ttl = settings.access_token_expire_minutes * 60
-    await session_repo.blacklist_access_token(user["jti"], ttl)
-
-    # Revoke the refresh token
     refresh_payload = decode_token(body.refresh_token)
     if refresh_payload and refresh_payload.get("type") == "refresh":
-        await session_repo.revoke_refresh_token(user_id, refresh_payload["jti"])
+        await session_repo.revoke_refresh_token(
+            refresh_payload["sub"], refresh_payload["jti"]
+        )
