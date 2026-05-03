@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     redis_password: str = ""
     raw_data_ttl_hours: int = 24
 
+    jwt_secret_key: str = "change-me-in-production"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 15
+    refresh_token_expire_days: int = 7
+
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
 
 

@@ -301,7 +301,8 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
             }
 
             stopLayout();
-            layoutRef.current = cy.layout(opts as unknown as cytoscape.LayoutOptions);
+            const targetElements = cy.elements(":visible");
+            layoutRef.current = targetElements.layout(opts as unknown as cytoscape.LayoutOptions);
             layoutRef.current.run();
         },
         [stopLayout],

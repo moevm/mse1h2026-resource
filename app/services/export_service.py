@@ -18,9 +18,14 @@ from app.services.graph_service import get_full_graph
 log = logging.getLogger(__name__)
 
 def export_graph(request: ExportRequest) -> tuple[bytes, str, str]:
-    graph = get_full_graph(request.limit)
+    graph = get_full_graph(
+        request.limit,
+        exclude_node_types=request.exclude_node_types,
+        exclude_edge_types=request.exclude_edge_types,
+        filter_mode=request.filter_mode,
+    )
 
-    # Apply type filters
+    # Apply positive type filters (include-only) as post-processing
     if request.node_types:
         allowed = set(request.node_types)
         graph = _filter_by_node_types(graph, allowed)

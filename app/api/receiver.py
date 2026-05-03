@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.auth import require_agent
+from app.api.auth import CurrentUser
 from app.models.mapper.raw_data import RawDataSource, RawDataListResponse
 from app.repositories.raw_data_repo import raw_data_repo
 from app.repositories.mapping_repo import mapping_repo
@@ -106,6 +107,7 @@ async def receive_raw_data(
     summary="List stored raw data chunks",
 )
 async def list_raw_data(
+    user: CurrentUser,
     agent_id: Optional[str] = Query(None, description="Filter by agent ID"),
     source_type: Optional[RawDataSource] = Query(None, description="Filter by source type"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of chunks to return"),
@@ -121,7 +123,7 @@ async def list_raw_data(
     "/raw/{chunk_id}",
     summary="Get specific raw data chunk",
 )
-async def get_raw_data(chunk_id: str):
+async def get_raw_data(user: CurrentUser, chunk_id: str):
     chunk = await raw_data_repo.get_chunk(chunk_id)
     if not chunk:
         raise HTTPException(
@@ -136,7 +138,7 @@ async def get_raw_data(chunk_id: str):
     summary="Delete a raw data chunk",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_raw_data(chunk_id: str):
+async def delete_raw_data(user: CurrentUser, chunk_id: str):
     deleted = await raw_data_repo.delete_chunk(chunk_id)
     if not deleted:
         raise HTTPException(

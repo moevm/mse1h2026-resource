@@ -4,6 +4,7 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Query
 
+from app.api.auth import CurrentUser
 from app.models.topology import (
     GraphResponse,
     GraphStatsResponse,
@@ -15,6 +16,7 @@ from app.services import graph_service
 
 router = APIRouter()
 
+
 @router.get(
     "/full",
     response_model=GraphResponse,
@@ -22,10 +24,23 @@ router = APIRouter()
     description="Returns all nodes and edges (with a default limit of 500 to protect the browser).",
 )
 async def full_graph(
+    user: CurrentUser,
     limit: Annotated[int, Query(ge=1, le=5000)] = 500,
     app_id: Optional[str] = Query(None, description="Filter by application ID"),
+    exclude_node_types: Optional[str] = Query(None, description="Comma-separated node types to exclude"),
+    exclude_edge_types: Optional[str] = Query(None, description="Comma-separated edge types to exclude"),
+    filter_mode: str = Query("ghost", description="Filter mode: ghost or exclude"),
 ):
-    return graph_service.get_full_graph(limit, app_id=app_id)
+    ex_nodes = exclude_node_types.split(",") if exclude_node_types else None
+    ex_edges = exclude_edge_types.split(",") if exclude_edge_types else None
+    return graph_service.get_full_graph(
+        limit,
+        app_id=app_id,
+        user_id=user["user_id"],
+        exclude_node_types=ex_nodes,
+        exclude_edge_types=ex_edges,
+        filter_mode=filter_mode,
+    )
 
 
 @router.post(
@@ -34,24 +49,27 @@ async def full_graph(
     summary="Get a subgraph around a specific node",
     description="BFS from center_node_id up to *depth* hops. Optionally filter by node/edge types.",
 )
-async def subgraph(body: SubgraphRequest):
+async def subgraph(user: CurrentUser, body: SubgraphRequest):
     return graph_service.get_subgraph(
         center_id=body.center_node_id,
         depth=body.depth,
         node_types=body.node_types,
         edge_types=body.edge_types,
+        user_id=user["user_id"],
     )
+
 
 @router.post(
     "/path",
     response_model=GraphResponse,
     summary="Find the shortest path between two nodes",
 )
-async def shortest_path(body: PathRequest):
+async def shortest_path(user: CurrentUser, body: PathRequest):
     return graph_service.find_path(
         source_id=body.source_id,
         target_id=body.target_id,
         max_depth=body.max_depth,
+        user_id=user["user_id"],
     )
 
 
@@ -64,11 +82,12 @@ async def shortest_path(body: PathRequest):
         "to find all affected resources."
     ),
 )
-async def impact_analysis(body: ImpactRequest):
+async def impact_analysis(user: CurrentUser, body: ImpactRequest):
     return graph_service.get_impact(
         node_id=body.node_id,
         depth=body.depth,
         direction=body.direction,
+        user_id=user["user_id"],
     )
 
 
@@ -77,16 +96,19 @@ async def impact_analysis(body: ImpactRequest):
     response_model=GraphStatsResponse,
     summary="Aggregated graph statistics",
 )
-async def graph_stats():
-    return graph_service.get_stats()
+async def graph_stats(user: CurrentUser):
+    return graph_service.get_stats(user_id=user["user_id"])
 
 
 @router.get(
     "/analytics",
     summary="NetworkX analytics (PageRank, betweenness, communities)",
 )
-async def analytics(limit: Annotated[int, Query(ge=1, le=10000)] = 1000):
-    return graph_service.compute_analytics(limit)
+async def analytics(
+    user: CurrentUser,
+    limit: Annotated[int, Query(ge=1, le=10000)] = 1000,
+):
+    return graph_service.compute_analytics(limit, user_id=user["user_id"])
 
 
 @router.get(
@@ -95,7 +117,8 @@ async def analytics(limit: Annotated[int, Query(ge=1, le=10000)] = 1000):
     description="Useful for rendering the graph immediately on the frontend.",
 )
 async def graph_layout(
+    user: CurrentUser,
     limit: Annotated[int, Query(ge=1, le=5000)] = 500,
     layout: Annotated[str, Query(pattern="^(spring|kamada_kawai|circular|shell)$")] = "spring",
 ):
-    return graph_service.get_graph_with_layout(limit, layout)
+    return graph_service.get_graph_with_layout(limit, layout, user_id=user["user_id"])

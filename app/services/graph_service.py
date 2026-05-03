@@ -59,14 +59,28 @@ def _build_response(raw_nodes: List[Dict], raw_edges: List[Dict]) -> GraphRespon
     )
 
 
-def get_full_graph(limit: int = 500, app_id: Optional[str] = None) -> GraphResponse:
+def get_full_graph(
+    limit: int = 500,
+    app_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    exclude_node_types: Optional[List[str]] = None,
+    exclude_edge_types: Optional[List[str]] = None,
+    filter_mode: str = "ghost",
+) -> GraphResponse:
+    ex_nodes = exclude_node_types if filter_mode == "exclude" else None
+    ex_edges = exclude_edge_types if filter_mode == "exclude" else None
+
     if app_id:
         agent_names = application_repo.get_agent_names_for_application(app_id)
         if not agent_names:
             return GraphResponse(nodes=[], edges=[], node_count=0, edge_count=0)
-        raw_nodes, raw_edges = neo4j_repo.get_graph_by_sources(agent_names, limit)
+        raw_nodes, raw_edges = neo4j_repo.get_graph_by_sources(
+            agent_names, limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
+        )
     else:
-        raw_nodes, raw_edges = neo4j_repo.get_full_graph(limit)
+        raw_nodes, raw_edges = neo4j_repo.get_full_graph(
+            limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
+        )
     return _build_response(raw_nodes, raw_edges)
 
 
@@ -75,6 +89,7 @@ def get_subgraph(
     depth: int = 2,
     node_types: Optional[List[str]] = None,
     edge_types: Optional[List[str]] = None,
+    user_id: Optional[str] = None,
 ) -> GraphResponse:
     raw_nodes, raw_edges = neo4j_repo.get_subgraph(
         center_id, depth, node_types, edge_types,
@@ -82,17 +97,19 @@ def get_subgraph(
     return _build_response(raw_nodes, raw_edges)
 
 
-def find_path(source_id: str, target_id: str, max_depth: int = 5) -> GraphResponse:
+def find_path(source_id: str, target_id: str, max_depth: int = 5,
+              user_id: Optional[str] = None) -> GraphResponse:
     raw_nodes, raw_edges = neo4j_repo.find_shortest_path(source_id, target_id, max_depth)
     return _build_response(raw_nodes, raw_edges)
 
 
-def get_impact(node_id: str, depth: int = 3, direction: str = "downstream") -> GraphResponse:
+def get_impact(node_id: str, depth: int = 3, direction: str = "downstream",
+               user_id: Optional[str] = None) -> GraphResponse:
     raw_nodes, raw_edges = neo4j_repo.get_impact(node_id, depth, direction)
     return _build_response(raw_nodes, raw_edges)
 
 
-def get_stats() -> GraphStatsResponse:
+def get_stats(user_id: Optional[str] = None) -> GraphStatsResponse:
     data = neo4j_repo.get_graph_stats()
     if "edges_by_type" in data:
         data["edges_by_type"] = {k.lower(): v for k, v in data["edges_by_type"].items()}
@@ -111,8 +128,9 @@ def _build_nx_graph(response: GraphResponse) -> nx.DiGraph:
     return G
 
 
-def compute_analytics(limit: int = 1000) -> Dict[str, Any]:
-    graph_resp = get_full_graph(limit)
+def compute_analytics(limit: int = 1000,
+                       user_id: Optional[str] = None) -> Dict[str, Any]:
+    graph_resp = get_full_graph(limit, user_id=user_id)
     G = _build_nx_graph(graph_resp)
 
     if G.number_of_nodes() == 0:
@@ -152,8 +170,12 @@ def compute_analytics(limit: int = 1000) -> Dict[str, Any]:
     return analytics
 
 
-def get_graph_with_layout(limit: int = 500, layout: str = "spring") -> Dict[str, Any]:
-    graph_resp = get_full_graph(limit)
+def get_graph_with_layout(
+    limit: int = 500,
+    layout: str = "spring",
+    user_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    graph_resp = get_full_graph(limit, user_id=user_id)
     G = _build_nx_graph(graph_resp)
 
     layout_funcs = {

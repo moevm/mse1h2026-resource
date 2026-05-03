@@ -5,6 +5,7 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.api.auth import CurrentUser
 from app.models.agent import AgentInfo, AgentRegisterRequest, AgentRegisterResponse
 from app.repositories import agent_repo, application_repo
 
@@ -22,8 +23,7 @@ router = APIRouter()
         "Re-registering with the same name returns the existing token."
     ),
 )
-async def register_agent(body: AgentRegisterRequest) -> AgentRegisterResponse:
-    # Validate app_token if provided
+async def register_agent(user: CurrentUser, body: AgentRegisterRequest) -> AgentRegisterResponse:
     app_id = None
     if body.app_token:
         app = application_repo.get_by_token(body.app_token)
@@ -54,7 +54,7 @@ async def register_agent(body: AgentRegisterRequest) -> AgentRegisterResponse:
     response_model=List[AgentInfo],
     summary="List all registered agents",
 )
-async def list_agents() -> List[AgentInfo]:
+async def list_agents(user: CurrentUser) -> List[AgentInfo]:
     agents = agent_repo.list_agents()
     result = []
     for a in agents:

@@ -5,6 +5,7 @@ from typing import List
 
 from fastapi import APIRouter, HTTPException, status
 
+from app.api.auth import CurrentUser
 from app.models.application import (
     ApplicationInfo,
     ApplicationDetail,
@@ -27,7 +28,7 @@ router = APIRouter()
         "Returns an app_token that agents can use to bind to this application."
     ),
 )
-async def register_application(body: ApplicationRegisterRequest) -> ApplicationRegisterResponse:
+async def register_application(user: CurrentUser, body: ApplicationRegisterRequest) -> ApplicationRegisterResponse:
     data = application_repo.register_application(
         name=body.name,
         description=body.description,
@@ -48,7 +49,7 @@ async def register_application(body: ApplicationRegisterRequest) -> ApplicationR
     response_model=List[ApplicationInfo],
     summary="List all applications",
 )
-async def list_applications() -> List[ApplicationInfo]:
+async def list_applications(user: CurrentUser) -> List[ApplicationInfo]:
     apps = application_repo.list_applications()
     result = []
     for app in apps:
@@ -70,7 +71,7 @@ async def list_applications() -> List[ApplicationInfo]:
     response_model=ApplicationDetail,
     summary="Get application details with agents",
 )
-async def get_application(app_id: str) -> ApplicationDetail:
+async def get_application(user: CurrentUser, app_id: str) -> ApplicationDetail:
     data = application_repo.get_application_detail(app_id)
     if not data:
         raise HTTPException(

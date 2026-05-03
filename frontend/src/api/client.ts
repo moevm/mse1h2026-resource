@@ -1,4 +1,5 @@
 import axios from "axios";
+import { useAuthStore } from "../store/authStore";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "";
 
@@ -13,6 +14,11 @@ client.interceptors.request.use((config) => {
         startedAt: Date.now(),
     };
 
+    const token = useAuthStore.getState().accessToken;
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+
     if (import.meta.env.DEV) {
         console.debug(
             `[API] ${String(config.method).toUpperCase()} ${config.baseURL ?? ""}${config.url ?? ""}`,
@@ -20,6 +26,20 @@ client.interceptors.request.use((config) => {
     }
     return config;
 });
+
+let isRefreshing = false;
+let failedQueue: Array<{
+    resolve: (token: string) => void;
+    reject: (err: unknown) => void;
+}> = [];
+
+function processQueue(error: unknown, token: string | null) {
+    failedQueue.forEach((p) => {
+        if (error) p.reject(error);
+        else if (token) p.resolve(token);
+    });
+    failedQueue = [];
+}
 
 client.interceptors.response.use(
     (res) => {
@@ -34,16 +54,62 @@ client.interceptors.response.use(
         }
         return res;
     },
-    (err: unknown) => {
+    async (err: unknown) => {
         if (!axios.isAxiosError(err)) {
-            return Promise.reject(err instanceof Error ? err : new Error("Unknown API error"));
+            throw err instanceof Error ? err : new Error("Unknown API error");
         }
 
+        const originalRequest = err.config;
         const status = err.response?.status;
-        const detail =
-            (err.response?.data as { detail?: string } | undefined)?.detail ??
-            err.message ??
-            "Unknown error";
+
+        // Try token refresh on 401
+        if (status === 401 && originalRequest && !(originalRequest as { _retry?: boolean })._retry) {
+            const refreshToken = useAuthStore.getState().refreshToken;
+            if (!refreshToken) {
+                useAuthStore.getState().logout();
+                throw err;
+            }
+
+            if (isRefreshing) {
+                return new Promise<string>((resolve, reject) => {
+                    failedQueue.push({ resolve, reject });
+                }).then((token) => {
+                    originalRequest.headers.Authorization = `Bearer ${token}`;
+                    return client(originalRequest);
+                });
+            }
+
+            (originalRequest as { _retry?: boolean })._retry = true;
+            isRefreshing = true;
+
+            try {
+                const newToken = await useAuthStore.getState().refreshAccessToken();
+                if (newToken) {
+                    processQueue(null, newToken);
+                    originalRequest.headers.Authorization = `Bearer ${newToken}`;
+                    return client(originalRequest);
+                }
+            } catch (refreshErr) {
+                processQueue(refreshErr, null);
+                useAuthStore.getState().logout();
+            } finally {
+                isRefreshing = false;
+            }
+        }
+
+        const rawDetail = (err.response?.data as { detail?: unknown } | undefined)?.detail;
+        let detail: string;
+        if (typeof rawDetail === "string") {
+            detail = rawDetail;
+        } else if (Array.isArray(rawDetail)) {
+            detail = rawDetail.map((e: { msg?: string; message?: string } | string) =>
+                typeof e === "string" ? e : e.msg ?? e.message ?? JSON.stringify(e)
+            ).join("; ");
+        } else if (rawDetail && typeof rawDetail === "object") {
+            detail = JSON.stringify(rawDetail);
+        } else {
+            detail = err.message ?? "Unknown error";
+        }
 
         let message = detail;
         if (err.code === "ECONNABORTED") {
@@ -53,7 +119,7 @@ client.interceptors.response.use(
         }
 
         console.error(`[API] Error ${String(status ?? "network")}: ${message}`);
-        return Promise.reject(new Error(message));
+        throw new Error(message);
     },
 );
 

@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useUiStore } from "../../store/uiStore";
 import { useGraphStore } from "../../store/graphStore";
+import { useAuthStore } from "../../store/authStore";
 import { IconChevronLeft } from "../icons";
 import { NAV_ITEMS } from "../../lib/constants/navigation";
 import { STATUS_CONFIG } from "../../lib/constants/status";
@@ -11,6 +12,13 @@ export function Sidebar() {
     const collapsed = useUiStore((s) => s.sidebarCollapsed);
     const toggleSidebar = useUiStore((s) => s.toggleSidebar);
     const backendStatus = useGraphStore((s) => s.backendStatus);
+    const logout = useAuthStore((s) => s.logout);
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        await logout();
+        navigate("/login", { replace: true });
+    };
 
     return (
         <aside
@@ -111,6 +119,14 @@ export function Sidebar() {
                     </span>
                 )}
             </div>
+
+            <button
+                onClick={() => void handleLogout()}
+                title="Sign out"
+                className="flex items-center justify-center h-9 w-full border-t border-slate-800/60 text-slate-700 hover:text-red-400 hover:bg-slate-800/30 transition-colors shrink-0 text-xs"
+            >
+                {collapsed ? "Out" : "Sign Out"}
+            </button>
 
             <button
                 onClick={toggleSidebar}

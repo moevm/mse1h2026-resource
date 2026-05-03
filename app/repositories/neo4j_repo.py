@@ -139,41 +139,67 @@ def _upsert_edges_tx(tx: ManagedTransaction, edges: List[Dict], source: str, now
     return count
 
 
-def get_full_graph(limit: int = 500) -> Tuple[List[Dict], List[Dict]]:
+def get_full_graph(
+    limit: int = 500,
+    exclude_node_types: Optional[List[str]] = None,
+    exclude_edge_types: Optional[List[str]] = None,
+) -> Tuple[List[Dict], List[Dict]]:
     with neo4j_driver.session() as session:
-        nodes = session.execute_read(_read_all_nodes, limit)
+        nodes = session.execute_read(_read_all_nodes, limit, exclude_node_types)
         node_ids = [n["id"] for n in nodes]
-        edges = session.execute_read(_read_edges_for_nodes, node_ids)
+        edges = session.execute_read(_read_edges_for_nodes, node_ids, exclude_edge_types)
     return nodes, edges
 
 
-def get_graph_by_sources(sources: List[str], limit: int = 500) -> Tuple[List[Dict], List[Dict]]:
+def get_graph_by_sources(
+    sources: List[str],
+    limit: int = 500,
+    exclude_node_types: Optional[List[str]] = None,
+    exclude_edge_types: Optional[List[str]] = None,
+) -> Tuple[List[Dict], List[Dict]]:
     if not sources:
         return [], []
 
     with neo4j_driver.session() as session:
-        nodes = session.execute_read(_read_nodes_by_sources, sources, limit)
+        nodes = session.execute_read(_read_nodes_by_sources, sources, limit, exclude_node_types)
         node_ids = [n["id"] for n in nodes]
-        edges = session.execute_read(_read_edges_for_nodes, node_ids)
+        edges = session.execute_read(_read_edges_for_nodes, node_ids, exclude_edge_types)
     return nodes, edges
 
 
-def _read_nodes_by_sources(tx: ManagedTransaction, sources: List[str], limit: int) -> List[Dict]:
-    result = tx.run(
-        "MATCH (r:Resource) "
-        "WHERE r.source IN $sources "
-        "RETURN r LIMIT $limit",
-        sources=sources,
-        limit=limit,
-    )
+def _read_nodes_by_sources(
+    tx: ManagedTransaction,
+    sources: List[str],
+    limit: int,
+    exclude_node_types: Optional[List[str]] = None,
+) -> List[Dict]:
+    query = "MATCH (r:Resource) WHERE r.source IN $sources "
+    params: Dict[str, Any] = {"sources": sources, "limit": limit}
+    if exclude_node_types:
+        query += "AND NOT r.type IN $exclude_node_types "
+        params["exclude_node_types"] = exclude_node_types
+    query += "RETURN r LIMIT $limit"
+    result = tx.run(query, **params)
     return [_node_record_to_dict(record["r"]) for record in result]
 
 
-def _read_all_nodes(tx: ManagedTransaction, limit: int) -> List[Dict]:
-    result = tx.run(
-        "MATCH (r:Resource) RETURN r LIMIT $limit",
-        limit=limit,
-    )
+def _read_all_nodes(
+    tx: ManagedTransaction,
+    limit: int,
+    exclude_node_types: Optional[List[str]] = None,
+) -> List[Dict]:
+    if exclude_node_types:
+        result = tx.run(
+            "MATCH (r:Resource) WHERE NOT r.type IN $exclude_node_types "
+            "RETURN r LIMIT $limit",
+            exclude_node_types=exclude_node_types,
+            limit=limit,
+        )
+    else:
+        result = tx.run(
+            "MATCH (r:Resource) RETURN r LIMIT $limit",
+            limit=limit,
+        )
     return [_node_record_to_dict(record["r"]) for record in result]
 
 
@@ -199,18 +225,28 @@ def _read_all_edges(tx: ManagedTransaction, limit: int) -> List[Dict]:
     return rows
 
 
-def _read_edges_for_nodes(tx: ManagedTransaction, node_ids: List[str]) -> List[Dict]:
+def _read_edges_for_nodes(
+    tx: ManagedTransaction,
+    node_ids: List[str],
+    exclude_edge_types: Optional[List[str]] = None,
+) -> List[Dict]:
     if not node_ids:
         return []
-    result = tx.run(
+    query = (
         "MATCH (a:Resource)-[rel]->(b:Resource) "
         "WHERE a.external_id IN $ids AND b.external_id IN $ids "
+    )
+    params: Dict[str, Any] = {"ids": node_ids}
+    if exclude_edge_types:
+        query += "AND NOT type(rel) IN $exclude_edge_types "
+        params["exclude_edge_types"] = [t.upper() for t in exclude_edge_types]
+    query += (
         "RETURN a.external_id AS source_id, "
         "       b.external_id AS target_id, "
         "       type(rel) AS type, "
-        "       properties(rel) AS props",
-        ids=node_ids,
+        "       properties(rel) AS props"
     )
+    result = tx.run(query, **params)
     rows: List[Dict] = []
     seen: set = set()
     for record in result:

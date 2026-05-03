@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
 from pydantic import BaseModel
 
+from app.api.auth import CurrentUser
 from app.models.mapper.mapping import (
     AutoEdgeRule,
     ConditionalRule,
@@ -165,7 +166,7 @@ async def replay_mapping_background(mapping_id: str, source_type: str) -> None:
     summary="Create a new mapping configuration",
     status_code=status.HTTP_201_CREATED,
 )
-async def create_mapping(config: MappingConfig):
+async def create_mapping(user: CurrentUser, config: MappingConfig):
     """Create a new mapping configuration.
 
     The mapping defines how to transform raw data from a specific
@@ -189,6 +190,7 @@ async def create_mapping(config: MappingConfig):
     summary="List all mapping configurations",
 )
 async def list_mappings(
+    user: CurrentUser,
     source_type: Optional[str] = Query(None, description="Filter by source type"),
     is_active: Optional[bool] = Query(None, description="Filter by active status"),
     limit: int = Query(100, ge=1, le=1000),
@@ -206,7 +208,7 @@ async def list_mappings(
     response_model=RecreateEdgesResponse,
     summary="Recreate all edges based on auto-edge rules",
 )
-async def recreate_all_edges(request: RecreateEdgesRequest = None):
+async def recreate_all_edges(user: CurrentUser, request: RecreateEdgesRequest = None):
     """Recreate edges for all nodes in the graph.
 
     This is useful after bulk data insertion when edges may have been
@@ -260,7 +262,7 @@ async def recreate_all_edges(request: RecreateEdgesRequest = None):
     response_model=Optional[MappingConfig],
     summary="Get active mapping for source type",
 )
-async def get_active_mapping(source_type: str):
+async def get_active_mapping(user: CurrentUser, source_type: str):
     """Get the currently active mapping for a source type.
 
     Returns null if no mapping is active for this source type.
@@ -277,7 +279,7 @@ async def get_active_mapping(source_type: str):
     response_model=MappingConfig,
     summary="Get a specific mapping configuration",
 )
-async def get_mapping(mapping_id: str):
+async def get_mapping(user: CurrentUser, mapping_id: str):
     """Get a mapping configuration by ID."""
     mapping = mapping_repo.get(mapping_id)
     if not mapping:
@@ -293,7 +295,7 @@ async def get_mapping(mapping_id: str):
     response_model=MappingConfig,
     summary="Update a mapping configuration",
 )
-async def update_mapping(mapping_id: str, updates: MappingUpdate):
+async def update_mapping(user: CurrentUser, mapping_id: str, updates: MappingUpdate):
     """Update an existing mapping configuration (partial update)."""
     # Get existing mapping
     existing = mapping_repo.get(mapping_id)
@@ -317,7 +319,7 @@ async def update_mapping(mapping_id: str, updates: MappingUpdate):
     summary="Delete a mapping configuration",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_mapping(mapping_id: str):
+async def delete_mapping(user: CurrentUser, mapping_id: str):
     """Delete a mapping configuration."""
     deleted = mapping_repo.delete(mapping_id)
     if not deleted:
@@ -332,7 +334,7 @@ async def delete_mapping(mapping_id: str):
     response_model=MappingConfig,
     summary="Activate a mapping for auto-apply",
 )
-async def activate_mapping(mapping_id: str, background_tasks: BackgroundTasks):
+async def activate_mapping(user: CurrentUser, mapping_id: str, background_tasks: BackgroundTasks):
     """Activate a mapping for auto-apply.
 
     Deactivates any other active mapping with the same source_type.
@@ -363,7 +365,7 @@ async def activate_mapping(mapping_id: str, background_tasks: BackgroundTasks):
     response_model=MappingConfig,
     summary="Deactivate a mapping",
 )
-async def deactivate_mapping(mapping_id: str):
+async def deactivate_mapping(user: CurrentUser, mapping_id: str):
     """Deactivate a mapping."""
     updated = mapping_repo.set_active(mapping_id, False)
     if not updated:
@@ -379,7 +381,7 @@ async def deactivate_mapping(mapping_id: str):
     response_model=DeactivateAndClearResponse,
     summary="Deactivate mapping and clear graph data for its source type",
 )
-async def deactivate_and_clear_mapping(mapping_id: str):
+async def deactivate_and_clear_mapping(user: CurrentUser, mapping_id: str):
     """Deactivate mapping and delete graph data produced by same source_type agents."""
     mapping = mapping_repo.get(mapping_id)
     if not mapping:
@@ -420,7 +422,7 @@ async def deactivate_and_clear_mapping(mapping_id: str):
     response_model=Optional[MappingConfig],
     summary="Get active mapping for source type",
 )
-async def get_active_mapping(source_type: str):
+async def get_active_mapping(user: CurrentUser, source_type: str):
     """Get the currently active mapping for a source type.
 
     Returns null if no mapping is active for this source type.
@@ -433,7 +435,7 @@ async def get_active_mapping(source_type: str):
     response_model=ReplayResponse,
     summary="Re-apply mapping to historical data",
 )
-async def replay_mapping(mapping_id: str, request: ReplayRequest = None):
+async def replay_mapping(user: CurrentUser, mapping_id: str, request: ReplayRequest = None):
     """Re-apply mapping to historical raw data.
 
     Useful when mapping is changed and user wants to update the graph
