@@ -1,0 +1,13 @@
+exclude_dirs:
+  - .venv
+  - tests
+  - node_modules
+  - frontend
+  - schemas
+skips:
+  - B101   # assert_used
+  - B104   # hardcoded_bind_all_interfaces
+  - B311   # random — non-cryptographic uses
+  - B307   # eval in transform_service is sandboxed ({"__builtins__": {}})
+  - B324   # md5 used for cache key only, not security
+  - B608   # SQL/cypher string-formatting — false positives

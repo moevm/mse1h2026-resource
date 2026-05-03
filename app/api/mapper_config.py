@@ -81,7 +81,6 @@ class DeactivateAndClearResponse(BaseModel):
 
 async def replay_mapping_background(mapping_id: str, source_type: str) -> None:
     """Background task to replay mapping on all historical data."""
-    from app.repositories.neo4j_repo import get_nodes_by_types, get_all_node_types
 
     log.info(f"Starting background replay for mapping {mapping_id} (source_type={source_type})")
 
@@ -439,7 +438,6 @@ async def replay_mapping(user: CurrentUser, mapping_id: str, request: ReplayRequ
     Useful when mapping is changed and user wants to update the graph
     with historical data. Processes all chunks for the mapping's source_type.
     """
-    from app.repositories.neo4j_repo import get_nodes_by_types
 
     request = request or ReplayRequest()
 

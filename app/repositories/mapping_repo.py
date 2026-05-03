@@ -3,9 +3,8 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from neo4j import Session
 
 from app.models.mapper.mapping import MappingConfig, FieldMapping, ConditionalRule, AutoEdgeRule, MappingListResponse
 from app.repositories.neo4j_connection import neo4j_driver
