@@ -159,7 +159,7 @@ class MappingRepository:
                 MATCH (m:MappingConfig)
                 WHERE {where_clause}
                 RETURN m
-                ORDER BY m.updated_at DESC
+                ORDER BY m.created_at DESC
                 LIMIT $limit
                 """,
                 **params,
@@ -238,7 +238,7 @@ class MappingRepository:
                 """
                 MATCH (m:MappingConfig {source_type: $source_type, is_active: true})
                 RETURN m
-                ORDER BY m.updated_at DESC
+                ORDER BY m.created_at DESC
                 LIMIT 1
                 """,
                 source_type=source_type,

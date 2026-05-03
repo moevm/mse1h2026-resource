@@ -236,6 +236,12 @@ KUBERNETES_API_MAPPING = {
             "priority": 30,
         },
         {
+            "id": "cr-service",
+            "condition": "kind == 'Service'",
+            "target_node_type": "Service",
+            "priority": 20,
+        },
+        {
             "id": "cr-deployment",
             "condition": "kind == 'Deployment'",
             "target_node_type": "Deployment",

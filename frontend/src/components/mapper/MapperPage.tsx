@@ -11,7 +11,7 @@ import { MappingBuilder } from "./MappingBuilder";
 import { TimelineSlider } from "./TimelineSlider";
 import { ResizablePanels } from "./ResizablePanels";
 import { PreviewPanel } from "./PreviewPanel";
-import type { MappingConfig, RawDataSource } from "../../types/mapper";
+import type { MappingConfig } from "../../types/mapper";
 
 interface Agent {
   agent_id: string;
@@ -153,7 +153,7 @@ export function MapperPage() {
     setChunksLoading(true);
     try {
       const response = await mapperApi.listChunks({
-        source_type: agent.source_type as RawDataSource,
+        agent_id: agent.agent_id,
         limit: 100,
       });
       setChunks(response.chunks);
