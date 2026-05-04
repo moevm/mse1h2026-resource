@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
+from app.api.auth import router as auth_router
 from app.api.ingest import router as ingest_router
 from app.api.graph import router as graph_router
 from app.api.agents import router as agents_router
@@ -16,7 +17,7 @@ from app.api.mapper_preview import router as mapper_preview_router
 from app.api.edge_presets import router as edge_presets_router
 from app.api.mocker import router as mocker_router
 from app.repositories.neo4j_connection import neo4j_driver
-from app.repositories import agent_repo, application_repo
+from app.repositories import agent_repo, application_repo, user_repo
 from app.repositories.mapping_repo import mapping_repo
 
 
@@ -27,6 +28,8 @@ async def lifespan(application: FastAPI):
     agent_repo.ensure_agent_indexes()
     application_repo.ensure_application_indexes()
     mapping_repo.ensure_indexes()
+    user_repo.ensure_user_indexes()
+    user_repo.ensure_default_admin()
     yield
     neo4j_driver.close()
 
@@ -45,6 +48,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(agents_router, prefix="/api/v1/agents", tags=["Agents"])
 app.include_router(applications_router, prefix="/api/v1/apps", tags=["Applications"])
 app.include_router(ingest_router, prefix="/api/v1/ingest", tags=["Ingest"])

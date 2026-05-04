@@ -1,14 +1,14 @@
-
 from __future__ import annotations
 
 from typing import Any, Dict
 
 from fastapi import Header, HTTPException, status
 
+from app.api.auth import CurrentUser, get_current_user
 from app.repositories import agent_repo
 
 
-async def require_agent(
+def require_agent(
     x_agent_token: str = Header(
         ...,
         description="Token issued during agent registration (POST /api/v1/agents/register)",
@@ -28,3 +28,6 @@ async def require_agent(
     except Exception:
         pass
     return agent
+
+
+__all__ = ["require_agent", "get_current_user", "CurrentUser"]
