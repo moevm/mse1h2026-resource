@@ -18,6 +18,9 @@ class ExportRequest(BaseModel):
     limit: int = Field(500, ge=1, le=10000, description="Max nodes to export")
     node_types: Optional[list[str]] = Field(None, description="Filter by node types")
     edge_types: Optional[list[str]] = Field(None, description="Filter by edge types")
+    exclude_node_types: Optional[list[str]] = Field(None, description="Exclude these node types")
+    exclude_edge_types: Optional[list[str]] = Field(None, description="Exclude these edge types")
+    filter_mode: str = Field("ghost", description="Filter mode: ghost (dim) or exclude (omit)")
     include_properties: bool = Field(True, description="Include node/edge properties")
     layout: Optional[str] = Field(
         None,
