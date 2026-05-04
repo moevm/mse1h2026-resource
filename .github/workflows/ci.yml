@@ -2,9 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
     branches: [main, dev]
+    types: [opened, synchronize] 
 
 jobs:
   backend-lint:
@@ -239,6 +240,7 @@ jobs:
     name: Load test · k6
     runs-on: ubuntu-latest
     needs: [smoke-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v4
       - name: Create .env
@@ -284,6 +286,7 @@ jobs:
     name: DAST · OWASP ZAP baseline
     runs-on: ubuntu-latest
     needs: [smoke-test]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       issues: write
