@@ -1,16 +1,21 @@
 import type { ReactNode } from "react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { useUiStore } from "../../store/uiStore";
-import { useGraphStore } from "../../store/graphStore";
+import { useAuthStore } from "../../store/authStore";
 import { IconChevronLeft } from "../icons";
 import { NAV_ITEMS } from "../../lib/constants/navigation";
-import { STATUS_CONFIG } from "../../lib/constants/status";
 import { LogoMark } from "../../shared/components/LogoMark";
 
 export function Sidebar() {
     const collapsed = useUiStore((s) => s.sidebarCollapsed);
     const toggleSidebar = useUiStore((s) => s.toggleSidebar);
-    const backendStatus = useGraphStore((s) => s.backendStatus);
+    const logout = useAuthStore((s) => s.logout);
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        await logout();
+        navigate("/login", { replace: true });
+    };
 
     return (
         <aside
@@ -93,24 +98,13 @@ export function Sidebar() {
                 ))}
             </nav>
 
-            <div
-                className={[
-                    "border-t border-slate-800/60 shrink-0 flex items-center gap-2",
-                    collapsed ? "justify-center py-2.5" : "px-4 py-2.5",
-                ].join(" ")}
-                title={collapsed ? STATUS_CONFIG[backendStatus].label : undefined}
+            <button
+                onClick={() => void handleLogout()}
+                title="Sign out"
+                className="flex items-center justify-center h-9 w-full border-t border-slate-800/60 text-slate-700 hover:text-red-400 hover:bg-slate-800/30 transition-colors shrink-0 text-xs"
             >
-                <span
-                    className={["h-2 w-2 rounded-full shrink-0", STATUS_CONFIG[backendStatus].color].join(
-                        " ",
-                    )}
-                />
-                {!collapsed && (
-                    <span className="text-[11px] font-medium text-slate-600 truncate">
-                        {STATUS_CONFIG[backendStatus].label}
-                    </span>
-                )}
-            </div>
+                {collapsed ? "Out" : "Sign Out"}
+            </button>
 
             <button
                 onClick={toggleSidebar}
