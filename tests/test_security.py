@@ -45,7 +45,6 @@ def test_verify_password_rejects_empty():
 
 
 def test_hash_unicode_password():
-    """Bcrypt should handle utf-8 input."""
     pw = "пароль-тест-😀"
     h = hash_password(pw)
     assert verify_password(pw, h) is True

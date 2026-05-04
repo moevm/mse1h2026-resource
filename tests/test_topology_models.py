@@ -1,4 +1,3 @@
-"""Validation and serialization tests for graph/topology pydantic models."""
 from __future__ import annotations
 
 import pytest

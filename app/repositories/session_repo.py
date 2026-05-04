@@ -16,9 +16,6 @@ async def store_refresh_token(user_id: str, jti: str) -> None:
 
 
 async def validate_refresh_token(user_id: str, jti: str) -> bool:
-    """Refresh tokens are valid as long as the JWT signature/expiry holds and they
-    are not explicitly revoked. We default-allow so that Redis data loss
-    (or migrations from a non-persistent Redis) doesn't sign every user out."""
     client = redis_client.client
     revoked_key = f"{REFRESH_REVOKED_PREFIX}{user_id}:{jti}"
     return await client.exists(revoked_key) == 0

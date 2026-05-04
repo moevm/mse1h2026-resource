@@ -1,7 +1,3 @@
-"""Tests for graph_service stats aggregation when scoped per user.
-
-The repo layer is mocked so we don't need a live Neo4j.
-"""
 from __future__ import annotations
 
 from unittest.mock import patch
@@ -46,8 +42,6 @@ def test_stats_for_user_with_empty_graph_returns_zeros():
 
 
 def test_full_graph_for_user_with_no_agents_returns_empty():
-    """If a user has no agents, we must return an empty graph rather than the
-    global graph (cross-user data isolation)."""
     with patch.object(graph_service.agent_repo, "get_agent_names_for_user", return_value=[]):
         result = graph_service.get_full_graph(limit=100, user_id="lonely-user")
     assert result.node_count == 0
@@ -55,7 +49,6 @@ def test_full_graph_for_user_with_no_agents_returns_empty():
 
 
 def test_full_graph_for_user_filters_by_agent_names():
-    """When the user has agents, we should query the repo with those names."""
     with patch.object(
         graph_service.agent_repo, "get_agent_names_for_user", return_value=["agent-1", "agent-2"]
     ), patch.object(

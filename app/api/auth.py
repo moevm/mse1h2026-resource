@@ -116,8 +116,6 @@ async def logout(
     body: RefreshTokenRequest,
     token: str = Depends(oauth2_scheme),
 ):
-    """Logout is best-effort — even if the access token is expired, we still
-    revoke the refresh token so the session ends server-side."""
     if token:
         access_payload = decode_token(token)
         if access_payload and access_payload.get("type") == "access":
