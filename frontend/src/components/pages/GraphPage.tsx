@@ -56,12 +56,10 @@ export function GraphPage() {
         void loadFullGraph(limitInput, value);
     }, [limitInput, loadFullGraph, setSelectedAppId]);
 
-    // Health check on mount
     useEffect(() => {
         void checkHealth();
     }, [checkHealth]);
 
-    // Reload graph every time the page mounts
     const initialLoadDone = useRef(false);
     useEffect(() => {
         if (initialLoadDone.current) return;
@@ -71,7 +69,6 @@ export function GraphPage() {
 
     const headerContent = (
         <div className="flex items-center gap-3 flex-1 min-w-0">
-            {/* Application Selector */}
             <div className="flex items-center gap-2 shrink-0">
                 <label htmlFor="app-selector" className="text-xs text-slate-500 whitespace-nowrap">
                     App
@@ -134,7 +131,6 @@ export function GraphPage() {
                             <GraphCanvas />
                             <GraphControls />
 
-                            {/* Mobile toggle for right panel */}
                             <button
                                 onClick={() => setShowRightPanel(true)}
                                 className="lg:hidden absolute top-3 right-3 z-30 p-2.5 rounded-xl bg-slate-800/90 backdrop-blur-sm border border-slate-700/60 shadow-lg"
@@ -146,7 +142,6 @@ export function GraphPage() {
                         <GraphStatsBar />
                     </div>
 
-                    {/* Overlay for mobile drawer */}
                     {showRightPanel && (
                         <button
                             type="button"
@@ -156,7 +151,6 @@ export function GraphPage() {
                         />
                     )}
 
-                    {/* Right panel - drawer on mobile, static on desktop */}
                     <aside
                         className={[
                             "bg-slate-950/95 backdrop-blur-sm border-l border-slate-800/70 shrink-0 flex flex-col overflow-hidden",
@@ -166,7 +160,6 @@ export function GraphPage() {
                             showRightPanel ? "translate-x-0" : "translate-x-full lg:translate-x-0",
                         ].join(" ")}
                     >
-                        {/* Close button on mobile */}
                         <button
                             onClick={() => setShowRightPanel(false)}
                             className="lg:hidden absolute top-2.5 right-2.5 z-10 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"

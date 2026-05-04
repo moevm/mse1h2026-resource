@@ -1,7 +1,3 @@
-"""Tests that the FastAPI app exposes a working /health endpoint without
-requiring Neo4j/Redis. We bypass the lifespan manager by mounting the app
-in a TestClient that does not invoke startup.
-"""
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
@@ -10,9 +6,7 @@ from app.main import app
 
 
 def test_health_endpoint_returns_ok():
-    # Skip lifespan to avoid hitting Neo4j/Redis in unit tests.
     client = TestClient(app, raise_server_exceptions=True)
-    # FastAPI's TestClient enters lifespan on `with`; calling directly does not.
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}

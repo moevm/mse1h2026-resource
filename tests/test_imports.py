@@ -1,4 +1,3 @@
-"""Smoke import tests — every backend module must import without side effects."""
 from __future__ import annotations
 
 import importlib
@@ -35,12 +34,10 @@ def test_module_imports(module_name):
 
 
 def test_main_app_module_importable():
-    """Importing app.main must not require a live Neo4j/Redis connection."""
     importlib.import_module("app.main")
 
 
 def test_fastapi_app_has_expected_routes():
-    """Sanity-check that the FastAPI instance registers our auth + graph routers."""
     from app.main import app
 
     paths = {route.path for route in app.routes}

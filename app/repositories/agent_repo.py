@@ -45,7 +45,6 @@ def _register_tx(
     app_id: Optional[str] = None,
     user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    # MERGE by (name, user_id) so different users can have agents with the same name
     if app_id:
         result = tx.run(
             "MERGE (a:Agent {name: $name, user_id: $user_id}) "
@@ -161,7 +160,6 @@ def get_agent_names_for_user(user_id: str) -> list[str]:
 
 def ensure_agent_indexes() -> None:
     with neo4j_driver.session() as session:
-        # Old global name constraint cannot coexist with multi-user agents.
         session.run("DROP CONSTRAINT agent_name_unique IF EXISTS")
         session.run(
             "CREATE CONSTRAINT agent_token_unique IF NOT EXISTS "

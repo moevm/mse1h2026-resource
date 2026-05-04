@@ -41,7 +41,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             const tokens = await apiLogin(data);
             get().setTokens(tokens.access_token, tokens.refresh_token);
 
-            // Decode access token to get user info
             const payload = JSON.parse(atob(tokens.access_token.split(".")[1]));
             set({
                 user: {
@@ -66,7 +65,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ isLoading: true, error: null });
         try {
             await apiRegister(data);
-            // After registration, auto-login
             await get().login({ email: data.email, password: data.password });
         } catch (err) {
             set({
@@ -84,7 +82,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                 await apiLogout(refreshToken);
             }
         } catch {
-            // Ignore logout API errors
         }
         localStorage.removeItem(ACCESS_TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
@@ -128,8 +125,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                         return;
                     }
                 } catch {
-                    // Token is malformed, try refresh
-                }
+                    }
             }
 
             if (refreshToken) {
@@ -147,7 +143,6 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                             },
                         });
                     } catch {
-                        // ignore — user stays null, will be redirected to /login
                     }
                 }
             }

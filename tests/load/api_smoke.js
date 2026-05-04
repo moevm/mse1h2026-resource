@@ -1,15 +1,3 @@
-// k6 smoke + small load profile.
-//
-// Goals:
-//   - /health stays 200 under modest concurrency (no 5xx)
-//   - login as admin succeeds and the issued access token works for
-//     authenticated endpoints
-//   - p95 response time stays under reasonable thresholds
-//
-// Run locally:
-//   docker compose up -d
-//   k6 run -e BASE_URL=http://127.0.0.1:8000 tests/load/api_smoke.js
-
 import http from "k6/http";
 import { check, sleep, group } from "k6";
 import { Counter, Trend } from "k6/metrics";
@@ -19,13 +7,12 @@ const ADMIN_EMAIL = __ENV.ADMIN_EMAIL || "admin@example.com";
 const ADMIN_PASSWORD = __ENV.ADMIN_PASSWORD || "admin";
 
 export const options = {
-    // Fail the run if any threshold is breached — CI gate.
     thresholds: {
-        http_req_failed: ["rate<0.02"],          // < 2% errors overall
-        http_req_duration: ["p(95)<500"],        // p95 < 500ms
+        http_req_failed: ["rate<0.02"],
+        http_req_duration: ["p(95)<500"],
         "http_req_duration{name:health}": ["p(95)<150"],
         "http_req_duration{name:login}": ["p(95)<800"],
-        "checks": ["rate>0.98"],                 // > 98% of checks pass
+        "checks": ["rate>0.98"],
     },
     scenarios: {
         smoke: {

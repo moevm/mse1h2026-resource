@@ -1,7 +1,3 @@
-"""Tests for export-format helpers in app.services.export_service.
-
-These functions are pure (operate on GraphResponse), so no DB needed.
-"""
 from __future__ import annotations
 
 import json
@@ -37,12 +33,9 @@ def sample_graph() -> GraphResponse:
     return GraphResponse(nodes=nodes, edges=edges, node_count=3, edge_count=3)
 
 
-# ---------- Filter helpers ----------
-
 def test_filter_by_node_types_keeps_only_allowed(sample_graph):
     out = _filter_by_node_types(sample_graph, {"service"})
     assert {n.id for n in out.nodes} == {"a", "b"}
-    # Edges referencing the dropped database node must also be removed.
     assert all(e.source_id in {"a", "b"} and e.target_id in {"a", "b"} for e in out.edges)
 
 
@@ -58,8 +51,6 @@ def test_filter_by_edge_types_keeps_nodes_intact(sample_graph):
     assert out.node_count == 3  # nodes are unchanged
 
 
-# ---------- JSON export ----------
-
 def test_to_json_includes_all_nodes_and_edges(sample_graph):
     payload = json.loads(_to_json(sample_graph, include_props=True))
     assert {n["id"] for n in payload["nodes"]} == {"a", "b", "c"}
@@ -72,15 +63,11 @@ def test_to_json_strips_properties_when_disabled(sample_graph):
         assert "properties" not in n or not n["properties"]
 
 
-# ---------- DOT export ----------
-
 def test_to_dot_is_well_formed(sample_graph):
     dot = _to_dot(sample_graph, include_props=False).decode()
     assert dot.lstrip().startswith("digraph")
     assert "a" in dot and "b" in dot and "c" in dot
 
-
-# ---------- GraphML / GEXF (XML) ----------
 
 def test_to_graphml_contains_xml_header(sample_graph):
     out = _to_graphml(sample_graph, include_props=True)
@@ -95,8 +82,6 @@ def test_to_gexf_contains_xml_header(sample_graph):
     assert "<?xml" in text
     assert "gexf" in text.lower()
 
-
-# ---------- CSV zip ----------
 
 def test_to_csv_zip_contains_two_files(sample_graph):
     raw = _to_csv_zip(sample_graph, include_props=True)

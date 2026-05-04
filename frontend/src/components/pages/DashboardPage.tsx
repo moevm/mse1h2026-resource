@@ -319,7 +319,7 @@ interface StatCardProps {
 function StatCard({ label, value, accent, icon }: Readonly<StatCardProps>) {
     return (
         <div className="relative overflow-hidden rounded-xl bg-slate-900/80 border border-slate-800/80 p-5 hover:border-slate-700/80 transition-all duration-300 group animate-fade-in">
-            {/* Gradient background */}
+
             <div
                 className="absolute inset-0 pointer-events-none opacity-60 group-hover:opacity-80 transition-opacity duration-300"
                 style={{

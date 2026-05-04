@@ -1,4 +1,3 @@
-"""Pytest configuration: ensure project root is importable as `app.*`."""
 from __future__ import annotations
 
 import os
@@ -9,7 +8,6 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Provide deterministic settings so security tests don't depend on .env / host env.
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key-please-do-not-use-in-prod")
 os.environ.setdefault("JWT_ALGORITHM", "HS256")
 os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "15")

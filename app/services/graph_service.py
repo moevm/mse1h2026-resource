@@ -118,7 +118,6 @@ def get_impact(node_id: str, depth: int = 3, direction: str = "downstream",
 
 def get_stats(user_id: Optional[str] = None) -> GraphStatsResponse:
     if user_id:
-        # Scope stats to this user's graph data
         graph = get_full_graph(limit=5000, user_id=user_id)
         node_types: Dict[str, int] = {}
         edge_types: Dict[str, int] = {}

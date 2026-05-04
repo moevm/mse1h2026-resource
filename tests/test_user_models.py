@@ -1,4 +1,3 @@
-"""Validation tests for auth pydantic models."""
 from __future__ import annotations
 
 import pytest
@@ -12,8 +11,6 @@ from app.models.user import (
     UserResponse,
 )
 
-
-# ---------- RegisterRequest ----------
 
 def test_register_request_valid():
     r = RegisterRequest(email="alice@example.com", username="alice", password="secret123")
@@ -42,7 +39,6 @@ def test_register_rejects_too_short_password():
 
 
 def test_register_rejects_password_over_72_chars():
-    """bcrypt has a 72-byte limit; the model must enforce it."""
     with pytest.raises(ValidationError):
         RegisterRequest(email="x@y.com", username="alice", password="a" * 73)
 
@@ -53,12 +49,9 @@ def test_register_accepts_password_at_72_chars():
 
 
 def test_register_accepts_password_at_min_length():
-    """Min length is 5 (per latest tightening)."""
     r = RegisterRequest(email="x@y.com", username="alice", password="abcde")
     assert r.password == "abcde"
 
-
-# ---------- LoginRequest ----------
 
 def test_login_valid():
     r = LoginRequest(email="alice@example.com", password="anything")
@@ -79,8 +72,6 @@ def test_login_rejects_password_over_72():
     with pytest.raises(ValidationError):
         LoginRequest(email="x@y.com", password="a" * 73)
 
-
-# ---------- Response models ----------
 
 def test_user_response_defaults():
     u = UserResponse(user_id="u1", email="x@y.com", username="bob")

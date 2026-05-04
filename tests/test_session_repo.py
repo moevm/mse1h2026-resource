@@ -1,10 +1,3 @@
-"""Tests for session_repo's pure logic (Redis behaviour mocked).
-
-session_repo is a thin wrapper around redis-py. We swap the client for a
-fake to verify that revocation/blacklisting logic forms the right keys
-and that validate_refresh_token defaults to allow when no revocation
-key exists (the desired behaviour after the blacklist-model migration).
-"""
 from __future__ import annotations
 
 import asyncio
@@ -15,7 +8,6 @@ import pytest
 
 
 class FakeRedis:
-    """Minimal subset of redis.asyncio used by session_repo."""
 
     def __init__(self):
         self.store: Dict[str, str] = {}
@@ -30,7 +22,6 @@ class FakeRedis:
         return 1 if key in self.store else 0
 
     async def scan_iter(self, match=None):
-        # naive glob: '*' suffix only
         prefix = match.rstrip("*") if match else ""
         for k in list(self.store):
             if k.startswith(prefix):
@@ -44,7 +35,6 @@ def fake_redis():
 
 @pytest.fixture(autouse=True)
 def patch_redis(fake_redis):
-    """Replace the singleton's `.client` attribute with our fake."""
     from app.repositories import session_repo
 
     class _Holder:
@@ -59,8 +49,6 @@ def run(coro):
 
 
 def test_validate_refresh_default_allows_when_redis_empty():
-    """The post-fix behaviour: if nothing is in Redis, the token is allowed
-    (because we default-allow and only block explicitly revoked tokens)."""
     from app.repositories import session_repo
 
     assert run(session_repo.validate_refresh_token("u1", "j1")) is True

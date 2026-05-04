@@ -24,7 +24,6 @@ def export_graph(request: ExportRequest, user_id: Optional[str] = None) -> tuple
         filter_mode=request.filter_mode,
     )
 
-    # Apply positive type filters (include-only) as post-processing
     if request.node_types:
         allowed = set(request.node_types)
         graph = _filter_by_node_types(graph, allowed)

@@ -38,7 +38,6 @@ export function FilterPanel() {
 
     return (
         <div className="flex flex-col overflow-y-auto max-h-full">
-            {/* Bulk actions */}
             <div className="flex gap-1.5 px-5 pt-4">
                 <button
                     onClick={selectAll}
@@ -53,7 +52,6 @@ export function FilterPanel() {
                     Reset filters
                 </button>
             </div>
-            {/* Filter Mode Selection */}
             <div className="px-5 pt-4 pb-4 border-b border-slate-800/70">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
                     Filter Mode
@@ -75,7 +73,6 @@ export function FilterPanel() {
                 </div>
             </div>
 
-            {/* Node Type Filters */}
             {nodeTypes.length > 0 && (
                 <section className="px-5 pt-4 pb-4">
                     <div className="flex items-center justify-between mb-3">
@@ -110,12 +107,10 @@ export function FilterPanel() {
                 </section>
             )}
 
-            {/* Divider */}
             {nodeTypes.length > 0 && edgeTypes.length > 0 && (
                 <div className="border-t border-slate-800/60 mx-5" />
             )}
 
-            {/* Edge Type Filters */}
             {edgeTypes.length > 0 && (
                 <section className="px-5 pt-4 pb-5">
                     <div className="flex items-center justify-between mb-3">

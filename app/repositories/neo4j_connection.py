@@ -53,7 +53,6 @@ class Neo4jConnection:
 
 
     def session(self, **kwargs):
-        """Shortcut to open a session with the current driver."""
         return self.driver.session(**kwargs)
 
 

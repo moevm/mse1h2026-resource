@@ -62,8 +62,6 @@ client.interceptors.response.use(
         const originalRequest = err.config;
         const status = err.response?.status;
 
-        // Try token refresh on 401 — but not for auth endpoints, where 401 means
-        // wrong credentials / invalid refresh token and refreshing makes no sense.
         const reqUrl = originalRequest?.url ?? "";
         const isAuthEndpoint =
             reqUrl.includes("/auth/login") ||
