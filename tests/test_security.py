@@ -15,6 +15,8 @@ from app.core.security import (
 )
 
 
+# ---------- Password hashing ----------
+
 def test_hash_password_returns_non_plaintext():
     h = hash_password("hunter2")
     assert h != "hunter2"
@@ -69,8 +71,6 @@ def test_access_tokens_have_unique_jti():
 
 def test_access_token_with_wrong_secret_returns_none():
     token = create_access_token("u")
-    bad = jwt.decode
-
     payload = decode_token(token)
     forged = jwt.encode(payload, "different-secret", algorithm=settings.jwt_algorithm)
     assert decode_token(forged) is None
