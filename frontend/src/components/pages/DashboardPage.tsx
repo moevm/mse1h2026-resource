@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useGraph } from "../../hooks/useGraph";
 import { useGraphStore } from "../../store/graphStore";
 import { useLogStore } from "../../store/logStore";
@@ -43,6 +43,13 @@ export function DashboardPage() {
         await Promise.all([loadStats(), loadAnalytics()]);
         setRefreshing(false);
     }, [loadStats, loadAnalytics]);
+
+    const autoLoadDone = useRef(false);
+    useEffect(() => {
+        if (autoLoadDone.current) return;
+        autoLoadDone.current = true;
+        void handleRefresh();
+    }, [handleRefresh]);
 
     const totalNodes = stats?.total_nodes ?? nodes.length;
     const totalEdges = stats?.total_edges ?? edges.length;
@@ -312,7 +319,7 @@ interface StatCardProps {
 function StatCard({ label, value, accent, icon }: Readonly<StatCardProps>) {
     return (
         <div className="relative overflow-hidden rounded-xl bg-slate-900/80 border border-slate-800/80 p-5 hover:border-slate-700/80 transition-all duration-300 group animate-fade-in">
-            {/* Gradient background */}
+
             <div
                 className="absolute inset-0 pointer-events-none opacity-60 group-hover:opacity-80 transition-opacity duration-300"
                 style={{
