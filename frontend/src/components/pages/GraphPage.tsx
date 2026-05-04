@@ -34,7 +34,6 @@ const PANEL_CONFIG: Array<{ id: RightPanel; label: string; shortLabel: string }>
 export function GraphPage() {
     const { loadFullGraph, checkHealth } = useGraph();
     const { applications } = useApplications();
-    const nodes = useGraphStore((s) => s.nodes);
     const searchQuery = useGraphStore((s) => s.searchQuery);
     const setSearchQuery = useGraphStore((s) => s.setSearchQuery);
     const selectedAppId = useGraphStore((s) => s.selectedAppId);
@@ -44,7 +43,7 @@ export function GraphPage() {
     const logCount = useLogStore((s) => s.entries.length);
 
     const [rightPanel, setRightPanel] = useState<RightPanel>("detail");
-    const [limitInput, setLimitInput] = useState(500);
+    const limitInput = 500;
     const [showRightPanel, setShowRightPanel] = useState(false);
 
     const handleTraversalResult = useCallback((data: GraphResponse) => {
@@ -57,23 +56,19 @@ export function GraphPage() {
         void loadFullGraph(limitInput, value);
     }, [limitInput, loadFullGraph, setSelectedAppId]);
 
-    // Health check on mount
     useEffect(() => {
         void checkHealth();
     }, [checkHealth]);
 
-    // Initial graph load only once when nodes are empty
     const initialLoadDone = useRef(false);
     useEffect(() => {
-        if (!initialLoadDone.current && nodes.length === 0) {
-            initialLoadDone.current = true;
-            void loadFullGraph(limitInput, selectedAppId || undefined);
-        }
-    }, [nodes.length, loadFullGraph, limitInput, selectedAppId]);
+        if (initialLoadDone.current) return;
+        initialLoadDone.current = true;
+        void loadFullGraph(limitInput, selectedAppId || undefined);
+    }, [loadFullGraph, limitInput, selectedAppId]);
 
     const headerContent = (
         <div className="flex items-center gap-3 flex-1 min-w-0">
-            {/* Application Selector */}
             <div className="flex items-center gap-2 shrink-0">
                 <label htmlFor="app-selector" className="text-xs text-slate-500 whitespace-nowrap">
                     App
@@ -102,18 +97,6 @@ export function GraphPage() {
             />
 
             <div className="flex items-center gap-2 shrink-0">
-                <label htmlFor="graph-limit" className="text-xs text-slate-500 whitespace-nowrap">
-                    Limit
-                </label>
-                <input
-                    id="graph-limit"
-                    type="number"
-                    min={1}
-                    max={5000}
-                    className="w-20 bg-slate-800/80 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    value={limitInput}
-                    onChange={(e) => setLimitInput(Number(e.target.value))}
-                />
                 <Button
                     variant="primary"
                     size="sm"
@@ -148,7 +131,6 @@ export function GraphPage() {
                             <GraphCanvas />
                             <GraphControls />
 
-                            {/* Mobile toggle for right panel */}
                             <button
                                 onClick={() => setShowRightPanel(true)}
                                 className="lg:hidden absolute top-3 right-3 z-30 p-2.5 rounded-xl bg-slate-800/90 backdrop-blur-sm border border-slate-700/60 shadow-lg"
@@ -160,7 +142,6 @@ export function GraphPage() {
                         <GraphStatsBar />
                     </div>
 
-                    {/* Overlay for mobile drawer */}
                     {showRightPanel && (
                         <button
                             type="button"
@@ -170,17 +151,15 @@ export function GraphPage() {
                         />
                     )}
 
-                    {/* Right panel - drawer on mobile, static on desktop */}
                     <aside
                         className={[
                             "bg-slate-950/95 backdrop-blur-sm border-l border-slate-800/70 shrink-0 flex flex-col overflow-hidden",
-                            "lg:relative lg:w-72 xl:w-80",
-                            "fixed lg:static top-0 right-0 h-full w-80 max-w-[85vw] z-50",
+                            "lg:relative lg:w-96 xl:w-[26rem]",
+                            "fixed lg:static top-0 right-0 h-full w-96 max-w-[90vw] z-50",
                             "transform transition-transform duration-300 ease-out",
                             showRightPanel ? "translate-x-0" : "translate-x-full lg:translate-x-0",
                         ].join(" ")}
                     >
-                        {/* Close button on mobile */}
                         <button
                             onClick={() => setShowRightPanel(false)}
                             className="lg:hidden absolute top-2.5 right-2.5 z-10 p-1.5 rounded-lg hover:bg-slate-800 transition-colors"
@@ -201,12 +180,14 @@ export function GraphPage() {
                                             : "text-slate-500 hover:text-slate-300",
                                     ].join(" ")}
                                 >
-                                    {shortLabel}
-                                    {id === "log" && logCount > 0 && (
-                                        <span className="absolute top-1.5 right-0.5 h-3.5 min-w-3.5 flex items-center justify-center rounded-full bg-blue-600 text-white text-[8px] px-0.5">
-                                            {logCount > 99 ? "99+" : logCount}
-                                        </span>
-                                    )}
+                                    <span className="inline-flex items-center gap-1">
+                                        {shortLabel}
+                                        {id === "log" && logCount > 0 && (
+                                            <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-blue-600 px-1 text-[9px] font-semibold leading-none text-white tabular-nums">
+                                                {logCount > 99 ? "99+" : logCount}
+                                            </span>
+                                        )}
+                                    </span>
                                 </button>
                             ))}
                         </div>
@@ -218,7 +199,15 @@ export function GraphPage() {
                             {rightPanel === "insights" && <GraphInsightsPanel />}
                             {rightPanel === "export" && <ExportPanel />}
                             {rightPanel === "traversal" && (
-                                <TraversalPanel onResult={handleTraversalResult} />
+                                <TraversalPanel
+                                    onResult={handleTraversalResult}
+                                    onReset={() =>
+                                        void loadFullGraph(
+                                            limitInput,
+                                            selectedAppId || undefined,
+                                        )
+                                    }
+                                />
                             )}
                             {rightPanel === "log" && <LogPanel />}
                         </div>
