@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import settings
-from app.models.mapper.raw_data import RawDataChunk, RawDataSource, RawDataListResponse
+from app.models.mapper.raw_data import RawDataChunk, RawDataListResponse
 from app.repositories.redis_connection import redis_client
 
 
@@ -21,9 +21,9 @@ class RawDataRepository:
     async def store_chunk(
         self,
         agent_id: str,
-        source_type: RawDataSource,
         data: Dict[str, Any],
         metadata: Dict[str, Any],
+        is_pinned: bool = False,
     ) -> str:
         chunk_id = str(uuid.uuid4())
         timestamp = datetime.utcnow()
@@ -32,7 +32,6 @@ class RawDataRepository:
         chunk_data = {
             "id": chunk_id,
             "agent_id": agent_id,
-            "source_type": source_type.value,
             "timestamp": timestamp.isoformat(),
             "sequence": 0,
             "data": data,
@@ -41,12 +40,16 @@ class RawDataRepository:
             "is_processed": False,
             "processed_at": None,
             "mapping_id": None,
+            "is_pinned": is_pinned,
         }
+
+        # Pinned chunks get a much longer TTL (1 year)
+        ttl = timedelta(days=365) if is_pinned else self.ttl
 
         client = redis_client.client
         await client.setex(
             key,
-            self.ttl,
+            ttl,
             json.dumps(chunk_data, default=str),
         )
         await client.sadd(self.INDEX_KEY, chunk_id)
@@ -72,7 +75,6 @@ class RawDataRepository:
     async def list_chunks(
         self,
         agent_id: Optional[str] = None,
-        source_type: Optional[RawDataSource] = None,
         limit: int = 100,
     ) -> RawDataListResponse:
         client = redis_client.client
@@ -87,8 +89,7 @@ class RawDataRepository:
             data = await client.get(key)
             if data:
                 chunk = json.loads(data)
-                if source_type is None or chunk.get("source_type") == source_type.value:
-                    chunks.append(chunk)
+                chunks.append(chunk)
 
         chunks.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         chunks = chunks[:limit]
@@ -140,6 +141,36 @@ class RawDataRepository:
         async for key in client.scan_iter(match=pattern, count=1):
             await client.delete(key)
             await client.srem(self.INDEX_KEY, chunk_id)
+            return True
+        return False
+
+    async def pin_chunk(self, chunk_id: str) -> bool:
+        """Pin a chunk so it doesn't expire. Returns True if found."""
+        chunk = await self.get_chunk(chunk_id)
+        if not chunk:
+            return False
+
+        chunk["is_pinned"] = True
+
+        client = redis_client.client
+        pattern = f"{self.KEY_PREFIX}*:{chunk_id}"
+        async for key in client.scan_iter(match=pattern, count=1):
+            await client.setex(key, timedelta(days=365), json.dumps(chunk, default=str))
+            return True
+        return False
+
+    async def unpin_chunk(self, chunk_id: str) -> bool:
+        """Unpin a chunk, restoring normal TTL. Returns True if found."""
+        chunk = await self.get_chunk(chunk_id)
+        if not chunk:
+            return False
+
+        chunk["is_pinned"] = False
+
+        client = redis_client.client
+        pattern = f"{self.KEY_PREFIX}*:{chunk_id}"
+        async for key in client.scan_iter(match=pattern, count=1):
+            await client.setex(key, self.ttl, json.dumps(chunk, default=str))
             return True
         return False
 

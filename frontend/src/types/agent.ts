@@ -2,6 +2,7 @@
     name: string;
     source_type: string;
     description?: string;
+    token?: string;
     app_token?: string;
 }
 

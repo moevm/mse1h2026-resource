@@ -3,9 +3,8 @@ from __future__ import annotations
 import json
 import uuid
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
-from neo4j import Session
 
 from app.models.mapper.mapping import MappingConfig, FieldMapping, ConditionalRule, AutoEdgeRule, MappingListResponse
 from app.repositories.neo4j_connection import neo4j_driver
@@ -95,13 +94,14 @@ class MappingRepository:
                 "FOR (m:MappingConfig) ON (m.is_active)"
             )
 
-    def create(self, mapping: MappingConfig) -> MappingConfig:
+    def create(self, mapping: MappingConfig, user_id: Optional[str] = None) -> MappingConfig:
         if not mapping.id:
             mapping.id = str(uuid.uuid4())
         mapping.created_at = datetime.utcnow()
         mapping.updated_at = mapping.created_at
 
         data = self._serialize_mapping(mapping)
+        data["user_id"] = user_id
 
         with neo4j_driver.driver.session() as session:
             session.run(
@@ -112,23 +112,37 @@ class MappingRepository:
             )
         return mapping
 
-    def get(self, mapping_id: str) -> Optional[MappingConfig]:
+    def get(self, mapping_id: str, user_id: Optional[str] = None) -> Optional[MappingConfig]:
         with neo4j_driver.driver.session() as session:
-            result = session.run(
-                "MATCH (m:MappingConfig {id: $id}) RETURN m",
-                id=mapping_id,
-            )
+            if user_id is None:
+                result = session.run(
+                    "MATCH (m:MappingConfig {id: $id}) RETURN m",
+                    id=mapping_id,
+                )
+            else:
+                result = session.run(
+                    "MATCH (m:MappingConfig {id: $id, user_id: $user_id}) RETURN m",
+                    id=mapping_id,
+                    user_id=user_id,
+                )
             record = result.single()
             if record:
                 return self._deserialize_mapping(dict(record["m"]))
         return None
 
-    def get_by_name(self, name: str) -> Optional[MappingConfig]:
+    def get_by_name(self, name: str, user_id: Optional[str] = None) -> Optional[MappingConfig]:
         with neo4j_driver.driver.session() as session:
-            result = session.run(
-                "MATCH (m:MappingConfig {name: $name}) RETURN m",
-                name=name,
-            )
+            if user_id is None:
+                result = session.run(
+                    "MATCH (m:MappingConfig {name: $name}) RETURN m",
+                    name=name,
+                )
+            else:
+                result = session.run(
+                    "MATCH (m:MappingConfig {name: $name, user_id: $user_id}) RETURN m",
+                    name=name,
+                    user_id=user_id,
+                )
             record = result.single()
             if record:
                 return self._deserialize_mapping(dict(record["m"]))
@@ -139,6 +153,7 @@ class MappingRepository:
         source_type: Optional[str] = None,
         is_active: Optional[bool] = None,
         limit: int = 100,
+        user_id: Optional[str] = None,
     ) -> MappingListResponse:
         conditions = []
         params: Dict[str, Any] = {"limit": limit}
@@ -151,6 +166,10 @@ class MappingRepository:
             conditions.append("m.is_active = $is_active")
             params["is_active"] = is_active
 
+        if user_id is not None:
+            conditions.append("m.user_id = $user_id")
+            params["user_id"] = user_id
+
         where_clause = " AND ".join(conditions) if conditions else "true"
 
         with neo4j_driver.driver.session() as session:
@@ -159,7 +178,7 @@ class MappingRepository:
                 MATCH (m:MappingConfig)
                 WHERE {where_clause}
                 RETURN m
-                ORDER BY m.updated_at DESC
+                ORDER BY m.created_at DESC
                 LIMIT $limit
                 """,
                 **params,
@@ -238,7 +257,7 @@ class MappingRepository:
                 """
                 MATCH (m:MappingConfig {source_type: $source_type, is_active: true})
                 RETURN m
-                ORDER BY m.updated_at DESC
+                ORDER BY m.created_at DESC
                 LIMIT 1
                 """,
                 source_type=source_type,

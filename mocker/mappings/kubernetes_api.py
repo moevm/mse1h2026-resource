@@ -31,7 +31,7 @@ KUBERNETES_API_MAPPING = {
             "source_path": "spec.nodeName",
             "target_field": "node_name",
             "target_node_type": "Pod",
-            "description": "For deployedon edge to Node",
+            "description": "For deployedon edge to Node (camelCase from K8s API .to_dict())",
         },
         {
             "id": "pod-deployment",
@@ -234,6 +234,12 @@ KUBERNETES_API_MAPPING = {
             "condition": "kind == 'Node'",
             "target_node_type": "Node",
             "priority": 30,
+        },
+        {
+            "id": "cr-service",
+            "condition": "kind == 'Service'",
+            "target_node_type": "Service",
+            "priority": 20,
         },
         {
             "id": "cr-deployment",

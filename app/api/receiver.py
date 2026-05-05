@@ -20,55 +20,58 @@ log = logging.getLogger(__name__)
 @router.post(
     "/raw",
     summary="Receive raw telemetry data",
-    description="Accept any JSON format from telemetry sources for later mapping",
+    description="Accept any JSON format from telemetry sources. Mapping is auto-detected by trying all active mappings.",
     status_code=status.HTTP_202_ACCEPTED,
 )
 async def receive_raw_data(
     payload: Dict[str, Any],
-    source_type: RawDataSource = Query(
-        ...,
-        description="Type of data source (opentelemetry-traces, kubernetes-api, etc.)",
-    ),
     agent: Dict[str, Any] = Depends(require_agent),
 ):
     agent_name = agent.get("name", "unknown")
 
     chunk_id = await raw_data_repo.store_chunk(
         agent_id=agent["agent_id"],
-        source_type=source_type,
         data=payload,
         metadata={
             "agent_name": agent_name,
-            "agent_source_type": agent.get("source_type"),
         },
     )
 
-    active_mapping = mapping_repo.get_active_for_source(source_type.value)
+    active_mappings = mapping_repo.list(is_active=True, limit=100).mappings
 
     nodes_created = 0
     edges_created = 0
     mapping_applied = False
+    applied_mapping_name = None
 
-    if active_mapping:
+    from app.models.mapper.raw_data import RawDataChunk
+    from datetime import datetime, timezone
+
+    temp_chunk = RawDataChunk(
+        id=chunk_id,
+        agent_id=agent["agent_id"],
+        timestamp=datetime.now(timezone.utc),
+        data=payload,
+    )
+
+    for mapping in active_mappings:
         try:
-            from app.models.mapper.raw_data import RawDataChunk
-            from datetime import datetime, timezone
-            temp_chunk = RawDataChunk(
-                id=chunk_id,
-                agent_id=agent["agent_id"],
-                source_type=source_type,
-                timestamp=datetime.now(timezone.utc),
-                data=payload,
+            applicable = mapper_service._evaluate_conditional_rules(
+                payload, mapping.conditional_rules
             )
+            if not applicable and not mapping.conditional_rules:
+                continue
+            if not applicable:
+                continue
 
-            nodes, edges, unresolved = mapper_service.map_chunk(temp_chunk, active_mapping)
+            nodes, edges, unresolved = mapper_service.map_chunk(temp_chunk, mapping)
 
             if nodes:
                 upsert_nodes(nodes, source=agent_name)
                 nodes_created = len(nodes)
 
             if nodes:
-                new_edges, new_unresolved = mapper_service.recreate_edges_for_nodes(nodes, active_mapping)
+                new_edges, new_unresolved = mapper_service.recreate_edges_for_nodes(nodes, mapping)
                 edges.extend(new_edges)
                 unresolved.extend(new_unresolved)
 
@@ -76,27 +79,41 @@ async def receive_raw_data(
                 upsert_edges(edges, source=agent_name)
                 edges_created = len(edges)
 
+            if not nodes and not edges:
+                log.info(
+                    "Mapping '%s' matched chunk %s but produced no nodes/edges; trying next mapping",
+                    mapping.name,
+                    chunk_id[:8],
+                )
+                continue
+
             mapping_applied = True
+            applied_mapping_name = mapping.name
 
             log.info(
-                f"Auto-applied mapping '{active_mapping.name}' to chunk {chunk_id[:8]}: "
+                f"Auto-applied mapping '{mapping.name}' to chunk {chunk_id[:8]}: "
                 f"{nodes_created} nodes, {edges_created} edges"
             )
+            break
 
         except Exception as e:
-            log.error(f"Error auto-applying mapping: {e}")
+            log.error(f"Error trying mapping '{mapping.name}': {e}")
+            continue
+
+    if not mapping_applied:
+        log.warning(f"No matching mapping found for chunk {chunk_id[:8]}")
 
     return {
         "chunk_id": chunk_id,
         "status": "stored",
         "mapped": mapping_applied,
-        "mapping_name": active_mapping.name if active_mapping else None,
+        "mapping_name": applied_mapping_name,
         "nodes_created": nodes_created,
         "edges_created": edges_created,
         "message": (
-            f"Data stored and mapped with '{active_mapping.name}'."
+            f"Data stored and mapped with '{applied_mapping_name}'."
             if mapping_applied
-            else "Data stored. No active mapping for this source type."
+            else "Data stored. No active mapping matched this data."
         ),
     }
 
@@ -109,12 +126,10 @@ async def receive_raw_data(
 async def list_raw_data(
     user: CurrentUser,
     agent_id: Optional[str] = Query(None, description="Filter by agent ID"),
-    source_type: Optional[RawDataSource] = Query(None, description="Filter by source type"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of chunks to return"),
 ):
     return await raw_data_repo.list_chunks(
         agent_id=agent_id,
-        source_type=source_type,
         limit=limit,
     )
 
@@ -145,3 +160,31 @@ async def delete_raw_data(user: CurrentUser, chunk_id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Chunk not found",
         )
+
+
+@router.post(
+    "/raw/{chunk_id}/pin",
+    summary="Pin a raw data chunk so it won't expire",
+)
+async def pin_raw_data(user: CurrentUser, chunk_id: str):
+    pinned = await raw_data_repo.pin_chunk(chunk_id)
+    if not pinned:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chunk not found",
+        )
+    return {"chunk_id": chunk_id, "is_pinned": True}
+
+
+@router.post(
+    "/raw/{chunk_id}/unpin",
+    summary="Unpin a raw data chunk, restoring normal TTL",
+)
+async def unpin_raw_data(user: CurrentUser, chunk_id: str):
+    unpinned = await raw_data_repo.unpin_chunk(chunk_id)
+    if not unpinned:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chunk not found",
+        )
+    return {"chunk_id": chunk_id, "is_pinned": False}

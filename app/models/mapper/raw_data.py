@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 class RawDataSource(str, Enum):
     OPEN_TELEMETRY_TRACES = "opentelemetry-traces"
     OPEN_TELEMETRY_METRICS = "opentelemetry-metrics"
+    OPEN_TELEMETRY_LOGS = "opentelemetry-logs"
     ISTIO_METRICS = "istio-metrics"
     ISTIO_ACCESS_LOGS = "istio-access-logs"
     KUBERNETES_API = "kubernetes-api"
@@ -24,7 +25,7 @@ class RawDataSource(str, Enum):
 class RawDataChunk(BaseModel):
     id: str = Field(..., description="Unique chunk identifier (UUID)")
     agent_id: str = Field(..., description="ID of the agent that sent this data")
-    source_type: RawDataSource = Field(..., description="Type of data source")
+    source_type: Optional[RawDataSource] = Field(None, description="Type of data source (optional, auto-inferred by mapping)")
     timestamp: datetime = Field(..., description="When this chunk was received")
     sequence: int = Field(default=0, description="Sequence number for ordering")
     data: Dict[str, Any] = Field(..., description="The actual raw JSON payload")
@@ -36,6 +37,7 @@ class RawDataChunk(BaseModel):
     is_processed: bool = Field(default=False, description="Whether this chunk has been mapped")
     processed_at: Optional[datetime] = Field(default=None, description="When this chunk was processed")
     mapping_id: Optional[str] = Field(default=None, description="ID of the mapping used to process")
+    is_pinned: bool = Field(default=False, description="Whether this chunk is pinned (won't expire)")
 
 
 class RawDataListResponse(BaseModel):

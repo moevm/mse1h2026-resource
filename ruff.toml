@@ -1,0 +1,31 @@
+# Ruff: fast Python linter — focused on real issues, not style nitpicks.
+target-version = "py312"
+line-length = 120
+extend-exclude = [".venv", "node_modules", "frontend", "mocker", "schemas"]
+
+[lint]
+select = [
+    "F",    # pyflakes — undefined names, unused imports, etc.
+    "E9",   # syntax errors
+    "B",    # flake8-bugbear — likely bugs
+    "S",    # flake8-bandit — security patterns (overlap with bandit)
+]
+ignore = [
+    "B008",  # FastAPI Depends() default is idiomatic
+    "B904",  # raise from … — noisy in HTTPException handlers
+    "S101",  # asserts allowed
+    "S104",  # 0.0.0.0 bind is intentional in container
+    "S105",  # "Possible hardcoded password" — too noisy for enum values / token_type fields
+    "S110",  # try/except/pass is fine for best-effort calls
+    "S307",  # eval allowed in transform_service (sandboxed expression evaluator)
+    "S311",  # non-cryptographic random is fine for our uses
+    "S324",  # md5/sha1 — only used for content hashing, not security
+    "S608",  # tagged literal SQL — false positives in cypher building
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["S105", "S106", "S107", "S324", "F401"]
+"app/main.py" = ["F401"]   # routers imported for side effects
+"app/api/mapper_preview.py" = ["F841"]  # legacy unused locals
+"app/api/mapper_config.py" = ["F841"]
+"app/services/mapper_service.py" = ["F841"]

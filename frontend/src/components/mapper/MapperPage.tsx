@@ -115,27 +115,19 @@ export function MapperPage() {
     ? agents.filter((a) => a.app_id === selectedAppId)
     : agents;
   const currentSelectedChunkId = selectedChunk?.id ?? null;
+  const activeMappings = availableMappings.filter((mapping) => mapping.is_active);
 
-  const loadMappingsForAgent = useCallback(async (agent: Agent | null) => {
-    if (!agent) {
-      setActiveMapping(null);
-      setAvailableMappings([]);
-      return;
-    }
-
+  const loadMappingsForAgent = useCallback(async (_agent: Agent | null) => {
     setMappingsLoading(true);
     try {
-      const active = await mapperApi.getActiveMapping(agent.source_type);
+      const response = await mapperApi.listMappings({ limit: 100 });
+      setAvailableMappings(response.mappings);
+
+      const active = response.mappings.find((mapping) => mapping.is_active) || null;
       setActiveMapping(active);
       if (active) {
         setDraftMapping(active);
       }
-
-      const response = await mapperApi.listMappings({
-        source_type: agent.source_type,
-        limit: 50,
-      });
-      setAvailableMappings(response.mappings);
     } catch (error) {
       console.error("Failed to load mappings:", error);
     } finally {
@@ -178,6 +170,30 @@ export function MapperPage() {
     }
   }, [currentSelectedChunkId, selectChunk, setChunks, setChunksLoading]);
 
+  const handlePinChunk = useCallback(async (chunkId: string) => {
+    try {
+      await mapperApi.pinChunk(chunkId);
+      setChunks(chunks.map(c => c.id === chunkId ? { ...c, is_pinned: true } : c));
+      if (selectedChunk?.id === chunkId) {
+        selectChunk({ ...selectedChunk, is_pinned: true });
+      }
+    } catch (error) {
+      console.error("Failed to pin chunk:", error);
+    }
+  }, [chunks, selectedChunk, setChunks, selectChunk]);
+
+  const handleUnpinChunk = useCallback(async (chunkId: string) => {
+    try {
+      await mapperApi.unpinChunk(chunkId);
+      setChunks(chunks.map(c => c.id === chunkId ? { ...c, is_pinned: false } : c));
+      if (selectedChunk?.id === chunkId) {
+        selectChunk({ ...selectedChunk, is_pinned: false });
+      }
+    } catch (error) {
+      console.error("Failed to unpin chunk:", error);
+    }
+  }, [chunks, selectedChunk, setChunks, selectChunk]);
+
   useEffect(() => {
     loadMappingsForAgent(selectedAgent);
   }, [selectedAgent, loadMappingsForAgent]);
@@ -191,43 +207,42 @@ export function MapperPage() {
       const updated = await mapperApi.activateMapping(mappingId);
       setActiveMapping(updated);
       setDraftMapping(updated);
-      if (selectedAgent) {
-        const response = await mapperApi.listMappings({
-          source_type: selectedAgent.source_type,
-          limit: 50,
-        });
-        setAvailableMappings(response.mappings);
-      }
+      await loadMappingsForAgent(selectedAgent);
     } catch (error) {
       console.error("Failed to activate mapping:", error);
     }
-  }, [selectedAgent, setDraftMapping]);
+  }, [loadMappingsForAgent, selectedAgent, setDraftMapping]);
 
   const handleSelectMapping = useCallback((mapping: MappingConfig) => {
     setDraftMapping(mapping);
+    if (mapping.is_active) {
+      setActiveMapping(mapping);
+    }
   }, [setDraftMapping]);
 
   const handleDeactivateAndClear = useCallback(async () => {
-    if (!activeMapping) return;
+    const mappingId = draftMapping?.id && draftMapping.is_active ? draftMapping.id : activeMapping?.id;
+    if (!mappingId) return;
     setDeactivateClearLoading(true);
     try {
-      const result = await mapperApi.deactivateAndClearMapping(activeMapping.id);
+      const result = await mapperApi.deactivateAndClearMapping(mappingId);
       setActiveMapping(null);
       setActionMessage(
         `Deactivated + cleared: ${result.deleted_nodes} nodes, ${result.deleted_edges} edges`
       );
+      await loadMappingsForAgent(selectedAgent);
     } catch (error) {
       console.error("Failed to deactivate and clear mapping:", error);
       setActionMessage("Deactivate + clear failed");
     } finally {
       setDeactivateClearLoading(false);
     }
-  }, [activeMapping]);
+  }, [activeMapping, draftMapping, loadMappingsForAgent, selectedAgent]);
 
   const handleNewMapping = useCallback(() => {
     setDraftMapping({
       name: buildUniqueMappingName(),
-      source_type: selectedAgent?.source_type || "custom",
+      source_type: "custom",
       field_mappings: [],
       conditional_rules: [],
       edge_preset_id: "default",
@@ -401,24 +416,44 @@ export function MapperPage() {
     setMockerActionLoading("create");
     setMockerMessage(null);
     try {
-      const result = await mapperApi.createMappingsFromMocker();
-      setMockerMessage({
-        type: result.success ? "success" : "error",
-        text: result.success
-          ? "Mappings created successfully"
-          : `Mapping creation failed (exit code ${result.exit_code})`,
-      });
+      const templates = await mapperApi.listMappingTemplates();
+      let createdCount = 0;
 
-      if (result.success) {
-        await Promise.all([
-          refreshMappings(),
-          loadChunksForAgent(selectedAgent),
-        ]);
+      for (const template of templates.templates) {
+        try {
+          await mapperApi.instantiateMappingTemplate(template.id, {
+            sample_chunk_id: selectedChunk?.id || null,
+            activate: true,
+          });
+          createdCount += 1;
+        } catch (error) {
+          const detail =
+            typeof error === "object" &&
+            error !== null &&
+            "response" in error
+              ? (error as { response?: { status?: number } }).response?.status
+              : undefined;
+
+          if (detail !== 409) {
+            throw error;
+          }
+        }
       }
+
+      setMockerMessage({
+        type: "success",
+        text: createdCount > 0
+          ? `Installed ${createdCount} built-in mapping templates`
+          : "Built-in mapping templates already installed",
+      });
+      await Promise.all([
+        refreshMappings(),
+        loadChunksForAgent(selectedAgent),
+      ]);
     } catch (error) {
       setMockerMessage({
         type: "error",
-        text: error instanceof Error ? error.message : "Mapping creation failed",
+        text: error instanceof Error ? error.message : "Built-in mapping installation failed",
       });
     } finally {
       setMockerActionLoading(null);
@@ -480,15 +515,15 @@ export function MapperPage() {
           
           {selectedAgent && (
             <div className="flex items-center gap-2 text-sm">
-              {activeMapping ? (
+              {activeMappings.length > 0 ? (
                 <>
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span className="text-emerald-400 truncate max-w-[150px]">
-                    {activeMapping.name}
+                    {activeMappings.length} active mapping{activeMappings.length === 1 ? "" : "s"}
                   </span>
                   <button
                     onClick={handleDeactivateAndClear}
-                    disabled={deactivateClearLoading}
+                    disabled={deactivateClearLoading || !(draftMapping?.id && draftMapping.is_active) && !activeMapping}
                     className="text-red-400 hover:text-red-300 text-xs underline disabled:text-slate-600"
                   >
                     {deactivateClearLoading ? "Clearing..." : "Deactivate"}
@@ -513,7 +548,7 @@ export function MapperPage() {
               disabled={mockerActionLoading !== null}
               className="text-xs bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
             >
-              {mockerActionLoading === "create" ? "Creating..." : "Create default mappings"}
+              {mockerActionLoading === "create" ? "Installing..." : "Install built-in mappings"}
             </button>
           </div>
         </div>
@@ -561,7 +596,7 @@ export function MapperPage() {
               <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
                 <h2 className="text-sm font-semibold text-slate-300">Mappings</h2>
                 <p className="text-xs text-slate-500">
-                  {selectedAgent?.source_type || "Select agent"}
+                  Chunk-matched rules, not agent-bound
                 </p>
               </div>
               <div className="flex-1 overflow-auto p-2 space-y-1">
@@ -569,7 +604,7 @@ export function MapperPage() {
                   <div className="text-slate-500 text-sm text-center py-4">Loading...</div>
                 ) : availableMappings.length === 0 ? (
                   <div className="text-slate-500 text-sm text-center py-4">
-                    No mappings for this source type
+                    No mappings installed yet
                   </div>
                 ) : (
                   availableMappings.map((m) => (
@@ -579,13 +614,13 @@ export function MapperPage() {
                       onDoubleClick={() => handleActivate(m.id)}
                       className={[
                         "w-full text-left px-3 py-2 rounded text-sm transition-colors",
-                        m.id === activeMapping?.id
+                        m.is_active
                           ? "bg-emerald-600/30 border border-emerald-500/50 text-emerald-300"
                           : "bg-slate-800/50 hover:bg-slate-700/50 text-slate-300",
                       ].join(" ")}
                     >
                       <div className="flex items-center gap-2">
-                        {m.id === activeMapping?.id && (
+                        {m.is_active && (
                           <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         )}
                         <span className="font-medium">{m.name}</span>
@@ -593,9 +628,17 @@ export function MapperPage() {
                       <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
                         <span>{m.field_mappings?.length || 0} fields</span>
                         {m.sample_chunk_id && (
-                          <span className="text-blue-400 font-mono" title={m.sample_chunk_id}>
-                            • chunk: {m.sample_chunk_id.slice(0, 8)}...
-                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const chunk = chunks.find((c) => c.id === m.sample_chunk_id);
+                              if (chunk) selectChunk(chunk);
+                            }}
+                            className="inline-flex items-center gap-1 text-amber-400 font-mono hover:text-amber-300 hover:underline"
+                            title={`Jump to sample chunk: ${m.sample_chunk_id}`}
+                          >
+                            📌 chunk: {m.sample_chunk_id.slice(0, 8)}...
+                          </button>
                         )}
                       </div>
                     </button>
@@ -619,6 +662,8 @@ export function MapperPage() {
                 chunks={chunks}
                 selectedChunk={selectedChunk}
                 onSelectChunk={selectChunk}
+                onPinChunk={handlePinChunk}
+                onUnpinChunk={handleUnpinChunk}
                 loading={chunksLoading}
                 sampleChunkId={draftMapping?.sample_chunk_id}
               />
@@ -658,7 +703,7 @@ export function MapperPage() {
             <section className="bg-slate-900 flex flex-col border-l border-slate-700/50 min-h-0">
               <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
                 <h2 className="text-sm font-semibold text-slate-300">
-                  {activeMapping ? `Edit: ${activeMapping.name}` : "New Mapping"}
+                  {draftMapping?.name ? `Edit: ${draftMapping.name}` : "New Mapping"}
                 </h2>
               </div>
               {draftMapping ? (

@@ -309,7 +309,7 @@ export function MappingBuilder({ onSaved }: { onSaved?: () => Promise<void> | vo
           onChange={(e) => setNewMapping((prev) => ({ ...prev, target_node_type: e.target.value }))}
           className="px-1.5 py-1 bg-slate-700 border border-slate-600 rounded text-xs text-slate-200"
         >
-          {NODE_TYPES.slice(0, 8).map((type) => (
+          {NODE_TYPES.map((type) => (
             <option key={type} value={type}>{type}</option>
           ))}
         </select>

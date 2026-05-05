@@ -223,11 +223,12 @@ async def preview_raw_data(
             detail="Mapping not found",
         )
 
-    from app.models.mapper.raw_data import RawDataSource
+    from app.models.mapper.raw_data import RawDataChunk
+    from datetime import datetime, timezone
     chunk = RawDataChunk(
         id="preview",
         agent_id="preview",
-        source_type=RawDataSource.CUSTOM,
+        timestamp=datetime.now(timezone.utc),
         data=raw_data,
     )
 

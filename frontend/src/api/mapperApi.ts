@@ -5,6 +5,8 @@ import type {
     RawDataSource,
     MappingConfig,
     MappingListResponse,
+    MappingTemplateListResponse,
+    MappingTemplateInstantiateRequest,
     PreviewResponse,
     ApplyResponse,
     EdgePreset,
@@ -32,12 +34,35 @@ export async function deleteChunk(chunkId: string): Promise<void> {
     await client.delete(`/receiver/raw/${chunkId}`);
 }
 
+export async function pinChunk(chunkId: string): Promise<{ chunk_id: string; is_pinned: boolean }> {
+    const res = await client.post(`/receiver/raw/${chunkId}/pin`);
+    return res.data;
+}
+
+export async function unpinChunk(chunkId: string): Promise<{ chunk_id: string; is_pinned: boolean }> {
+    const res = await client.post(`/receiver/raw/${chunkId}/unpin`);
+    return res.data;
+}
+
 export async function listMappings(params?: {
     source_type?: string;
     is_active?: boolean;
     limit?: number;
 }): Promise<MappingListResponse> {
     const res = await client.get("/mapper/", { params });
+    return res.data;
+}
+
+export async function listMappingTemplates(): Promise<MappingTemplateListResponse> {
+    const res = await client.get("/mapper/templates");
+    return res.data;
+}
+
+export async function instantiateMappingTemplate(
+    templateId: string,
+    payload?: MappingTemplateInstantiateRequest,
+): Promise<MappingConfig> {
+    const res = await client.post(`/mapper/templates/${templateId}/instantiate`, payload ?? {});
     return res.data;
 }
 
@@ -172,7 +197,11 @@ export const mapperApi = {
     listChunks,
     getChunk,
     deleteChunk,
+    pinChunk,
+    unpinChunk,
     listMappings,
+    listMappingTemplates,
+    instantiateMappingTemplate,
     getMapping,
     createMapping,
     updateMapping,

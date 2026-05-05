@@ -20,11 +20,13 @@ MODULES = [
     "app.api.agents",
     "app.api.applications",
     "app.api.mapper_config",
+    "app.models.mapper.template",
     "app.repositories.user_repo",
     "app.repositories.agent_repo",
     "app.repositories.application_repo",
     "app.repositories.session_repo",
     "app.repositories.mapping_repo",
+    "app.repositories.mapping_template_repo",
 ]
 
 
@@ -45,3 +47,4 @@ def test_fastapi_app_has_expected_routes():
     assert any(p.startswith("/api/v1/auth") for p in paths)
     assert any(p.startswith("/api/v1/graph") for p in paths)
     assert any(p.startswith("/api/v1/export") for p in paths)
+    assert any(p.startswith("/api/v1/mapper/templates") for p in paths)

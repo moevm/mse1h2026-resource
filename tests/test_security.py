@@ -15,6 +15,8 @@ from app.core.security import (
 )
 
 
+# ---------- Password hashing ----------
+
 def test_hash_password_returns_non_plaintext():
     h = hash_password("hunter2")
     assert h != "hunter2"

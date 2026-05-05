@@ -5,6 +5,8 @@ interface TimelineSliderProps {
   chunks: RawDataChunk[];
   selectedChunk: RawDataChunk | null;
   onSelectChunk: (chunk: RawDataChunk | null) => void;
+  onPinChunk?: (chunkId: string) => Promise<void>;
+  onUnpinChunk?: (chunkId: string) => Promise<void>;
   loading: boolean;
   sampleChunkId?: string | null;
 }
@@ -13,6 +15,8 @@ export function TimelineSlider({
   chunks,
   selectedChunk,
   onSelectChunk,
+  onPinChunk,
+  onUnpinChunk,
   loading,
   sampleChunkId,
 }: TimelineSliderProps) {
@@ -75,14 +79,17 @@ export function TimelineSlider({
                           ? "bg-blue-600 text-white"
                           : isSample
                           ? "bg-purple-500/30 text-purple-300 border border-purple-500/50 hover:bg-purple-500/40"
+                          : chunk.is_pinned
+                          ? "bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30"
                           : chunk.is_processed
                           ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
                           : "bg-slate-700 text-slate-300 hover:bg-slate-600"
                       }`}
-                      title={`${formatTime(chunk.timestamp)} - ${chunk.size_bytes} bytes${isSample ? ' (sample chunk)' : ''}`}
+                      title={`${formatTime(chunk.timestamp)} - ${chunk.size_bytes} bytes${isSample ? ' (sample chunk)' : ''}${chunk.is_pinned ? ' (pinned)' : ''}`}
                     >
                       {formatTime(chunk.timestamp)}
                       {isSample && " ★"}
+                      {chunk.is_pinned && " 📌"}
                       {chunk.is_processed && " ✓"}
                     </button>
                   );
@@ -103,6 +110,29 @@ export function TimelineSlider({
             </span>
             {selectedChunk.is_processed && (
               <span className="text-emerald-400">Processed</span>
+            )}
+            {selectedChunk.is_pinned ? (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  onUnpinChunk && await onUnpinChunk(selectedChunk.id);
+                }}
+                className="text-amber-400 hover:text-amber-300 transition-colors"
+                title="Unpin chunk"
+              >
+                📌 Pinned
+              </button>
+            ) : (
+              <button
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  onPinChunk && await onPinChunk(selectedChunk.id);
+                }}
+                className="text-slate-500 hover:text-amber-400 transition-colors"
+                title="Pin chunk (prevent expiry)"
+              >
+                Pin
+              </button>
             )}
           </div>
         )}

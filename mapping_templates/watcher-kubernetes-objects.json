@@ -1,0 +1,602 @@
+{
+  "id": "watcher-kubernetes-objects-v1",
+  "name": "Watcher: Kubernetes Objects",
+  "source_type": "watcher-kubernetes-objects",
+  "version": "1.0.0",
+  "description": "Maps raw Kubernetes objects pushed by k8s-watcher into the MSE topology model using object shape and field presence rather than agent type.",
+  "is_active": false,
+  "created_by": "builtin",
+  "edge_preset_id": "default",
+  "field_mappings": [
+    {
+      "id": "pod-id",
+      "source_path": "metadata.name",
+      "target_field": "id",
+      "target_node_type": "Pod",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:pod:{value}" }
+    },
+    {
+      "id": "pod-name",
+      "source_path": "metadata.name",
+      "target_field": "name",
+      "target_node_type": "Pod"
+    },
+    {
+      "id": "pod-namespace",
+      "source_path": "metadata.namespace",
+      "target_field": "namespace",
+      "target_node_type": "Pod"
+    },
+    {
+      "id": "pod-node-name",
+      "source_path": "spec.node_name",
+      "target_field": "node_name",
+      "target_node_type": "Pod"
+    },
+    {
+      "id": "pod-deployment-name",
+      "source_path": "metadata.labels.app",
+      "target_field": "deployment_name",
+      "target_node_type": "Pod"
+    },
+    {
+      "id": "pod-service-name",
+      "source_path": "metadata.labels.app",
+      "target_field": "service_name",
+      "target_node_type": "Pod"
+    },
+    {
+      "id": "pod-status",
+      "source_path": "status.phase",
+      "target_field": "status",
+      "target_node_type": "Pod"
+    },
+    {
+      "id": "pod-ip",
+      "source_path": "status.pod_ip",
+      "target_field": "ip_address",
+      "target_node_type": "Pod"
+    },
+    {
+      "id": "pod-service-account",
+      "source_path": "spec.service_account_name",
+      "target_field": "service_account",
+      "target_node_type": "Pod"
+    },
+    {
+      "id": "node-id",
+      "source_path": "metadata.name",
+      "target_field": "id",
+      "target_node_type": "Node",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:node:{value}" }
+    },
+    {
+      "id": "node-name",
+      "source_path": "metadata.name",
+      "target_field": "name",
+      "target_node_type": "Node"
+    },
+    {
+      "id": "node-zone",
+      "source_path": "metadata.labels.\"topology.kubernetes.io/zone\"",
+      "target_field": "zone",
+      "target_node_type": "Node",
+      "default_value": "local-zone"
+    },
+    {
+      "id": "node-region",
+      "source_path": "metadata.labels.\"topology.kubernetes.io/region\"",
+      "target_field": "region",
+      "target_node_type": "Node",
+      "default_value": "local-region"
+    },
+    {
+      "id": "node-instance-type",
+      "source_path": "metadata.labels.\"node.kubernetes.io/instance-type\"",
+      "target_field": "instance_type",
+      "target_node_type": "Node",
+      "default_value": "bare-metal"
+    },
+    {
+      "id": "node-cpu-capacity",
+      "source_path": "status.capacity.cpu",
+      "target_field": "capacity_cpu",
+      "target_node_type": "Node"
+    },
+    {
+      "id": "node-kubelet-version",
+      "source_path": "status.node_info.kubelet_version",
+      "target_field": "kubelet_version",
+      "target_node_type": "Node"
+    },
+    {
+      "id": "node-os-image",
+      "source_path": "status.node_info.os_image",
+      "target_field": "os_image",
+      "target_node_type": "Node"
+    },
+    {
+      "id": "node-architecture",
+      "source_path": "status.node_info.architecture",
+      "target_field": "architecture",
+      "target_node_type": "Node"
+    },
+    {
+      "id": "node-cluster-id",
+      "source_path": "metadata.name",
+      "target_field": "cluster_id",
+      "target_node_type": "Node",
+      "transform_type": "template",
+      "transform_config": { "template": "monitoring-demo-cluster" }
+    },
+    {
+      "id": "service-id",
+      "source_path": "metadata.name",
+      "target_field": "id",
+      "target_node_type": "Service",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:service:{value}" }
+    },
+    {
+      "id": "service-name",
+      "source_path": "metadata.name",
+      "target_field": "name",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-namespace",
+      "source_path": "metadata.namespace",
+      "target_field": "namespace",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-selector-app",
+      "source_path": "spec.selector.app",
+      "target_field": "selector_app",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-deployment-name",
+      "source_path": "spec.selector.app",
+      "target_field": "deployment_name",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "deployment-id",
+      "source_path": "metadata.name",
+      "target_field": "id",
+      "target_node_type": "Deployment",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:deployment:{value}" }
+    },
+    {
+      "id": "deployment-name",
+      "source_path": "metadata.name",
+      "target_field": "name",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-namespace",
+      "source_path": "metadata.namespace",
+      "target_field": "namespace",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-replicas-desired",
+      "source_path": "spec.replicas",
+      "target_field": "replicas_desired",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-replicas-ready",
+      "source_path": "status.ready_replicas",
+      "target_field": "replicas_ready",
+      "target_node_type": "Deployment",
+      "default_value": 0
+    },
+    {
+      "id": "deployment-selector-app",
+      "source_path": "spec.selector.match_labels.app",
+      "target_field": "selector_app",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-service-name",
+      "source_path": "metadata.name",
+      "target_field": "service_name",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-cluster-id",
+      "source_path": "metadata.namespace",
+      "target_field": "cluster_id",
+      "target_node_type": "Deployment",
+      "transform_type": "template",
+      "transform_config": { "template": "monitoring-demo-cluster" }
+    },
+    {
+      "id": "deployment-auth-secret",
+      "source_path": "spec.template.spec.containers[0].env[?value_from.secret_key_ref.name != `null`].value_from.secret_key_ref.name | [0]",
+      "target_field": "auth_secret",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "database-id",
+      "source_path": "metadata.name",
+      "target_field": "id",
+      "target_node_type": "Database",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:database:{value}" }
+    },
+    {
+      "id": "database-name",
+      "source_path": "metadata.name",
+      "target_field": "name",
+      "target_node_type": "Database"
+    },
+    {
+      "id": "database-engine",
+      "source_path": "spec.template.spec.containers[0].image",
+      "target_field": "engine",
+      "target_node_type": "Database",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'postgresql' if str(value).startswith('postgres') else None" }
+    },
+    {
+      "id": "database-owner-service",
+      "source_path": "metadata.name",
+      "target_field": "owner_service",
+      "target_node_type": "Database",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'fastapi-app' if value == 'postgres-db' else None" }
+    },
+    {
+      "id": "table-id",
+      "source_path": "data.\"init_tables.sql\"",
+      "target_field": "id",
+      "target_node_type": "Table",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'users' if 'Users' in str(value) else None" }
+    },
+    {
+      "id": "table-name",
+      "source_path": "data.\"init_tables.sql\"",
+      "target_field": "name",
+      "target_node_type": "Table",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'Users' if 'Users' in str(value) else None" }
+    },
+    {
+      "id": "table-database-ref",
+      "source_path": "data.\"init_tables.sql\"",
+      "target_field": "database_ref",
+      "target_node_type": "Table",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'postgres-db' if 'Users' in str(value) else None" }
+    },
+    {
+      "id": "table-schema-name",
+      "source_path": "data.\"init_tables.sql\"",
+      "target_field": "schema_name",
+      "target_node_type": "Table",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'public' if 'Users' in str(value) else None" }
+    },
+    {
+      "id": "endpoint-id",
+      "source_path": "metadata.name",
+      "target_field": "id",
+      "target_node_type": "Endpoint",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:endpoint:k8s:{value}" }
+    },
+    {
+      "id": "endpoint-name",
+      "source_path": "metadata.name",
+      "target_field": "name",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-service-name",
+      "source_path": "metadata.name",
+      "target_field": "service_name",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-path",
+      "source_path": "metadata.name",
+      "target_field": "path",
+      "target_node_type": "Endpoint",
+      "transform_type": "template",
+      "transform_config": { "template": "k8s://service/{value}" }
+    },
+    {
+      "id": "secret-id",
+      "source_path": "metadata.name",
+      "target_field": "id",
+      "target_node_type": "SecretConfig",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:secretconfig:{value}" }
+    },
+    {
+      "id": "secret-name",
+      "source_path": "metadata.name",
+      "target_field": "name",
+      "target_node_type": "SecretConfig"
+    },
+    {
+      "id": "secret-provider",
+      "source_path": "metadata.namespace",
+      "target_field": "provider",
+      "target_node_type": "SecretConfig",
+      "transform_type": "template",
+      "transform_config": { "template": "kubernetes" }
+    },
+    {
+      "id": "secret-key-names",
+      "source_path": "keys(data)",
+      "target_field": "key_names",
+      "target_node_type": "SecretConfig"
+    },
+    {
+      "id": "slo-id",
+      "source_path": "metadata.name",
+      "target_field": "id",
+      "target_node_type": "SLASLO",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:slaslo:fastapi-app-api" }
+    },
+    {
+      "id": "slo-name",
+      "source_path": "metadata.name",
+      "target_field": "name",
+      "target_node_type": "SLASLO",
+      "transform_type": "template",
+      "transform_config": { "template": "fastapi-app-api" }
+    },
+    {
+      "id": "slo-service-ref",
+      "source_path": "data.\"fastapi-api-availability.yaml\"",
+      "target_field": "service_ref",
+      "target_node_type": "SLASLO",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'fastapi-app' if value else None" }
+    },
+    {
+      "id": "slo-target",
+      "source_path": "data.\"fastapi-api-availability.yaml\"",
+      "target_field": "target_percentage",
+      "target_node_type": "SLASLO",
+      "transform_type": "expression",
+      "transform_config": { "expression": "95.0 if \"target: '95'\" in str(value) else None" }
+    },
+    {
+      "id": "slo-window-days",
+      "source_path": "data.\"fastapi-api-availability.yaml\"",
+      "target_field": "window_days",
+      "target_node_type": "SLASLO",
+      "transform_type": "expression",
+      "transform_config": { "expression": "7 if 'window: 1w' in str(value) else None" }
+    },
+    {
+      "id": "slo-metric-name",
+      "source_path": "data.\"fastapi-api-availability.yaml\"",
+      "target_field": "metric_name",
+      "target_node_type": "SLASLO",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'http_requests_total' if value else None" }
+    },
+    {
+      "id": "cluster-id",
+      "source_path": "metadata.name",
+      "target_field": "id",
+      "target_node_type": "RegionCluster",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:regioncluster:monitoring-demo-cluster" }
+    },
+    {
+      "id": "cluster-name",
+      "source_path": "metadata.name",
+      "target_field": "name",
+      "target_node_type": "RegionCluster",
+      "transform_type": "template",
+      "transform_config": { "template": "monitoring-demo-cluster" }
+    },
+    {
+      "id": "cluster-region",
+      "source_path": "metadata.labels.\"topology.kubernetes.io/region\"",
+      "target_field": "region",
+      "target_node_type": "RegionCluster",
+      "default_value": "local-region"
+    },
+    {
+      "id": "cluster-provider",
+      "source_path": "metadata.name",
+      "target_field": "provider",
+      "target_node_type": "RegionCluster",
+      "transform_type": "template",
+      "transform_config": { "template": "kubernetes" }
+    },
+    {
+      "id": "cluster-cluster-id-field",
+      "source_path": "metadata.name",
+      "target_field": "cluster_id",
+      "target_node_type": "RegionCluster",
+      "transform_type": "template",
+      "transform_config": { "template": "monitoring-demo-cluster" }
+    },
+    {
+      "id": "deployment-team",
+      "source_path": "spec.template.metadata.labels.team",
+      "target_field": "team",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-publishes-to",
+      "source_path": "spec.template.metadata.annotations.\"topology.mse.io/publishes-to\"",
+      "target_field": "publishes_to",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-consumes-from",
+      "source_path": "spec.template.metadata.annotations.\"topology.mse.io/consumes-from\"",
+      "target_field": "consumes_from",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-reads-caches",
+      "source_path": "spec.template.metadata.annotations.\"topology.mse.io/reads-cache\"",
+      "target_field": "reads_caches",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-writes-caches",
+      "source_path": "spec.template.metadata.annotations.\"topology.mse.io/writes-cache\"",
+      "target_field": "writes_caches",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-depends-libraries",
+      "source_path": "spec.template.metadata.annotations.\"topology.mse.io/depends-libraries\"",
+      "target_field": "libraries",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-rate-limited-by",
+      "source_path": "spec.template.metadata.annotations.\"topology.mse.io/rate-limited-by\"",
+      "target_field": "rate_limit_config",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "deployment-failover",
+      "source_path": "spec.template.metadata.annotations.\"topology.mse.io/fails-over-to\"",
+      "target_field": "failover_service",
+      "target_node_type": "Deployment"
+    },
+    {
+      "id": "service-team",
+      "source_path": "metadata.labels.team",
+      "target_field": "team",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-publishes-to-ann",
+      "source_path": "metadata.annotations.\"topology.mse.io/publishes-to\"",
+      "target_field": "publishes_to",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-consumes-from-ann",
+      "source_path": "metadata.annotations.\"topology.mse.io/consumes-from\"",
+      "target_field": "consumes_from",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-depends-libraries-ann",
+      "source_path": "metadata.annotations.\"topology.mse.io/depends-libraries\"",
+      "target_field": "libraries",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-rate-limited-by-ann",
+      "source_path": "metadata.annotations.\"topology.mse.io/rate-limited-by\"",
+      "target_field": "rate_limit_config",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-failover-ann",
+      "source_path": "metadata.annotations.\"topology.mse.io/fails-over-to\"",
+      "target_field": "failover_service",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-reads-caches-ann",
+      "source_path": "metadata.annotations.\"topology.mse.io/reads-cache\"",
+      "target_field": "reads_caches",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-writes-caches-ann",
+      "source_path": "metadata.annotations.\"topology.mse.io/writes-cache\"",
+      "target_field": "writes_caches",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "database-team",
+      "source_path": "spec.template.metadata.labels.team",
+      "target_field": "team",
+      "target_node_type": "Database"
+    }
+  ],
+  "conditional_rules": [
+    {
+      "id": "cr-k8s-pod",
+      "condition": "spec.node_name != `null`",
+      "target_node_type": "Pod",
+      "priority": 90
+    },
+    {
+      "id": "cr-k8s-node",
+      "condition": "status.capacity != `null`",
+      "target_node_type": "Node",
+      "priority": 80
+    },
+    {
+      "id": "cr-k8s-cluster",
+      "condition": "status.capacity != `null`",
+      "target_node_type": "RegionCluster",
+      "priority": 79
+    },
+    {
+      "id": "cr-k8s-service",
+      "condition": "spec.cluster_ip != `null`",
+      "target_node_type": "Service",
+      "priority": 70
+    },
+    {
+      "id": "cr-k8s-deployment",
+      "condition": "spec.replicas != `null`",
+      "target_node_type": "Deployment",
+      "priority": 60
+    },
+    {
+      "id": "cr-k8s-database",
+      "condition": "metadata.name == 'postgres-db'",
+      "target_node_type": "Database",
+      "priority": 55
+    },
+    {
+      "id": "cr-k8s-endpoints",
+      "condition": "subsets != `null`",
+      "target_node_type": "Endpoint",
+      "priority": 50
+    },
+    {
+      "id": "cr-k8s-secret",
+      "condition": "type != `null` && data != `null`",
+      "target_node_type": "SecretConfig",
+      "priority": 45
+    },
+    {
+      "id": "cr-k8s-configmap",
+      "condition": "data != `null` && type == `null` && spec == `null`",
+      "target_node_type": "SecretConfig",
+      "priority": 44
+    },
+    {
+      "id": "cr-k8s-table",
+      "condition": "data.\"init_tables.sql\" != `null`",
+      "target_node_type": "Table",
+      "priority": 43
+    },
+    {
+      "id": "cr-k8s-slo",
+      "condition": "metadata.name == 'pyrra-slos'",
+      "target_node_type": "SLASLO",
+      "priority": 42
+    }
+  ],
+  "auto_edge_rules": []
+}

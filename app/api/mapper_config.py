@@ -15,9 +15,14 @@ from app.models.mapper.mapping import (
     MappingConfig,
     MappingListResponse,
 )
-from app.models.mapper.raw_data import RawDataSource
+from app.models.mapper.template import (
+    MappingTemplateDetail,
+    MappingTemplateInstantiateRequest,
+    MappingTemplateListResponse,
+)
 from app.repositories import agent_repo
 from app.repositories.mapping_repo import mapping_repo
+from app.repositories.mapping_template_repo import mapping_template_repo
 from app.repositories.raw_data_repo import raw_data_repo
 from app.repositories.neo4j_repo import upsert_nodes, upsert_edges, delete_graph_by_sources
 from app.services.mapper_service import mapper_service
@@ -62,7 +67,7 @@ class RecreateEdgesRequest(BaseModel):
 class RecreateEdgesResponse(BaseModel):
     nodes_processed: int
     edges_created: int
-    unresolved_count: int\
+    unresolved_count: int
 
 class DeactivateAndClearResponse(BaseModel):
     mapping_id: str
@@ -73,24 +78,18 @@ class DeactivateAndClearResponse(BaseModel):
     deleted_edges: int = 0
 
 
-async def replay_mapping_background(mapping_id: str, source_type: str) -> None:
+async def replay_mapping_background(mapping_id: str) -> None:
+    """Background task to replay mapping on all historical data."""
 
-    log.info(f"Starting background replay for mapping {mapping_id} (source_type={source_type})")
+    log.info(f"Starting background replay for mapping {mapping_id}")
 
     mapping = mapping_repo.get(mapping_id)
     if not mapping:
         log.error(f"Mapping {mapping_id} not found for replay")
         return
 
-    source_type_enum = None
-    try:
-        source_type_enum = RawDataSource(source_type)
-    except ValueError:
-        pass
-
     try:
         chunks_response = await raw_data_repo.list_chunks(
-            source_type=source_type_enum,
             limit=10000,
         )
 
@@ -104,7 +103,6 @@ async def replay_mapping_background(mapping_id: str, source_type: str) -> None:
         for chunk in chunks:
             try:
                 nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
-
                 agent_name = chunk.metadata.get("agent_name", "replay") if chunk.metadata else "replay"
 
                 if nodes:
@@ -157,6 +155,10 @@ async def create_mapping(user: CurrentUser, config: MappingConfig):
             detail=f"Mapping with name '{config.name}' already exists",
         )
 
+    # Auto-pin sample chunk so it doesn't expire
+    if config.sample_chunk_id:
+        await raw_data_repo.pin_chunk(config.sample_chunk_id)
+
     created = mapping_repo.create(config, user_id=user["user_id"])
     return created
 
@@ -178,6 +180,101 @@ async def list_mappings(
         limit=limit,
         user_id=user["user_id"],
     )
+
+
+@router.get(
+    "/templates",
+    response_model=MappingTemplateListResponse,
+    summary="List built-in mapping templates",
+)
+async def list_mapping_templates(user: CurrentUser):
+    templates = mapping_template_repo.list()
+    return MappingTemplateListResponse(templates=templates, total=len(templates))
+
+
+@router.get(
+    "/templates/{template_id}",
+    response_model=MappingTemplateDetail,
+    summary="Get a built-in mapping template",
+)
+async def get_mapping_template(user: CurrentUser, template_id: str):
+    template = mapping_template_repo.get(template_id)
+    summary = mapping_template_repo.get_summary(template_id)
+    if template is None or summary is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Mapping template not found",
+        )
+    return MappingTemplateDetail(template=template, summary=summary)
+
+
+@router.post(
+    "/templates/{template_id}/instantiate",
+    response_model=MappingConfig,
+    summary="Create a user mapping from a built-in template",
+    status_code=status.HTTP_201_CREATED,
+)
+async def instantiate_mapping_template(
+    user: CurrentUser,
+    template_id: str,
+    request: MappingTemplateInstantiateRequest = MappingTemplateInstantiateRequest(),
+):
+    import uuid
+
+    template = mapping_template_repo.get(template_id)
+    if template is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Mapping template not found",
+        )
+
+    mapping_name = (request.name or template.name).strip()
+    if not mapping_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Mapping name cannot be empty",
+        )
+
+    existing = mapping_repo.get_by_name(mapping_name, user_id=user["user_id"])
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Mapping with name '{mapping_name}' already exists",
+        )
+
+    # Auto-resolve sample_chunk_id if not provided:
+    # find the first chunk from an agent matching the template's source_type
+    sample_chunk_id = request.sample_chunk_id
+    if not sample_chunk_id and template.source_type:
+        from app.repositories.agent_repo import agent_repo as _agent_repo
+
+        agents = _agent_repo.list_agents(user_id=user["user_id"])
+        matching_agents = [
+            a for a in agents if a.get("source_type") == template.source_type
+        ]
+        for agent in matching_agents:
+            chunks_resp = await raw_data_repo.list_chunks(
+                agent_id=agent["agent_id"], limit=1
+            )
+            if chunks_resp.chunks:
+                sample_chunk_id = chunks_resp.chunks[0].id
+                break
+
+    created = template.model_copy(deep=True)
+    created.id = str(uuid.uuid4())
+    created.name = mapping_name
+    created.is_active = request.activate
+    created.sample_chunk_id = sample_chunk_id
+    created.created_by = user["username"]
+
+    # Auto-pin the sample chunk so it doesn't expire
+    if sample_chunk_id:
+        await raw_data_repo.pin_chunk(sample_chunk_id)
+
+    if request.activate:
+        mapping_repo.deactivate_all_for_source(created.source_type)
+
+    return mapping_repo.create(created, user_id=user["user_id"])
 
 
 @router.post(
@@ -268,6 +365,11 @@ async def update_mapping(user: CurrentUser, mapping_id: str, updates: MappingUpd
     for key, value in update_data.items():
         setattr(existing, key, value)
 
+    # Auto-pin new sample chunk if changed
+    new_sample_chunk_id = update_data.get("sample_chunk_id")
+    if new_sample_chunk_id:
+        await raw_data_repo.pin_chunk(new_sample_chunk_id)
+
     updated = mapping_repo.update(mapping_id, existing)
     return updated
 
@@ -307,7 +409,6 @@ async def activate_mapping(user: CurrentUser, mapping_id: str, background_tasks:
     background_tasks.add_task(
         replay_mapping_background,
         mapping_id,
-        updated.source_type,
     )
     log.info(f"Scheduled background replay for mapping {mapping_id}")
 
@@ -377,6 +478,11 @@ async def deactivate_and_clear_mapping(user: CurrentUser, mapping_id: str):
     summary="Re-apply mapping to historical data",
 )
 async def replay_mapping(user: CurrentUser, mapping_id: str, request: ReplayRequest = None):
+    """Re-apply mapping to historical raw data.
+
+    Useful when mapping is changed and user wants to update the graph
+    with historical data. Processes all chunks, applying only matching ones.
+    """
 
     request = request or ReplayRequest()
 
@@ -387,14 +493,7 @@ async def replay_mapping(user: CurrentUser, mapping_id: str, request: ReplayRequ
             detail="Mapping not found",
         )
 
-    source_type_enum = None
-    try:
-        source_type_enum = RawDataSource(mapping.source_type)
-    except ValueError:
-        pass
-
     chunks_response = await raw_data_repo.list_chunks(
-        source_type=source_type_enum,
         agent_id=request.agent_id,
         limit=10000,
     )
@@ -407,7 +506,6 @@ async def replay_mapping(user: CurrentUser, mapping_id: str, request: ReplayRequ
     for chunk in chunks:
         try:
             nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
-
             agent_name = chunk.metadata.get("agent_name", "replay") if chunk.metadata else "replay"
 
             if nodes:

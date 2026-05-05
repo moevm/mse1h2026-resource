@@ -11,11 +11,19 @@ from mocker.mappings import ALL_MAPPINGS
 from mocker.sample_data import SAMPLE_DATA_BY_SOURCE_TYPE, PRIMARY_SAMPLE_BY_SOURCE_TYPE
 
 
-def register_agent(base_url: str, name: str, source_type: str) -> str | None:
+def _auth_headers(auth_token: str | None) -> Dict[str, str]:
+    headers: Dict[str, str] = {}
+    if auth_token:
+        headers["Authorization"] = f"Bearer {auth_token}"
+    return headers
+
+
+def register_agent(base_url: str, name: str, source_type: str, auth_token: str | None = None) -> str | None:
     try:
         resp = httpx.post(
             f"{base_url}/api/v1/agents/register",
             json={"name": name, "source_type": source_type},
+            headers=_auth_headers(auth_token),
             timeout=10,
         )
         resp.raise_for_status()
@@ -45,9 +53,13 @@ def send_raw_data(
         return None
 
 
-def check_existing_mapping(base_url: str, name: str) -> bool:
+def check_existing_mapping(base_url: str, name: str, auth_token: str | None = None) -> bool:
     try:
-        resp = httpx.get(f"{base_url}/api/v1/mapper/", timeout=10)
+        resp = httpx.get(
+            f"{base_url}/api/v1/mapper/",
+            headers=_auth_headers(auth_token),
+            timeout=10,
+        )
         resp.raise_for_status()
         data = resp.json()
         mappings = data.get("mappings", [])
@@ -56,11 +68,12 @@ def check_existing_mapping(base_url: str, name: str) -> bool:
         return False
 
 
-def get_existing_chunk_for_source_type(base_url: str, source_type: str) -> str | None:
+def get_existing_chunk_for_source_type(base_url: str, source_type: str, auth_token: str | None = None) -> str | None:
     try:
         resp = httpx.get(
             f"{base_url}/api/v1/receiver/raw",
             params={"source_type": source_type, "limit": 1},
+            headers=_auth_headers(auth_token),
             timeout=10,
         )
         resp.raise_for_status()
@@ -73,11 +86,12 @@ def get_existing_chunk_for_source_type(base_url: str, source_type: str) -> str |
         return None
 
 
-def create_mapping(base_url: str, config: dict[str, Any]) -> dict[str, Any] | None:
+def create_mapping(base_url: str, config: dict[str, Any], auth_token: str | None = None) -> dict[str, Any] | None:
     try:
         resp = httpx.post(
             f"{base_url}/api/v1/mapper/",
             json=config,
+            headers=_auth_headers(auth_token),
             timeout=30,
         )
         resp.raise_for_status()
@@ -92,10 +106,11 @@ def create_mapping(base_url: str, config: dict[str, Any]) -> dict[str, Any] | No
         return None
 
 
-def activate_mapping(base_url: str, mapping_id: str) -> bool:
+def activate_mapping(base_url: str, mapping_id: str, auth_token: str | None = None) -> bool:
     try:
         resp = httpx.post(
             f"{base_url}/api/v1/mapper/{mapping_id}/activate",
+            headers=_auth_headers(auth_token),
             timeout=60,
         )
         resp.raise_for_status()
@@ -105,11 +120,12 @@ def activate_mapping(base_url: str, mapping_id: str) -> bool:
         return False
 
 
-def recreate_all_edges(base_url: str) -> dict[str, Any] | None:
+def recreate_all_edges(base_url: str, auth_token: str | None = None) -> dict[str, Any] | None:
     try:
         resp = httpx.post(
             f"{base_url}/api/v1/mapper/recreate-edges",
             json={},
+            headers=_auth_headers(auth_token),
             timeout=120,
         )
         resp.raise_for_status()
@@ -128,6 +144,11 @@ def main() -> int:
         "--url",
         default="http://localhost:8000",
         help="Base URL of the backend API (default: http://localhost:8000)",
+    )
+    parser.add_argument(
+        "--auth-token",
+        default=None,
+        help="Bearer token for API authentication",
     )
     parser.add_argument(
         "--dry-run",
@@ -163,7 +184,7 @@ def main() -> int:
 
     agent_token = None
     if not args.dry_run and not args.skip_data:
-        agent_token = register_agent(args.url, "mapping-creator", "kubernetes-api")
+        agent_token = register_agent(args.url, "mapping-creator", "kubernetes-api", auth_token=args.auth_token)
         if not agent_token:
             print("[ERROR] Failed to register agent, cannot send sample data")
             return 1
@@ -180,14 +201,14 @@ def main() -> int:
         if args.source_type and source_type != args.source_type:
             continue
 
-        if check_existing_mapping(args.url, name):
+        if check_existing_mapping(args.url, name, auth_token=args.auth_token):
             print(f"[SKIP] {name} (already exists)")
             skipped_count += 1
             continue
 
         sample_chunk_id = None
         if not args.dry_run and not args.skip_data:
-            existing_chunk_id = get_existing_chunk_for_source_type(args.url, source_type)
+            existing_chunk_id = get_existing_chunk_for_source_type(args.url, source_type, auth_token=args.auth_token)
 
             if existing_chunk_id:
                 sample_chunk_id = existing_chunk_id
@@ -231,7 +252,7 @@ def main() -> int:
             mapping_config["sample_chunk_id"] = sample_chunk_id
 
         print(f"[CREATE] {name}...")
-        created = create_mapping(args.url, mapping_config)
+        created = create_mapping(args.url, mapping_config, auth_token=args.auth_token)
 
         if created is None:
             error_count += 1
@@ -244,7 +265,7 @@ def main() -> int:
             print(f"         sample_chunk_id: {sample_chunk_id}")
 
         if not args.no_activate:
-            if activate_mapping(args.url, mapping_id):
+            if activate_mapping(args.url, mapping_id, auth_token=args.auth_token):
                 print(f"[ACTIVATED] {name}")
             else:
                 print(f"[WARNING] Failed to activate {name}")
@@ -267,7 +288,7 @@ def main() -> int:
         print("[EDGES] Waiting for background replays to complete...")
         time.sleep(3)
         print("[EDGES] Recreating all edges...")
-        result = recreate_all_edges(args.url)
+        result = recreate_all_edges(args.url, auth_token=args.auth_token)
         if result:
             print(f"[EDGES] Created {result['edges_created']} edges, {result['unresolved_count']} unresolved references")
 
