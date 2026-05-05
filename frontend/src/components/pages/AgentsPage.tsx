@@ -9,6 +9,8 @@ import { EmptyState } from "../common/EmptyState";
 import { IconAgents, IconRefresh, IconPlus, IconX, IconClock } from "../icons";
 
 const SOURCE_TYPE_OPTIONS = [
+    { value: "watcher-otel-traces", label: "OTel Traces Watcher" },
+    { value: "watcher-kubernetes-objects", label: "Kubernetes Watcher" },
     { value: "otel-collector", label: "OpenTelemetry Collector" },
     { value: "k8s-agent", label: "Kubernetes Agent" },
     { value: "aws-agent", label: "AWS Agent" },
@@ -19,6 +21,7 @@ const SOURCE_TYPE_OPTIONS = [
 export function AgentsPage() {
     const { agents, loading, error, register, reload } = useAgents();
     const [showForm, setShowForm] = useState(false);
+    const [createdToken, setCreatedToken] = useState<{ agentName: string; token: string } | null>(null);
 
     return (
         <div className="p-6 space-y-5 overflow-y-auto h-full animate-fade-in">
@@ -63,12 +66,45 @@ export function AgentsPage() {
                 </div>
             )}
 
+            {/* Token display after registration */}
+            {createdToken && (
+                <Card title="✅ Agent Registered — Save Your Token!">
+                    <div className="space-y-3">
+                        <p className="text-sm text-slate-300">
+                            Agent <span className="font-semibold text-white">{createdToken.agentName}</span> registered successfully.
+                            Set this token as <code className="bg-slate-800 px-1.5 py-0.5 rounded text-amber-400 text-xs">AGENT_TOKEN</code> environment variable in your watcher configuration.
+                        </p>
+                        <div className="flex items-center gap-2">
+                            <code className="flex-1 bg-slate-950 border border-slate-700 rounded-lg px-4 py-3 text-sm font-mono text-amber-300 select-all break-all">
+                                {createdToken.token}
+                            </code>
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => { navigator.clipboard.writeText(createdToken.token); }}
+                            >
+                                Copy
+                            </Button>
+                        </div>
+                        <p className="text-xs text-red-400">
+                            ⚠ This token will not be shown again. Copy it now.
+                        </p>
+                        <Button variant="ghost" size="sm" onClick={() => setCreatedToken(null)}>
+                            Dismiss
+                        </Button>
+                    </div>
+                </Card>
+            )}
+
             {}
             {showForm && (
                 <RegisterForm
                     onSubmit={async (req) => {
-                        await register(req);
+                        const result = await register(req);
                         setShowForm(false);
+                        if (result) {
+                            setCreatedToken({ agentName: result.name, token: result.token });
+                        }
                     }}
                 />
             )}
@@ -197,6 +233,7 @@ interface RegisterRequest {
     name: string;
     source_type: string;
     description?: string;
+    token?: string;
     app_token?: string;
 }
 
@@ -208,6 +245,7 @@ function RegisterForm({
     const [name, setName] = useState("");
     const [sourceType, setSourceType] = useState("custom");
     const [description, setDescription] = useState("");
+    const [agentToken, setAgentToken] = useState("");
     const [appToken, setAppToken] = useState("");
     const [submitting, setSubmitting] = useState(false);
 
@@ -219,6 +257,7 @@ function RegisterForm({
                 name: name.trim(),
                 source_type: sourceType,
                 description: description.trim() || undefined,
+                token: agentToken.trim() || undefined,
                 app_token: appToken.trim() || undefined,
             });
         } finally {
@@ -249,6 +288,15 @@ function RegisterForm({
                         onChange={(e) => setSourceType(e.target.value)}
                     />
                 </div>
+                <Input
+                    label="Agent Token"
+                    placeholder="Token from watcher config (AGENT_TOKEN). Leave empty to auto-generate."
+                    value={agentToken}
+                    onChange={(e) => setAgentToken(e.target.value)}
+                />
+                <p className="text-xs text-slate-500 -mt-2">
+                    Set this to the same value as AGENT_TOKEN in your watcher's environment. If empty, a token will be generated for you.
+                </p>
                 <Input
                     label="Description"
                     placeholder="Optional description"

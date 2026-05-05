@@ -22,14 +22,15 @@ def register_agent(
     description: Optional[str] = None,
     app_id: Optional[str] = None,
     user_id: Optional[str] = None,
+    token: Optional[str] = None,
 ) -> Dict[str, Any]:
     agent_id = str(uuid.uuid4())
-    token = str(uuid.uuid4())
+    agent_token = token or str(uuid.uuid4())
     now = _now_iso()
 
     with neo4j_driver.session() as session:
         result = session.execute_write(
-            _register_tx, agent_id, token, name, source_type, description, now, app_id, user_id
+            _register_tx, agent_id, agent_token, name, source_type, description, now, app_id, user_id
         )
     return result
 

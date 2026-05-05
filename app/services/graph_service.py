@@ -51,6 +51,23 @@ def _to_graph_edge(raw: Dict[str, Any]) -> GraphEdge:
 def _build_response(raw_nodes: List[Dict], raw_edges: List[Dict]) -> GraphResponse:
     nodes = [_to_graph_node(n) for n in raw_nodes]
     edges = [_to_graph_edge(e) for e in raw_edges]
+
+    connected_ids = set()
+    for edge in edges:
+        connected_ids.add(edge.source_id)
+        connected_ids.add(edge.target_id)
+
+    # Hide infra config blobs that are not part of topology relationships.
+    nodes = [
+        node for node in nodes
+        if not (node.type == "SecretConfig" and node.id not in connected_ids)
+    ]
+    node_ids = {node.id for node in nodes}
+    edges = [
+        edge for edge in edges
+        if edge.source_id in node_ids and edge.target_id in node_ids
+    ]
+
     return GraphResponse(
         nodes=nodes,
         edges=edges,

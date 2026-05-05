@@ -23,6 +23,7 @@ export interface RawDataChunk {
   is_processed: boolean;
   processed_at: string | null;
   mapping_id: string | null;
+  is_pinned: boolean;
 }
 
 export interface RawDataListResponse {
@@ -127,6 +128,27 @@ export interface EdgePresetListResponse {
 export interface MappingListResponse {
   mappings: MappingConfig[];
   total: number;
+}
+
+export interface MappingTemplateSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  source_type: string;
+  field_mappings_count: number;
+  conditional_rules_count: number;
+  auto_edge_rules_count: number;
+}
+
+export interface MappingTemplateListResponse {
+  templates: MappingTemplateSummary[];
+  total: number;
+}
+
+export interface MappingTemplateInstantiateRequest {
+  name?: string;
+  sample_chunk_id?: string | null;
+  activate?: boolean;
 }
 
 // Preview Types

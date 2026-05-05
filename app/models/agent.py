@@ -11,6 +11,7 @@ class AgentRegisterRequest(BaseModel):
         description="Type of agent (optional, auto-inferred): otel-collector | k8s-agent | aws-agent | mock | custom",
     )
     description: Optional[str] = None
+    token: Optional[str] = Field(None, description="Custom agent token. If not provided, one will be generated. Use this to match a token pre-configured in your watcher.")
     app_token: Optional[str] = Field(None, description="Application token to bind agent to an application")
 
 

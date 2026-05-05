@@ -64,7 +64,8 @@ class MapperService:
                 edges.append(edge)
 
         edge_rules = self._get_edge_rules(mapping)
-        auto_edges, auto_unresolved = self._auto_create_edges(nodes, edge_rules)
+        auto_nodes, auto_edges, auto_unresolved = self._auto_create_edges(nodes, edge_rules)
+        nodes.extend(auto_nodes)
         edges.extend(auto_edges)
         unresolved.extend(auto_unresolved)
 
@@ -261,11 +262,22 @@ class MapperService:
         self,
         nodes: List[Dict[str, Any]],
         rules: List[AutoEdgeRule],
-    ) -> Tuple[List[Dict[str, Any]], List[UnresolvedReference]]:
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[UnresolvedReference]]:
         from app.repositories.neo4j_repo import find_node_by_field
 
+        created_nodes: List[Dict[str, Any]] = []
         edges: List[Dict[str, Any]] = []
         unresolved: List[UnresolvedReference] = []
+        materializable_types = {
+            "TeamOwner",
+            "QueueTopic",
+            "Cache",
+            "Library",
+            "ExternalAPI",
+            "Database",
+            "Table",
+            "SecretConfig",
+        }
 
         for node in nodes:
             node_type = node.get("type")
@@ -283,11 +295,12 @@ class MapperService:
                 if not source_field_value:
                     continue
 
-                values = (
-                    source_field_value
-                    if isinstance(source_field_value, list)
-                    else [source_field_value]
-                )
+                if isinstance(source_field_value, list):
+                    values = source_field_value
+                elif isinstance(source_field_value, str) and "," in source_field_value:
+                    values = [part.strip() for part in source_field_value.split(",") if part.strip()]
+                else:
+                    values = [source_field_value]
 
                 for value in values:
                     if not value:
@@ -305,6 +318,21 @@ class MapperService:
                             "target_id": target_node["id"],
                             "type": rule.edge_type,
                         })
+                    elif rule.target_type in materializable_types:
+                        target_name = str(value).strip()
+                        target_node = {
+                            "id": f"urn:{rule.target_type.lower()}:{target_name}",
+                            "type": rule.target_type,
+                            "name": target_name,
+                            rule.target_field: target_name,
+                            "status": "active",
+                        }
+                        created_nodes.append(target_node)
+                        edges.append({
+                            "source_id": node["id"],
+                            "target_id": target_node["id"],
+                            "type": rule.edge_type,
+                        })
                     else:
                         unresolved.append(UnresolvedReference(
                             source_node_id=node["id"],
@@ -315,7 +343,7 @@ class MapperService:
                             rule_id=rule.id,
                         ))
 
-        return edges, unresolved
+        return created_nodes, edges, unresolved
 
     def preview(
         self,
@@ -356,7 +384,8 @@ class MapperService:
         mapping: MappingConfig,
     ) -> Tuple[List[Dict[str, Any]], List[UnresolvedReference]]:
         edge_rules = self._get_edge_rules(mapping)
-        return self._auto_create_edges(nodes, edge_rules)
+        _, edges, unresolved = self._auto_create_edges(nodes, edge_rules)
+        return edges, unresolved
 
     def infer_node_type(
         self,

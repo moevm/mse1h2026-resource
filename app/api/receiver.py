@@ -79,6 +79,14 @@ async def receive_raw_data(
                 upsert_edges(edges, source=agent_name)
                 edges_created = len(edges)
 
+            if not nodes and not edges:
+                log.info(
+                    "Mapping '%s' matched chunk %s but produced no nodes/edges; trying next mapping",
+                    mapping.name,
+                    chunk_id[:8],
+                )
+                continue
+
             mapping_applied = True
             applied_mapping_name = mapping.name
 
@@ -152,3 +160,31 @@ async def delete_raw_data(user: CurrentUser, chunk_id: str):
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Chunk not found",
         )
+
+
+@router.post(
+    "/raw/{chunk_id}/pin",
+    summary="Pin a raw data chunk so it won't expire",
+)
+async def pin_raw_data(user: CurrentUser, chunk_id: str):
+    pinned = await raw_data_repo.pin_chunk(chunk_id)
+    if not pinned:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chunk not found",
+        )
+    return {"chunk_id": chunk_id, "is_pinned": True}
+
+
+@router.post(
+    "/raw/{chunk_id}/unpin",
+    summary="Unpin a raw data chunk, restoring normal TTL",
+)
+async def unpin_raw_data(user: CurrentUser, chunk_id: str):
+    unpinned = await raw_data_repo.unpin_chunk(chunk_id)
+    if not unpinned:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chunk not found",
+        )
+    return {"chunk_id": chunk_id, "is_pinned": False}

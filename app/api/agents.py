@@ -40,6 +40,7 @@ async def register_agent(user: CurrentUser, body: AgentRegisterRequest) -> Agent
         description=body.description,
         app_id=app_id,
         user_id=user["user_id"],
+        token=body.token,
     )
     return AgentRegisterResponse(
         agent_id=data["agent_id"],

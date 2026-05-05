@@ -158,9 +158,25 @@ class TransformService:
             return False
 
         try:
+            condition = condition.strip()
+
+            if "&&" in condition:
+                return all(
+                    self.evaluate_condition(data, part)
+                    for part in condition.split("&&")
+                    if part.strip()
+                )
+
+            if "||" in condition:
+                return any(
+                    self.evaluate_condition(data, part)
+                    for part in condition.split("||")
+                    if part.strip()
+                )
+
             import re
-            eq_match = re.match(r"^([\w.]+)\s*==\s*['\"]?(.+?)['\"]?$", condition.strip())
-            neq_match = re.match(r"^([\w.]+)\s*!=\s*['\"]?(.+?)['\"]?$", condition.strip())
+            eq_match = re.match(r"^([\w.\-]+)\s*==\s*['\"]?(.+?)['\"]?$", condition)
+            neq_match = re.match(r"^([\w.\-]+)\s*!=\s*['\"]?(.+?)['\"]?$", condition)
 
             if eq_match:
                 field_path = eq_match.group(1)

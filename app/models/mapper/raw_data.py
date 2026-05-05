@@ -37,6 +37,7 @@ class RawDataChunk(BaseModel):
     is_processed: bool = Field(default=False, description="Whether this chunk has been mapped")
     processed_at: Optional[datetime] = Field(default=None, description="When this chunk was processed")
     mapping_id: Optional[str] = Field(default=None, description="ID of the mapping used to process")
+    is_pinned: bool = Field(default=False, description="Whether this chunk is pinned (won't expire)")
 
 
 class RawDataListResponse(BaseModel):
