@@ -164,14 +164,18 @@ class TransformService:
 
             if eq_match:
                 field_path = eq_match.group(1)
-                expected = eq_match.group(2)
+                expected = eq_match.group(2).strip("`")
                 actual = self.extract(data, field_path)
+                if expected == "null":
+                    return actual is None
                 return str(actual) == expected
 
             if neq_match:
                 field_path = neq_match.group(1)
-                expected = neq_match.group(2)
+                expected = neq_match.group(2).strip("`")
                 actual = self.extract(data, field_path)
+                if expected == "null":
+                    return actual is not None
                 return str(actual) != expected
 
             result = self.extract(data, condition)

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.config import settings
-from app.models.mapper.raw_data import RawDataChunk, RawDataSource, RawDataListResponse
+from app.models.mapper.raw_data import RawDataChunk, RawDataListResponse
 from app.repositories.redis_connection import redis_client
 
 
@@ -21,7 +21,6 @@ class RawDataRepository:
     async def store_chunk(
         self,
         agent_id: str,
-        source_type: RawDataSource,
         data: Dict[str, Any],
         metadata: Dict[str, Any],
     ) -> str:
@@ -32,7 +31,6 @@ class RawDataRepository:
         chunk_data = {
             "id": chunk_id,
             "agent_id": agent_id,
-            "source_type": source_type.value,
             "timestamp": timestamp.isoformat(),
             "sequence": 0,
             "data": data,
@@ -72,7 +70,6 @@ class RawDataRepository:
     async def list_chunks(
         self,
         agent_id: Optional[str] = None,
-        source_type: Optional[RawDataSource] = None,
         limit: int = 100,
     ) -> RawDataListResponse:
         client = redis_client.client
@@ -87,8 +84,7 @@ class RawDataRepository:
             data = await client.get(key)
             if data:
                 chunk = json.loads(data)
-                if source_type is None or chunk.get("source_type") == source_type.value:
-                    chunks.append(chunk)
+                chunks.append(chunk)
 
         chunks.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
         chunks = chunks[:limit]

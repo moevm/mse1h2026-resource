@@ -324,11 +324,11 @@ class MapperService:
     ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]], List[str], List[UnresolvedReference]]:
         warnings: List[str] = []
 
-        from app.models.mapper.raw_data import RawDataSource
+        from datetime import datetime, timezone
         temp_chunk = RawDataChunk(
             id="preview",
             agent_id="preview",
-            source_type=RawDataSource.CUSTOM,
+            timestamp=datetime.now(timezone.utc),
             data=raw_data,
         )
 
@@ -373,6 +373,12 @@ class MapperService:
                 return "Deployment"
             elif kind == "Node":
                 return "Node"
+            elif kind == "Secret":
+                return "SecretConfig"
+            elif kind == "ConfigMap":
+                return "SecretConfig"
+            elif kind == "Endpoints":
+                return "Endpoint"
 
         elif source_type == "opentelemetry-traces":
             attrs = raw_data.get("attributes", {})

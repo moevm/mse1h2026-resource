@@ -14,7 +14,7 @@ from app.models.mapper.mapping import (
     MappingConfig,
     MappingListResponse,
 )
-from app.models.mapper.raw_data import RawDataSource
+from app.models.mapper.raw_data import RawDataSource, RawDataChunk
 from app.repositories import agent_repo
 from app.repositories.mapping_repo import mapping_repo
 from app.repositories.raw_data_repo import raw_data_repo
@@ -78,28 +78,20 @@ class DeactivateAndClearResponse(BaseModel):
     deleted_edges: int = 0
 
 
-async def replay_mapping_background(mapping_id: str, source_type: str) -> None:
+async def replay_mapping_background(mapping_id: str, source_type: str = None) -> None:
     """Background task to replay mapping on all historical data."""
     from app.repositories.neo4j_repo import get_nodes_by_types, get_all_node_types
 
-    log.info(f"Starting background replay for mapping {mapping_id} (source_type={source_type})")
+    log.info(f"Starting background replay for mapping {mapping_id}")
 
     mapping = mapping_repo.get(mapping_id)
     if not mapping:
         log.error(f"Mapping {mapping_id} not found for replay")
         return
 
-    # Convert source_type string to RawDataSource enum if valid
-    source_type_enum = None
-    try:
-        source_type_enum = RawDataSource(source_type)
-    except ValueError:
-        pass  # Unknown source type, will list all
-
     try:
         chunks_response = await raw_data_repo.list_chunks(
-            source_type=source_type_enum,
-            limit=10000,  # Process up to 10k chunks
+            limit=10000,
         )
 
         chunks = chunks_response.chunks
@@ -107,20 +99,26 @@ async def replay_mapping_background(mapping_id: str, source_type: str) -> None:
         total_nodes = 0
         total_edges = 0
 
-        # Collect all created nodes for edge recreation
         all_created_nodes: List[Dict[str, Any]] = []
 
         for chunk in chunks:
             try:
                 nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
 
-                # Get agent name from metadata
+                if not nodes:
+                    continue
+
+                applicable = mapper_service._evaluate_conditional_rules(
+                    chunk.data, mapping.conditional_rules
+                )
+                if not applicable and mapping.conditional_rules:
+                    continue
+
                 agent_name = chunk.metadata.get("agent_name", "replay") if chunk.metadata else "replay"
 
-                if nodes:
-                    upsert_nodes(nodes, source=agent_name)
-                    total_nodes += len(nodes)
-                    all_created_nodes.extend(nodes)
+                upsert_nodes(nodes, source=agent_name)
+                total_nodes += len(nodes)
+                all_created_nodes.extend(nodes)
 
                 if edges:
                     upsert_edges(edges, source=agent_name)
@@ -131,14 +129,12 @@ async def replay_mapping_background(mapping_id: str, source_type: str) -> None:
             except Exception as e:
                 log.error(f"Error processing chunk {chunk.id}: {e}")
 
-        # Recreate edges for all created nodes now that all targets exist
         if all_created_nodes:
             log.info(f"Recreating edges for {len(all_created_nodes)} created nodes...")
             new_edges, new_unresolved = mapper_service.recreate_edges_for_nodes(
                 all_created_nodes, mapping
             )
             if new_edges:
-                # Get agent name from first chunk or default
                 agent_name = chunks[0].metadata.get("agent_name", "replay") if chunks and chunks[0].metadata else "replay"
                 upsert_edges(new_edges, source=agent_name)
                 total_edges += len(new_edges)
@@ -351,7 +347,6 @@ async def activate_mapping(mapping_id: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(
         replay_mapping_background,
         mapping_id,
-        updated.source_type,
     )
     log.info(f"Scheduled background replay for mapping {mapping_id}")
 
@@ -437,7 +432,7 @@ async def replay_mapping(mapping_id: str, request: ReplayRequest = None):
     """Re-apply mapping to historical raw data.
 
     Useful when mapping is changed and user wants to update the graph
-    with historical data. Processes all chunks for the mapping's source_type.
+    with historical data. Processes all chunks, applying only matching ones.
     """
     from app.repositories.neo4j_repo import get_nodes_by_types
 
@@ -450,38 +445,34 @@ async def replay_mapping(mapping_id: str, request: ReplayRequest = None):
             detail="Mapping not found",
         )
 
-    # Get chunks from Redis
-    # Note: from_timestamp/to_timestamp filtering not yet supported in raw_data_repo
-    # Convert source_type string to RawDataSource enum if valid
-    source_type_enum = None
-    try:
-        source_type_enum = RawDataSource(mapping.source_type)
-    except ValueError:
-        pass  # Unknown source type, will list all
-
     chunks_response = await raw_data_repo.list_chunks(
-        source_type=source_type_enum,
         agent_id=request.agent_id,
-        limit=10000,  # Process up to 10k chunks
+        limit=10000,
     )
 
     chunks = chunks_response.chunks
     results = ReplayResponse(chunks_processed=0, nodes_created=0, edges_created=0)
 
-    # Collect all created nodes for edge recreation
     all_created_nodes: List[Dict[str, Any]] = []
 
     for chunk in chunks:
         try:
             nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
 
-            # Get agent name from metadata
+            if not nodes:
+                continue
+
+            applicable = mapper_service._evaluate_conditional_rules(
+                chunk.data, mapping.conditional_rules
+            )
+            if not applicable and mapping.conditional_rules:
+                continue
+
             agent_name = chunk.metadata.get("agent_name", "replay") if chunk.metadata else "replay"
 
-            if nodes:
-                upsert_nodes(nodes, source=agent_name)
-                results.nodes_created += len(nodes)
-                all_created_nodes.extend(nodes)
+            upsert_nodes(nodes, source=agent_name)
+            results.nodes_created += len(nodes)
+            all_created_nodes.extend(nodes)
 
             if edges:
                 upsert_edges(edges, source=agent_name)
@@ -493,7 +484,6 @@ async def replay_mapping(mapping_id: str, request: ReplayRequest = None):
             log.error(f"Error processing chunk {chunk.id}: {e}")
             results.errors.append(f"Chunk {chunk.id[:8]}: {str(e)}")
 
-    # Recreate edges for all created nodes now that all targets exist
     if all_created_nodes:
         log.info(f"Recreating edges for {len(all_created_nodes)} created nodes...")
         new_edges, new_unresolved = mapper_service.recreate_edges_for_nodes(

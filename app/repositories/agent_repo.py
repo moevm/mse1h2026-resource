@@ -18,7 +18,7 @@ def _now_iso() -> str:
 
 def register_agent(
     name: str,
-    source_type: str,
+    source_type: Optional[str] = None,
     description: Optional[str] = None,
     app_id: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -38,7 +38,7 @@ def _register_tx(
     agent_id: str,
     token: str,
     name: str,
-    source_type: str,
+    source_type: Optional[str],
     description: Optional[str],
     now: str,
     app_id: Optional[str] = None,
