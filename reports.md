@@ -20,9 +20,9 @@ https://github.com/user-attachments/assets/b2d6f45d-9825-442a-96a5-72b5f9519c07
 https://github.com/user-attachments/assets/f9ab6b2c-ada6-4d8a-97e6-c6a683e07ee1
 
 ## Iteration-3
-[presentation-3]()
-[customer-sync-3](https://github.com/moevm/mse1h2026-resource/blob/reports/customer_sync/Созвон_№3_01.04.md)
-[customer-sync-4](https://github.com/moevm/mse1h2026-resource/blob/reports/customer_sync/Созвон_№4_05.05.md)
+[presentation-3](https://github.com/moevm/mse1h2026-resource/blob/reports/docs/Mse1h2026-resource-iteration-3.pdf) 
+[customer-sync-3](https://github.com/moevm/mse1h2026-resource/blob/reports/customer_sync/Созвон_№3_01.04.md) 
+[customer-sync-4](https://github.com/moevm/mse1h2026-resource/blob/reports/customer_sync/Созвон_№4_05.05.md) 
 ### Screencast-3:
 https://github.com/user-attachments/assets/01e5da5a-e7d3-4aff-8551-75838590e1b0
 
