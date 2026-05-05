@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: golang-app
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: golang-app
+  template:
+    metadata:
+      labels:
+        app: golang-app
+        team: platform
+      annotations:
+        topology.mse.io/depends-libraries: "net/http"
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-secret
+      containers:
+        - name: golang-app
+          image: rectid/general:golang-app
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8002
+          readinessProbe:
+            tcpSocket:
+              port: 8002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

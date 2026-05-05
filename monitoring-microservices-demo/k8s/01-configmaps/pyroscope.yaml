@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: pyroscope-config
+  namespace: monitoring-demo
+data:
+  pyroscope.yml: |
+    tracing:
+      enabled: true
+
+    pyroscopedb:
+      max_block_duration: 5m
+
+    self_profiling:
+      disable_push: true
+
+    analytics:
+      reporting_enabled: false

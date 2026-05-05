@@ -1,0 +1,8 @@
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: monitoring-demo-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - 10.128.8.200-10.128.8.209

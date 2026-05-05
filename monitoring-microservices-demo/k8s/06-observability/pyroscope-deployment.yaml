@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pyroscope
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pyroscope
+  template:
+    metadata:
+      labels:
+        app: pyroscope
+    spec:
+      containers:
+        - name: pyroscope
+          image: grafana/pyroscope:1.9.1
+          args: ["-config.file=/etc/pyroscope.yml"]
+          ports:
+            - containerPort: 4040
+          volumeMounts:
+            - name: config
+              mountPath: /etc/pyroscope.yml
+              subPath: pyroscope.yml
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
+      volumes:
+        - name: config
+          configMap:
+            name: pyroscope-config

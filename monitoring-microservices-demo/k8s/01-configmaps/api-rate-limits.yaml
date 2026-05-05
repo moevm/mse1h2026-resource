@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-rate-limits
+  namespace: monitoring-demo
+data:
+  rate-limit.yaml: |
+    name: api-rate-limits
+    type: token-bucket
+    rate: 100
+    window: 1m
