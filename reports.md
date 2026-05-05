@@ -2,7 +2,7 @@
 
 [Вики по проекту](https://github.com/moevm/mse1h2026-resource/wiki)
 
-## Itearation-1
+## Iteration-1
 [customer-sync-1](https://github.com/moevm/mse1h2026-resource/blob/reports/customer_sync/Созвон_№1_16.02.md)
 [customer-sync-2](https://github.com/moevm/mse1h2026-resource/blob/reports/customer_sync/Созвон_№2_25.02.md)    
 [team-sync-1](https://github.com/moevm/mse1h2026-resource/blob/reports/team_sync/Созвон_№1_22.02.md)  
@@ -14,12 +14,12 @@
 ### Screencast-1:
 https://github.com/user-attachments/assets/b2d6f45d-9825-442a-96a5-72b5f9519c07
 
-## Itearation-2
+## Iteration-2
 [presentation-2](https://github.com/moevm/mse1h2026-resource/blob/reports/docs/Mse1h2026-resource-iteration-2.pdf)
 ### Screencast-2:
 https://github.com/user-attachments/assets/f9ab6b2c-ada6-4d8a-97e6-c6a683e07ee1
 
-## Itearation-3
+## Iteration-3
 [presentation-3]()
 [customer-sync-3](https://github.com/moevm/mse1h2026-resource/blob/reports/customer_sync/Созвон_№3_01.04.md)
 [customer-sync-4](https://github.com/moevm/mse1h2026-resource/blob/reports/customer_sync/Созвон_№4_05.05.md)
