@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flask-app
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flask-app
+  template:
+    metadata:
+      labels:
+        app: flask-app
+        team: backend
+      annotations:
+        topology.mse.io/depends-libraries: "flask,requests"
+        topology.mse.io/publishes-to: "user-events"
+        topology.mse.io/consumes-from: "user-events"
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-secret
+      initContainers:
+        - name: wait-for-services
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z fastapi-app 8000 && nc -z golang-app 8002; do echo waiting for services; sleep 2; done']
+      containers:
+        - name: flask-app
+          image: rectid/general:flask-app
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8001
+            - containerPort: 9464
+          env:
+            - name: FASTAPI_URL
+              value: "http://fastapi-app:8000"
+            - name: GOLANG_URL
+              value: "http://golang-app:8002"
+            - name: OTEL_SERVICE_NAME
+              value: "flask-app"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector:4317"
+            - name: OTEL_PYTHON_LOGGING_AUTO_INSTRUMENTATION_ENABLED
+              value: "true"
+            - name: OTEL_PYTHON_LOG_CORRELATION
+              value: "true"
+            - name: OTEL_EXPORTER_PROMETHEUS_HOST
+              value: "0.0.0.0"
+            - name: OTEL_EXPORTER_PROMETHEUS_PORT
+              value: "9464"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp,prometheus"
+            - name: OTEL_LOGS_EXPORTER
+              value: "otlp"
+          command: ['opentelemetry-instrument', 'python3', 'app_client.py']
+          readinessProbe:
+            tcpSocket:
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

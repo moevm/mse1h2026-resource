@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prometheus
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: prometheus
+  template:
+    metadata:
+      labels:
+        app: prometheus
+    spec:
+      initContainers:
+        - name: pyrra-init
+          image: ghcr.io/pyrra-dev/pyrra:v0.7.7
+          command: ["chown", "65533:65533", "/etc/prometheus/pyrra"]
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+          volumeMounts:
+            - name: pyrra-rules
+              mountPath: /etc/prometheus/pyrra
+      containers:
+        - name: prometheus
+          image: prom/prometheus:v2.55.0
+          args:
+            - --config.file=/etc/prometheus.yaml
+            - --web.enable-remote-write-receiver
+            - --web.enable-lifecycle
+            - --enable-feature=exemplar-storage
+            - --enable-feature=native-histograms
+          ports:
+            - containerPort: 9090
+          volumeMounts:
+            - name: config
+              mountPath: /etc/prometheus.yaml
+              subPath: prometheus.yaml
+            - name: pyrra-rules
+              mountPath: /etc/prometheus/pyrra
+            - name: data
+              mountPath: /prometheus
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: 9090
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 200m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+        - name: pyrra-filesystem
+          image: ghcr.io/pyrra-dev/pyrra:v0.7.7
+          args:
+            - filesystem
+            - --log-level=debug
+            - --prometheus-url=http://localhost:9090
+            - --generic-rules
+          ports:
+            - containerPort: 9444
+          volumeMounts:
+            - name: pyrra-slos
+              mountPath: /etc/pyrra
+            - name: pyrra-rules
+              mountPath: /etc/prometheus/pyrra
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: config
+          configMap:
+            name: prometheus-config
+        - name: pyrra-rules
+          emptyDir: {}
+        - name: pyrra-slos
+          configMap:
+            name: pyrra-slos
+        - name: data
+          persistentVolumeClaim:
+            claimName: prometheus-data

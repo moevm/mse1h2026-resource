@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: fastapi-app
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: fastapi-app
+  template:
+    metadata:
+      labels:
+        app: fastapi-app
+        team: backend
+      annotations:
+        topology.mse.io/depends-libraries: "sqlalchemy,fastapi,uvicorn"
+        topology.mse.io/rate-limited-by: "api-rate-limits"
+        topology.mse.io/fails-over-to: "golang-app"
+        topology.mse.io/reads-cache: "session-cache"
+        topology.mse.io/writes-cache: "session-cache"
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-secret
+      initContainers:
+        - name: wait-for-postgres
+          image: busybox:1.36
+          command: ['sh', '-c', 'until nc -z postgres-db 5432; do echo waiting for postgres; sleep 2; done']
+      containers:
+        - name: fastapi-app
+          image: rectid/general:fastapi-app
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+          env:
+            - name: OTLP_GRPC_ENDPOINT
+              value: "http://otel-collector:4317"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-credentials
+                  key: DATABASE_URL
+            - name: PYROSCOPE_ENDPOINT
+              value: "http://pyroscope:4040"
+          command: ['python3', 'app_with__traces_logs_metrics_profiles_db.py']
+          readinessProbe:
+            tcpSocket:
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi

@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: monitoring-demo
+data:
+  otel-collector.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+
+    exporters:
+      debug:
+
+      otlphttp/loki:
+        endpoint: http://loki:3100/otlp/
+
+      prometheus:
+        endpoint: 0.0.0.0:8889
+
+      prometheusremotewrite:
+        endpoint: http://prometheus:9090/api/v1/write
+        target_info:
+          enabled: true
+
+      otlp/jaeger:
+        endpoint: "jaeger:4317"
+        tls:
+          insecure: true
+
+      otlp/tempo:
+        endpoint: "tempo:4317"
+        tls:
+          insecure: true
+
+      otlphttp/otel-watcher:
+        endpoint: http://otel-watcher:8090
+        encoding: json
+
+      otlphttp/otel-watcher-logs:
+        endpoint: http://otel-watcher:8090
+        encoding: json
+
+    processors:
+      batch:
+
+      attributes/delete_unused:
+        actions:
+          - key: otelSpanID
+            action: delete
+          - key: otelTraceID
+            action: delete
+          - key: otelTraceSampled
+            action: delete
+          - key: otelServiceName
+            action: delete
+
+    extensions:
+      health_check:
+        endpoint: 0.0.0.0:13133
+      pprof:
+        endpoint: :1888
+      zpages:
+        endpoint: :55679
+
+    service:
+      extensions: [pprof, zpages, health_check]
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug, otlp/tempo, otlp/jaeger, otlphttp/otel-watcher]
+        metrics:
+          receivers: [otlp]
+          processors: [batch]
+          exporters: [debug, prometheus]
+        logs:
+          receivers: [otlp]
+          processors: [batch, attributes/delete_unused]
+          exporters: [debug, otlphttp/loki, otlphttp/otel-watcher-logs]

@@ -1,0 +1,363 @@
+"""otel-watcher: receives OTLP telemetry (traces + logs) and pushes to mse1h2026-resource API."""
+import gzip
+import json
+import os
+import logging
+import threading
+import time
+from datetime import datetime, date
+from typing import Any, Dict, List, Optional
+
+import requests
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+import uvicorn
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+log = logging.getLogger("otel-watcher")
+
+RESOURCE_API_URL = os.environ.get("RESOURCE_API_URL", "http://localhost:8000")
+AGENT_NAME = os.environ.get("AGENT_NAME", "otel-watcher")
+SCRAPE_INTERVAL = int(os.environ.get("SCRAPE_INTERVAL", "30"))
+SCRAPE_TARGETS = os.environ.get("SCRAPE_TARGETS", "fastapi-app:8000,flask-app:9464,otel-collector:8889")
+AGENT_TOKEN = os.environ.get("AGENT_TOKEN")
+
+if not AGENT_TOKEN:
+    log.error("AGENT_TOKEN environment variable is required!")
+    log.error("Register this agent in the UI first, then set AGENT_TOKEN to the returned token.")
+    log.error("Example: AGENT_TOKEN=<token-from-ui> python watcher.py")
+
+app = FastAPI()
+
+
+class OTLPEncoder(json.JSONEncoder):
+    """JSON encoder that handles OTLP objects with datetime and other non-serializable types."""
+    def default(self, obj):
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, bytes):
+            return obj.decode("utf-8", errors="replace")
+        try:
+            return str(obj)
+        except Exception:
+            return None
+
+
+def verify_agent_token():
+    """Verify that AGENT_TOKEN is valid by making a test push."""
+    if not AGENT_TOKEN:
+        log.error("No AGENT_TOKEN set. Register this agent in the UI and set AGENT_TOKEN env var.")
+        return False
+    try:
+        resp = requests.post(
+            f"{RESOURCE_API_URL}/api/v1/receiver/raw",
+            data=json.dumps({"_health_check": True}),
+            headers={"X-Agent-Token": AGENT_TOKEN, "Content-Type": "application/json"},
+            timeout=15,
+        )
+        if resp.status_code == 401:
+            log.error("AGENT_TOKEN is invalid or revoked. Re-register agent in UI and update AGENT_TOKEN.")
+            return False
+        log.info("AGENT_TOKEN verified successfully")
+        return True
+    except Exception as e:
+        log.warning(f"Could not verify AGENT_TOKEN (API may be starting up): {e}")
+        return True  # assume ok, will fail later if not
+
+
+def push_raw(data: dict):
+    """Push raw data to mse1h2026-resource."""
+    if not AGENT_TOKEN:
+        log.error("No AGENT_TOKEN, cannot push data")
+        return
+    try:
+        serialized = json.dumps(data, cls=OTLPEncoder)
+        resp = requests.post(
+            f"{RESOURCE_API_URL}/api/v1/receiver/raw",
+            data=serialized,
+            headers={"X-Agent-Token": AGENT_TOKEN, "Content-Type": "application/json"},
+            timeout=15,
+        )
+        if resp.status_code == 401:
+            log.error("AGENT_TOKEN rejected (401). Token may be revoked. Re-register agent in UI.")
+            return
+        resp.raise_for_status()
+        result = resp.json()
+        log.info(
+            "Pushed raw payload: nodes=%s, edges=%s",
+            result.get("nodes_created", 0),
+            result.get("edges_created", 0),
+        )
+    except Exception as e:
+        log.error(f"Failed to push raw payload: {e}")
+
+
+def extract_attr(attrs: List[dict], key: str) -> Optional[str]:
+    """Extract attribute value from OTLP attribute list."""
+    for attr in attrs:
+        if attr.get("key") == key:
+            val = attr.get("value", {})
+            return val.get("stringValue") or str(val.get("intValue", ""))
+    return None
+
+
+def split_traces_to_spans(body: dict) -> List[dict]:
+    """Split OTLP trace export into individual normalized span chunks.
+
+    Each chunk is a flat dict with extracted fields at the top level,
+    making JMESPath mappings simple (e.g. span_name, service_name, peer_service).
+    """
+    resource_spans = body.get("resourceSpans", [])
+    if not resource_spans:
+        return []
+
+    chunks = []
+
+    for rs in resource_spans:
+        resource_attrs = rs.get("resource", {}).get("attributes", [])
+        service_name = extract_attr(resource_attrs, "service.name")
+        service_version = extract_attr(resource_attrs, "service.version")
+        service_env = extract_attr(resource_attrs, "deployment.environment")
+        sdk_language = extract_attr(resource_attrs, "telemetry.sdk.language")
+        sdk_name = extract_attr(resource_attrs, "telemetry.sdk.name")
+
+        for scope_span in rs.get("scopeSpans", []):
+            for span in scope_span.get("spans", []):
+                span_attrs = span.get("attributes", [])
+
+                # Extract span-level attributes into flat fields
+                span_name = span.get("name", "")
+                span_kind = span.get("kind")
+                peer_service = extract_attr(span_attrs, "peer.service")
+                db_system = extract_attr(span_attrs, "db.system")
+                db_name = extract_attr(span_attrs, "db.name")
+                db_table = extract_attr(span_attrs, "db.table")
+                db_statement = extract_attr(span_attrs, "db.statement")
+                http_method = extract_attr(span_attrs, "http.method")
+                http_route = extract_attr(span_attrs, "http.route")
+                http_target = extract_attr(span_attrs, "http.target")
+                http_status_code = extract_attr(span_attrs, "http.status_code")
+                messaging_dest = extract_attr(span_attrs, "messaging.destination")
+                messaging_op = extract_attr(span_attrs, "messaging.operation")
+                cache_name = extract_attr(span_attrs, "cache.name")
+                external_api = extract_attr(span_attrs, "external_api")
+                auth_secret = extract_attr(span_attrs, "auth_secret")
+                rate_limit_config = extract_attr(span_attrs, "rate_limit_config")
+                failover_service = extract_attr(span_attrs, "failover_service")
+                rpc_service = extract_attr(span_attrs, "rpc.service")
+                rpc_method = extract_attr(span_attrs, "rpc.method")
+
+                # Build normalized flat chunk
+                chunk = {
+                    "kind": "span",
+                    "service_name": service_name,
+                    "span_name": span_name,
+                    "span_kind": span_kind,
+                    "service_version": service_version,
+                    "service_environment": service_env,
+                    "sdk_language": sdk_language,
+                    "sdk_name": sdk_name,
+                    "peer_service": peer_service,
+                    "db_system": db_system,
+                    "db_name": db_name,
+                    "db_table": db_table,
+                    "db_statement": db_statement,
+                    "http_method": http_method,
+                    "http_route": http_route,
+                    "http_target": http_target,
+                    "http_status_code": http_status_code,
+                    "messaging_destination": messaging_dest,
+                    "messaging_operation": messaging_op,
+                    "cache_name": cache_name,
+                    "external_api": external_api,
+                    "auth_secret": auth_secret,
+                    "rate_limit_config": rate_limit_config,
+                    "failover_service": failover_service,
+                    "rpc_service": rpc_service,
+                    "rpc_method": rpc_method,
+                    "trace_id": span.get("traceId"),
+                    "span_id": span.get("spanId"),
+                    "parent_span_id": span.get("parentSpanId"),
+                    "start_time": span.get("startTimeUnixNano"),
+                    "end_time": span.get("endTimeUnixNano"),
+                }
+                chunks.append(chunk)
+
+    return chunks
+
+
+async def _read_otlp_body(request: Request) -> dict:
+    """Read and parse OTLP JSON body, handling gzip compression."""
+    raw_body = await request.body()
+    content_encoding = request.headers.get("content-encoding", "")
+    if content_encoding == "gzip" or (len(raw_body) >= 2 and raw_body[:2] == b'\x1f\x8b'):
+        raw_body = gzip.decompress(raw_body)
+    return json.loads(raw_body)
+
+
+@app.post("/v1/traces")
+async def receive_traces(request: Request):
+    """Receive OTLP traces, split into per-span chunks, and push to resource API."""
+    try:
+        body = await _read_otlp_body(request)
+    except Exception as e:
+        log.error(f"Failed to parse traces body: {e}")
+        return JSONResponse({"status": "error", "message": f"invalid json: {e}"}, status_code=400)
+
+    chunks = split_traces_to_spans(body)
+    if not chunks:
+        log.warning("Received empty trace payload, skipping")
+        return JSONResponse({"status": "ok"})
+
+    log.info(f"Received traces: {len(chunks)} span chunks from {len(body.get('resourceSpans', []))} resources")
+    for chunk in chunks:
+        push_raw(chunk)
+
+    return JSONResponse({"status": "ok", "chunks_pushed": len(chunks)})
+
+
+@app.post("/v1/logs")
+async def receive_logs(request: Request):
+    """Receive OTLP logs, split into per-record chunks, and push to resource API."""
+    try:
+        body = await _read_otlp_body(request)
+    except Exception as e:
+        log.error(f"Failed to parse logs body: {e}")
+        return JSONResponse({"status": "error", "message": f"invalid json: {e}"}, status_code=400)
+
+    resource_logs = body.get("resourceLogs", [])
+    if not resource_logs:
+        log.warning("Received empty logs payload, skipping")
+        return JSONResponse({"status": "ok", "message": "empty"})
+
+    total_records = 0
+    for rl in resource_logs:
+        resource_attrs = rl.get("resource", {}).get("attributes", [])
+        service_name = extract_attr(resource_attrs, "service.name")
+
+        for scope_log in rl.get("scopeLogs", []):
+            for log_record in scope_log.get("logRecords", []):
+                log_attrs = log_record.get("attributes", [])
+
+                # Extract log-level attributes into flat fields
+                severity = log_record.get("severityText") or log_record.get("severityNumber")
+                body_text = log_record.get("body", {})
+                if isinstance(body_text, dict):
+                    body_text = body_text.get("stringValue", str(body_text))
+                elif not isinstance(body_text, str):
+                    body_text = str(body_text)
+
+                chunk = {
+                    "kind": "log",
+                    "service_name": service_name,
+                    "severity": severity,
+                    "body": body_text,
+                    "trace_id": log_record.get("traceId"),
+                    "span_id": log_record.get("spanId"),
+                    "timestamp": log_record.get("timeUnixNano"),
+                }
+                # Copy interesting log attributes to top level
+                for key in ("http.method", "http.route", "http.target", "http.status_code",
+                            "db.statement", "db.system", "peer.service", "error.type"):
+                    val = extract_attr(log_attrs, key)
+                    if val:
+                        chunk[key.replace(".", "_")] = val
+
+                push_raw(chunk)
+                total_records += 1
+
+    log.info(f"Received logs: {total_records} log records from {len(resource_logs)} resources")
+
+    return JSONResponse({"status": "ok", "chunks_pushed": total_records})
+
+
+def scrape_prometheus_metrics():
+    """Scrape Prometheus metrics endpoints and push flattened data."""
+    targets = [t.strip() for t in SCRAPE_TARGETS.split(",") if t.strip()]
+
+    for target in targets:
+        url = f"http://{target}/metrics"
+        try:
+            resp = requests.get(url, timeout=5)
+            resp.raise_for_status()
+            metrics = {}
+            labels = {
+                "job": target.split(":")[0],
+                "instance": target,
+                "namespace": "monitoring-demo",
+                "service": target.split(":")[0],
+            }
+
+            for line in resp.text.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                # Simple parsing: metric_name{labels} value
+                if "{" in line:
+                    name_part = line.split("{")[0]
+                    # Extract label values for team
+                    label_part = line.split("{")[1].split("}")[0]
+                    for lbl in label_part.split(","):
+                        if "=" in lbl:
+                            k, v = lbl.split("=", 1)
+                            v = v.strip('"')
+                            if k == "team":
+                                labels["team"] = v
+                else:
+                    name_part = line.split()[0]
+
+                parts = line.split()
+                if len(parts) >= 2:
+                    try:
+                        val = float(parts[-1])
+                        metrics[name_part] = val
+                    except ValueError:
+                        continue
+
+            if metrics:
+                payload = {
+                    "kind": "metric",
+                    "service_name": labels.get("service"),
+                    "namespace": labels.get("namespace"),
+                    "team": labels.get("team"),
+                    "job": labels.get("job"),
+                    "instance": labels.get("instance"),
+                    "metrics": metrics,
+                    "labels": labels,
+                    "timestamp": int(time.time()),
+                }
+                push_raw(payload)
+
+        except Exception as e:
+            log.debug(f"Failed to scrape {url}: {e}")
+
+
+def metrics_loop():
+    """Background loop for Prometheus metrics scraping."""
+    while True:
+        try:
+            scrape_prometheus_metrics()
+        except Exception as e:
+            log.error(f"Metrics scrape cycle failed: {e}")
+        time.sleep(SCRAPE_INTERVAL)
+
+
+@app.on_event("startup")
+async def startup():
+    if not AGENT_TOKEN:
+        log.error("="*60)
+        log.error("AGENT_TOKEN is not set!")
+        log.error("1. Go to the Resource UI → Agents page")
+        log.error("2. Register a new agent (name=%s, type=otel-traces)", AGENT_NAME)
+        log.error("3. Copy the returned token")
+        log.error("4. Set AGENT_TOKEN=<copied-token> in environment")
+        log.error("="*60)
+        return
+    log.info("Starting otel-watcher with AGENT_TOKEN=%s...%s", AGENT_TOKEN[:8], AGENT_TOKEN[-4:])
+    verify_agent_token()
+    thread = threading.Thread(target=metrics_loop, daemon=True)
+    thread.start()
+
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8090)
