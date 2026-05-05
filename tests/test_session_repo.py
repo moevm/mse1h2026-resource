@@ -45,7 +45,7 @@ def patch_redis(fake_redis):
 
 
 def run(coro):
-    return asyncio.get_event_loop().run_until_complete(coro)
+    return asyncio.run(coro)
 
 
 def test_validate_refresh_default_allows_when_redis_empty():
