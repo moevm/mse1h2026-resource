@@ -14,7 +14,18 @@ cp .env.example .env
 # 1. # Запуск всех сервисов
 docker compose up --build
 ```
-Следующие шаги можно также выполнить в UI во вкладке mapper.
+При первом старте backend автоматически создаёт тестового пользователя:
+
+- email: `admin@example.com`
+- username: `admin`
+- password: `admin`
+
+Только для этого пользователя при старте автоматически накатываются тестовые данные и дефолтные маппинги:
+
+- `python -m mocker.run --full --url http://localhost:8000 --auth-token <admin-token>` — создаёт связанный тестовый граф;
+- `python -m mocker.create_mappings --url http://localhost:8000 --auth-token <admin-token>` — создаёт и активирует стандартные mapping-конфигурации.
+
+Для остальных пользователей тестовые данные и маппинги автоматически не создаются. Если нужно повторить генерацию вручную, это можно сделать в UI во вкладке mapper.
 
 - Кнопка `Generate mock data` запускает команду:
 	`python -m mocker.run --full --url http://localhost:8000`
@@ -43,7 +54,17 @@ API Documentation: http://localhost:8000/docs
 
 ## Создание маппингов
 
-Маппинги преобразуют raw данные в узлы и рёбра графа. Создаются один раз:
+Маппинг — это конфигурация преобразования сырых данных от агентов в доменную модель графа. Агенты присылают payload'ы в разных форматах: Kubernetes API, OpenTelemetry traces/metrics, Istio logs, Prometheus, Terraform state и т.д. Без маппинга backend сохраняет такой payload как raw chunk, но не знает, какие поля считать сервисом, подом, базой данных, ребром `calls`, `reads`, `deployedon` и т.п.
+
+Маппинги нужны, чтобы:
+
+- извлекать из raw payload'ов узлы графа (`Service`, `Pod`, `Database`, `Endpoint`, `Table` и другие типы);
+- создавать связи между узлами по правилам (`calls`, `reads`, `writes`, `deployedon`, `ownedby`, `dependson` и т.д.);
+- автоматически применять активный mapping к новым raw chunks от агентов;
+- переигрывать исторические raw chunks после изменения mapping-конфигурации;
+- настраивать разные правила преобразования для разных `source_type`.
+
+При старте проекта дефолтные маппинги автоматически создаются только для пользователя `admin@example.com` / `admin`. Для ручного создания или пересоздания можно выполнить:
 
 ```bash
 # Создать все маппинги

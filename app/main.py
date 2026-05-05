@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -19,6 +20,7 @@ from app.api.mocker import router as mocker_router
 from app.repositories.neo4j_connection import neo4j_driver
 from app.repositories import agent_repo, application_repo, user_repo
 from app.repositories.mapping_repo import mapping_repo
+from app.services.startup_seed_service import seed_admin_demo_data_on_startup
 
 
 @asynccontextmanager
@@ -30,6 +32,7 @@ async def lifespan(application: FastAPI):
     mapping_repo.ensure_indexes()
     user_repo.ensure_user_indexes()
     user_repo.ensure_default_admin()
+    asyncio.create_task(seed_admin_demo_data_on_startup())
     yield
     neo4j_driver.close()
 
