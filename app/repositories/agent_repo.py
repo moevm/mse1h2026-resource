@@ -21,6 +21,7 @@ def register_agent(
     source_type: Optional[str] = None,
     description: Optional[str] = None,
     app_id: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     agent_id = str(uuid.uuid4())
     token = str(uuid.uuid4())
@@ -28,7 +29,7 @@ def register_agent(
 
     with neo4j_driver.session() as session:
         result = session.execute_write(
-            _register_tx, agent_id, token, name, source_type, description, now, app_id
+            _register_tx, agent_id, token, name, source_type, description, now, app_id, user_id
         )
     return result
 
@@ -42,12 +43,11 @@ def _register_tx(
     description: Optional[str],
     now: str,
     app_id: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
-    # MERGE by name so re-registration returns the existing agent + token
     if app_id:
-        # Register with application binding
         result = tx.run(
-            "MERGE (a:Agent {name: $name}) "
+            "MERGE (a:Agent {name: $name, user_id: $user_id}) "
             "ON CREATE SET "
             "    a.agent_id = $agent_id, "
             "    a.token = $token, "
@@ -67,11 +67,11 @@ def _register_tx(
             description=description,
             now=now,
             app_id=app_id,
+            user_id=user_id,
         )
     else:
-        # Register without application
         result = tx.run(
-            "MERGE (a:Agent {name: $name}) "
+            "MERGE (a:Agent {name: $name, user_id: $user_id}) "
             "ON CREATE SET "
             "    a.agent_id = $agent_id, "
             "    a.token = $token, "
@@ -86,6 +86,7 @@ def _register_tx(
             source_type=source_type,
             description=description,
             now=now,
+            user_id=user_id,
         )
     record = result.single()
     return dict(record["a"])
@@ -118,18 +119,27 @@ def _get_by_token_tx(tx: ManagedTransaction, token: str) -> Optional[Dict[str, A
     return dict(record["a"]) if record else None
 
 
-def list_agents() -> list[Dict[str, Any]]:
+def list_agents(user_id: Optional[str] = None) -> list[Dict[str, Any]]:
     with neo4j_driver.session() as session:
-        return session.execute_read(_list_agents_tx)
+        return session.execute_read(_list_agents_tx, user_id)
 
 
-def _list_agents_tx(tx: ManagedTransaction) -> list[Dict[str, Any]]:
-    result = tx.run(
-        "MATCH (a:Agent) "
-        "OPTIONAL MATCH (app:Application)-[:HAS_AGENT]->(a) "
-        "RETURN a, app.name AS app_name, app.app_id AS app_id "
-        "ORDER BY a.registered_at DESC"
-    )
+def _list_agents_tx(tx: ManagedTransaction, user_id: Optional[str]) -> list[Dict[str, Any]]:
+    if user_id is None:
+        result = tx.run(
+            "MATCH (a:Agent) "
+            "OPTIONAL MATCH (app:Application)-[:HAS_AGENT]->(a) "
+            "RETURN a, app.name AS app_name, app.app_id AS app_id "
+            "ORDER BY a.registered_at DESC"
+        )
+    else:
+        result = tx.run(
+            "MATCH (a:Agent {user_id: $user_id}) "
+            "OPTIONAL MATCH (app:Application)-[:HAS_AGENT]->(a) "
+            "RETURN a, app.name AS app_name, app.app_id AS app_id "
+            "ORDER BY a.registered_at DESC",
+            user_id=user_id,
+        )
     agents = []
     for record in result:
         agent_data = dict(record["a"])
@@ -139,14 +149,24 @@ def _list_agents_tx(tx: ManagedTransaction) -> list[Dict[str, Any]]:
     return agents
 
 
+def get_agent_names_for_user(user_id: str) -> list[str]:
+    with neo4j_driver.session() as session:
+        result = session.run(
+            "MATCH (a:Agent {user_id: $user_id}) RETURN a.name AS name",
+            user_id=user_id,
+        )
+        return [r["name"] for r in result]
+
+
 def ensure_agent_indexes() -> None:
     with neo4j_driver.session() as session:
+        session.run("DROP CONSTRAINT agent_name_unique IF EXISTS")
         session.run(
             "CREATE CONSTRAINT agent_token_unique IF NOT EXISTS "
             "FOR (a:Agent) REQUIRE a.token IS UNIQUE"
         )
         session.run(
-            "CREATE CONSTRAINT agent_name_unique IF NOT EXISTS "
-            "FOR (a:Agent) REQUIRE a.name IS UNIQUE"
+            "CREATE INDEX agent_user_idx IF NOT EXISTS "
+            "FOR (a:Agent) ON (a.user_id)"
         )
     log.info("Agent indexes ensured")

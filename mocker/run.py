@@ -324,7 +324,7 @@ class LogProducer:
 
 
 class MockerOrchestrator:
-    def __init__(self, base_url: str, agents: List[AgentConfig], app_name: str | None = None, once: bool = False, full: bool = False):
+    def __init__(self, base_url: str, agents: List[AgentConfig], app_name: str | None = None, once: bool = False, full: bool = False, auth_token: str | None = None):
         self.base_url = base_url
         self.agents = agents
         self.producers: List[LogProducer] = []
@@ -333,6 +333,7 @@ class MockerOrchestrator:
         self.app_token: str | None = None
         self.once = once
         self.full = full
+        self.auth_token = auth_token
         self.shared_state = SharedState()
 
     async def register_application(self, client: httpx.AsyncClient) -> bool:
@@ -367,7 +368,8 @@ class MockerOrchestrator:
         log.info(f"Shared state: {stats['services']} services, {stats['nodes']} nodes, {stats['pods']} pods")
         log.info("=" * 70)
 
-        async with httpx.AsyncClient(base_url=self.base_url, timeout=30) as client:
+        async with httpx.AsyncClient(base_url=self.base_url, timeout=30,
+                                      headers={"Authorization": f"Bearer {self.auth_token}"} if self.auth_token else {}) as client:
             if self.app_name and not await self.register_application(client):
                 return
 
@@ -702,6 +704,11 @@ def main() -> None:
         action="store_true",
         help="Generate complete connected graph with all entities (implies --once)",
     )
+    parser.add_argument(
+        "--auth-token",
+        default=None,
+        help="Bearer token for API authentication",
+    )
 
     args = parser.parse_args()
 
@@ -763,7 +770,7 @@ def main() -> None:
         log.info(f"App: {args.app_name}")
     log.info("")
 
-    orchestrator = MockerOrchestrator(args.url, selected_agents, app_name=args.app_name, once=args.once, full=args.full)
+    orchestrator = MockerOrchestrator(args.url, selected_agents, app_name=args.app_name, once=args.once, full=args.full, auth_token=args.auth_token)
 
     def signal_handler(sig, frame):
         orchestrator.stop()

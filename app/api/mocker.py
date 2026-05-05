@@ -6,8 +6,10 @@ import subprocess
 import sys
 from typing import List
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
+
+from app.api.auth import CurrentUser
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -22,7 +24,14 @@ class MockerCommandResponse(BaseModel):
     stderr: str = ""
 
 
-async def _run_mocker_command(args: List[str], command_name: str) -> MockerCommandResponse:
+async def _run_mocker_command(
+    args: List[str],
+    command_name: str,
+    auth_token: str | None = None,
+) -> MockerCommandResponse:
+    if auth_token:
+        args = [*args, "--auth-token", auth_token]
+
     command = [sys.executable, *args]
     rendered_command = " ".join(command)
 
@@ -59,16 +68,25 @@ async def _run_mocker_command(args: List[str], command_name: str) -> MockerComma
     )
 
 
+def _extract_token(request: Request) -> str | None:
+    auth = request.headers.get("authorization", "")
+    if auth.startswith("Bearer "):
+        return auth[7:]
+    return None
+
+
 @router.post(
     "/run-full",
     response_model=MockerCommandResponse,
     summary="Run full mock data generation",
 )
-async def run_full_generation() -> MockerCommandResponse:
+async def run_full_generation(user: CurrentUser, request: Request) -> MockerCommandResponse:
+    token = _extract_token(request)
     log.info("Running mocker full generation via API")
     return await _run_mocker_command(
         ["-m", "mocker.run", "--full", "--url", "http://localhost:8000"],
         command_name="mocker.run --full",
+        auth_token=token,
     )
 
 
@@ -77,9 +95,11 @@ async def run_full_generation() -> MockerCommandResponse:
     response_model=MockerCommandResponse,
     summary="Create mappings via mocker script",
 )
-async def create_mappings() -> MockerCommandResponse:
+async def create_mappings(user: CurrentUser, request: Request) -> MockerCommandResponse:
+    token = _extract_token(request)
     log.info("Running mocker mapping creation via API")
     return await _run_mocker_command(
         ["-m", "mocker.create_mappings", "--url", "http://localhost:8000"],
         command_name="mocker.create_mappings",
+        auth_token=token,
     )

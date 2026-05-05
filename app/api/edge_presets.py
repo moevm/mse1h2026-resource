@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from typing import List
-
 from fastapi import APIRouter, HTTPException, status
 
+from app.api.auth import CurrentUser
 from app.models.mapper.edge_preset import (
     EdgePreset,
     EdgePresetCreate,
@@ -20,8 +19,7 @@ router = APIRouter()
     response_model=EdgePresetListResponse,
     summary="List all edge presets",
 )
-def list_presets():
-    """List all available edge presets (built-in + custom)."""
+def list_presets(user: CurrentUser):
     presets = edge_preset_repo.list_all()
     return EdgePresetListResponse(
         presets=presets,
@@ -34,8 +32,7 @@ def list_presets():
     response_model=EdgePreset,
     summary="Get an edge preset by ID",
 )
-def get_preset(preset_id: str):
-    """Get a specific edge preset by its ID."""
+def get_preset(user: CurrentUser, preset_id: str):
     preset = edge_preset_repo.get(preset_id)
     if not preset:
         raise HTTPException(
@@ -51,11 +48,7 @@ def get_preset(preset_id: str):
     status_code=status.HTTP_201_CREATED,
     summary="Create a new edge preset",
 )
-def create_preset(data: EdgePresetCreate):
-    """Create a new custom edge preset.
-
-    Built-in presets cannot be modified. Custom presets are stored in Neo4j.
-    """
+def create_preset(user: CurrentUser, data: EdgePresetCreate):
     try:
         return edge_preset_repo.create(data)
     except Exception as e:
@@ -70,11 +63,7 @@ def create_preset(data: EdgePresetCreate):
     response_model=EdgePreset,
     summary="Update an edge preset",
 )
-def update_preset(preset_id: str, data: EdgePresetUpdate):
-    """Update an existing custom edge preset.
-
-    Built-in presets cannot be modified.
-    """
+def update_preset(user: CurrentUser, preset_id: str, data: EdgePresetUpdate):
     try:
         preset = edge_preset_repo.update(preset_id, data)
         if not preset:
@@ -95,11 +84,7 @@ def update_preset(preset_id: str, data: EdgePresetUpdate):
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an edge preset",
 )
-def delete_preset(preset_id: str):
-    """Delete a custom edge preset.
-
-    Built-in presets cannot be deleted.
-    """
+def delete_preset(user: CurrentUser, preset_id: str):
     try:
         if not edge_preset_repo.delete(preset_id):
             raise HTTPException(

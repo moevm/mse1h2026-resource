@@ -20,6 +20,7 @@ def register_application(
     name: str,
     description: Optional[str] = None,
     owner: Optional[str] = None,
+    user_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     app_id = str(uuid.uuid4())
     app_token = str(uuid.uuid4())
@@ -27,7 +28,7 @@ def register_application(
 
     with neo4j_driver.session() as session:
         result = session.execute_write(
-            _register_app_tx, app_id, app_token, name, description, owner, now
+            _register_app_tx, app_id, app_token, name, description, owner, now, user_id
         )
     return result
 
@@ -40,9 +41,10 @@ def _register_app_tx(
     description: Optional[str],
     owner: Optional[str],
     now: str,
+    user_id: Optional[str],
 ) -> Dict[str, Any]:
     result = tx.run(
-        "MERGE (app:Application {name: $name}) "
+        "MERGE (app:Application {name: $name, user_id: $user_id}) "
         "ON CREATE SET "
         "    app.app_id = $app_id, "
         "    app.app_token = $app_token, "
@@ -56,6 +58,7 @@ def _register_app_tx(
         description=description,
         owner=owner,
         now=now,
+        user_id=user_id,
     )
     record = result.single()
     return dict(record["app"])
@@ -89,18 +92,27 @@ def _get_by_id_tx(tx: ManagedTransaction, app_id: str) -> Optional[Dict[str, Any
     return dict(record["app"]) if record else None
 
 
-def list_applications() -> List[Dict[str, Any]]:
+def list_applications(user_id: Optional[str] = None) -> List[Dict[str, Any]]:
     with neo4j_driver.session() as session:
-        return session.execute_read(_list_apps_tx)
+        return session.execute_read(_list_apps_tx, user_id)
 
 
-def _list_apps_tx(tx: ManagedTransaction) -> List[Dict[str, Any]]:
-    result = tx.run(
-        "MATCH (app:Application) "
-        "OPTIONAL MATCH (app)-[:HAS_AGENT]->(a:Agent) "
-        "RETURN app, count(a) AS agent_count "
-        "ORDER BY app.created_at DESC"
-    )
+def _list_apps_tx(tx: ManagedTransaction, user_id: Optional[str]) -> List[Dict[str, Any]]:
+    if user_id is None:
+        result = tx.run(
+            "MATCH (app:Application) "
+            "OPTIONAL MATCH (app)-[:HAS_AGENT]->(a:Agent) "
+            "RETURN app, count(a) AS agent_count "
+            "ORDER BY app.created_at DESC"
+        )
+    else:
+        result = tx.run(
+            "MATCH (app:Application {user_id: $user_id}) "
+            "OPTIONAL MATCH (app)-[:HAS_AGENT]->(a:Agent) "
+            "RETURN app, count(a) AS agent_count "
+            "ORDER BY app.created_at DESC",
+            user_id=user_id,
+        )
     apps = []
     for record in result:
         app_data = dict(record["app"])
@@ -177,16 +189,18 @@ def _get_agent_names_tx(tx: ManagedTransaction, app_id: str) -> List[str]:
 
 def ensure_application_indexes() -> None:
     with neo4j_driver.session() as session:
+        # Old global name constraint cannot coexist with multi-user applications.
+        session.run("DROP CONSTRAINT app_name_unique IF EXISTS")
         session.run(
             "CREATE CONSTRAINT app_token_unique IF NOT EXISTS "
             "FOR (app:Application) REQUIRE app.app_token IS UNIQUE"
         )
         session.run(
-            "CREATE CONSTRAINT app_name_unique IF NOT EXISTS "
-            "FOR (app:Application) REQUIRE app.name IS UNIQUE"
-        )
-        session.run(
             "CREATE CONSTRAINT app_id_unique IF NOT EXISTS "
             "FOR (app:Application) REQUIRE app.app_id IS UNIQUE"
+        )
+        session.run(
+            "CREATE INDEX app_user_idx IF NOT EXISTS "
+            "FOR (app:Application) ON (app.user_id)"
         )
     log.info("Application indexes ensured")

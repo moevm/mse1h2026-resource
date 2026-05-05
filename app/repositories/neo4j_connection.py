@@ -18,6 +18,8 @@ class Neo4jConnection:
             self._driver = GraphDatabase.driver(
                 settings.neo4j_uri,
                 auth=(settings.neo4j_user, settings.neo4j_password),
+                max_connection_pool_size=50,
+                connection_acquisition_timeout=30,
             )
             log.info("Neo4j driver created → %s", settings.neo4j_uri)
         return self._driver
@@ -51,7 +53,6 @@ class Neo4jConnection:
 
 
     def session(self, **kwargs):
-        """Shortcut to open a session with the current driver."""
         return self.driver.session(**kwargs)
 
 
