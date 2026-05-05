@@ -19,9 +19,10 @@ const DIRECTION_LABELS: Record<string, string> = {
 
 interface Props {
     onResult?: (data: GraphResponse) => void;
+    onReset?: () => void;
 }
 
-export default function TraversalPanel({ onResult }: Readonly<Props>) {
+export default function TraversalPanel({ onResult, onReset }: Readonly<Props>) {
     const [presets, setPresets] = useState<TraversalPreset[]>([]);
     const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
     const [customMode, setCustomMode] = useState(false);
@@ -198,7 +199,16 @@ export default function TraversalPanel({ onResult }: Readonly<Props>) {
                     />
 
                     <div>
-                        <p className="mb-1 text-xs text-slate-400">Start Node Types (if no ID)</p>
+                        <div className="mb-1 flex items-center justify-between">
+                            <p className="text-xs text-slate-400">Start Node Types (if no ID)</p>
+                            <div className="flex gap-1">
+                                <BulkBtn
+                                    label="All"
+                                    onClick={() => setStartNodeTypes([...NODE_TYPE_VALUES])}
+                                />
+                                <BulkBtn label="Reset" onClick={() => setStartNodeTypes([])} />
+                            </div>
+                        </div>
                         <div className="flex flex-wrap gap-1">
                             {NODE_TYPE_VALUES.map((t) => (
                                 <button
@@ -269,8 +279,26 @@ export default function TraversalPanel({ onResult }: Readonly<Props>) {
                                         </div>
 
                                         <div className="mb-1.5">
-                                            <div className="mb-0.5 text-[10px] text-slate-500">
-                                                Edge types:
+                                            <div className="mb-0.5 flex items-center justify-between">
+                                                <span className="text-[10px] text-slate-500">
+                                                    Edge types:
+                                                </span>
+                                                <div className="flex gap-1">
+                                                    <BulkBtn
+                                                        label="All"
+                                                        onClick={() =>
+                                                            updateStep(idx, {
+                                                                edge_types: [...EDGE_TYPE_VALUES],
+                                                            })
+                                                        }
+                                                    />
+                                                    <BulkBtn
+                                                        label="Reset"
+                                                        onClick={() =>
+                                                            updateStep(idx, { edge_types: [] })
+                                                        }
+                                                    />
+                                                </div>
                                             </div>
                                             <div className="flex flex-wrap gap-0.5">
                                                 {EDGE_TYPE_VALUES.map((e) => (
@@ -290,8 +318,30 @@ export default function TraversalPanel({ onResult }: Readonly<Props>) {
                                         </div>
 
                                         <div>
-                                            <div className="mb-0.5 text-[10px] text-slate-500">
-                                                Target types (optional):
+                                            <div className="mb-0.5 flex items-center justify-between">
+                                                <span className="text-[10px] text-slate-500">
+                                                    Target types (optional):
+                                                </span>
+                                                <div className="flex gap-1">
+                                                    <BulkBtn
+                                                        label="All"
+                                                        onClick={() =>
+                                                            updateStep(idx, {
+                                                                target_node_types: [
+                                                                    ...NODE_TYPE_VALUES,
+                                                                ],
+                                                            })
+                                                        }
+                                                    />
+                                                    <BulkBtn
+                                                        label="Reset"
+                                                        onClick={() =>
+                                                            updateStep(idx, {
+                                                                target_node_types: undefined,
+                                                            })
+                                                        }
+                                                    />
+                                                </div>
                                             </div>
                                             <div className="flex flex-wrap gap-0.5">
                                                 {NODE_TYPE_VALUES.map((nt) => (
@@ -347,6 +397,31 @@ export default function TraversalPanel({ onResult }: Readonly<Props>) {
             >
                 Execute Traversal
             </Button>
+
+            {onReset && (
+                <Button
+                    variant="secondary"
+                    onClick={() => {
+                        setResultSummary(null);
+                        setError(null);
+                        onReset();
+                    }}
+                    className="w-full"
+                >
+                    Reset to full graph
+                </Button>
+            )}
         </div>
+    );
+}
+
+function BulkBtn({ label, onClick }: Readonly<{ label: string; onClick: () => void }>) {
+    return (
+        <button
+            onClick={onClick}
+            className="rounded bg-slate-800/60 px-1.5 py-0.5 text-[9px] text-slate-400 hover:bg-slate-700/70 hover:text-slate-200"
+        >
+            {label}
+        </button>
     );
 }
