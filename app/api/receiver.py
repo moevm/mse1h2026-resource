@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.core.auth import require_agent
 from app.api.auth import CurrentUser
-from app.models.mapper.raw_data import RawDataSource, RawDataListResponse
+from app.models.mapper.raw_data import RawDataListResponse
 from app.repositories.raw_data_repo import raw_data_repo
 from app.repositories.mapping_repo import mapping_repo
 from app.repositories.neo4j_repo import upsert_nodes, upsert_edges

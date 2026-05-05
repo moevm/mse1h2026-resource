@@ -89,14 +89,14 @@ def test_to_dot_is_well_formed(sample_graph):
 
 def test_to_graphml_is_parseable_and_contains_graphml_root(sample_graph):
     out = _to_graphml(sample_graph, include_props=True)
-    root = ElementTree.fromstring(out)
+    root = ElementTree.fromstring(out)  # noqa: S314 - parsing trusted exporter output in a unit test
     assert root.tag.endswith("graphml")
     assert b"a" in out and b"b" in out and b"c" in out
 
 
 def test_to_gexf_is_parseable_and_contains_gexf_root(sample_graph):
     out = _to_gexf(sample_graph, include_props=True)
-    root = ElementTree.fromstring(out)
+    root = ElementTree.fromstring(out)  # noqa: S314 - parsing trusted exporter output in a unit test
     assert root.tag.endswith("gexf")
     assert b"a" in out and b"b" in out and b"c" in out
 
