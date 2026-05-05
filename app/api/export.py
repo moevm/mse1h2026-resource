@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.responses import Response
 
+from app.api.auth import CurrentUser
 from app.models.export import ExportFormat, ExportRequest
 from app.services import export_service
 
@@ -29,8 +30,8 @@ router = APIRouter()
         },
     },
 )
-async def export_download(body: ExportRequest) -> Response:
-    content_bytes, content_type, filename = export_service.export_graph(body)
+async def export_download(user: CurrentUser, body: ExportRequest) -> Response:
+    content_bytes, content_type, filename = export_service.export_graph(body, user_id=user["user_id"])
     return Response(
         content=content_bytes,
         media_type=content_type,
@@ -43,7 +44,7 @@ async def export_download(body: ExportRequest) -> Response:
     summary="List available export formats",
     description="Returns all supported export formats with their descriptions.",
 )
-async def list_formats() -> list[dict]:
+async def list_formats(user: CurrentUser) -> list[dict]:
     return [
         {
             "id": ExportFormat.JSON.value,

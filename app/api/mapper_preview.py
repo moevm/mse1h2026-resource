@@ -5,6 +5,7 @@ from typing import Any, Dict, List
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
+from app.api.auth import CurrentUser
 from app.models.mapper.raw_data import RawDataChunk
 from app.models.mapper.mapping import UnresolvedReference
 from app.repositories.mapping_repo import mapping_repo
@@ -87,7 +88,7 @@ class ApplyResponse(BaseModel):
     response_model=PreviewResponse,
     summary="Preview mapping result without persisting",
 )
-async def preview_mapping(request: PreviewRequest):
+async def preview_mapping(user: CurrentUser, request: PreviewRequest):
     chunk_data = await raw_data_repo.get_chunk(request.chunk_id)
     if not chunk_data:
         raise HTTPException(
@@ -135,7 +136,7 @@ async def preview_mapping(request: PreviewRequest):
     response_model=ApplyResponse,
     summary="Apply mapping and ingest into graph",
 )
-async def apply_mapping(request: PreviewRequest):
+async def apply_mapping(user: CurrentUser, request: PreviewRequest):
     chunk_data = await raw_data_repo.get_chunk(request.chunk_id)
     if not chunk_data:
         raise HTTPException(
@@ -211,6 +212,7 @@ async def apply_mapping(request: PreviewRequest):
     summary="Preview mapping with raw JSON data",
 )
 async def preview_raw_data(
+    user: CurrentUser,
     raw_data: Dict[str, Any],
     mapping_id: str,
 ):

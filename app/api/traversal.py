@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from app.api.auth import CurrentUser
 from app.models.topology import GraphResponse
 from app.models.traversal import TraversalRule
 from app.services import traversal_service
@@ -17,7 +18,7 @@ router = APIRouter()
         "Use these as templates or execute them directly via POST /execute."
     ),
 )
-async def list_presets() -> list[dict]:
+async def list_presets(user: CurrentUser) -> list[dict]:
     return traversal_service.list_presets()
 
 
@@ -33,5 +34,5 @@ async def list_presets() -> list[dict]:
         "the starting set for step N+1."
     ),
 )
-async def execute_traversal(body: TraversalRule) -> GraphResponse:
+async def execute_traversal(user: CurrentUser, body: TraversalRule) -> GraphResponse:
     return traversal_service.execute_traversal(body)
