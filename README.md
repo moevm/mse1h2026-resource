@@ -53,6 +53,7 @@ python -m mocker.create_mappings --url http://localhost:8000
 
 Frontend: http://localhost:3000
 на фронте высвечивается страница авторизации пользователя, есть возможность перейти на страницу регистрации или залогиниться дефолтным юзером.
+
 Backend API: http://localhost:8000
 	
 API Documentation: http://localhost:8000/docs
