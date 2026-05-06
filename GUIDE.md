@@ -13,24 +13,12 @@
 
 ## 1. Запуск кластера Kubernetes с демо-приложением
 
+Перед запуском проекта нужно инициализировать k8s кластер(установить cri-o (>= 1.32),kubelet, kubeadm, в качестве CNI можно использовать Calico), для корректной работы рекомендуем использовать кластер из одной control plane и двух воркеров.
+Кластер был запущен на трёх впс с Ubuntu 22.04, 
+у мастер ноды RAM:4gb, размер диска: 50 gb, ядер: 2.
+у обоих воркеров RAM:2gb, размер диска: 30 gb, ядер: 2.
+
 > Проект: `monitoring-microservices-demo`
-
-### Вариант A: Docker Compose (локально)
-
-```bash
-cd monitoring-microservices-demo
-
-# Запуск всех сервисов (приложения + observability-стек)
-docker compose up -d
-
-# Запуск с генераторами нагрузки (k6)
-docker compose -f docker-compose.yaml -f docker-compose.generators.yaml up -d
-
-# Остановка
-docker compose down -v
-```
-
-### Вариант B: Kubernetes (удалённый кластер)
 
 ```bash
 cd monitoring-microservices-demo/k8s
@@ -47,8 +35,8 @@ cd monitoring-microservices-demo/k8s
 
 Скрипты используют SSH-доступ к ноде `vpa-k8s-server-1.l.postgrespro.ru` (конфиг и ключ из `~/envs/k8s/ssh/`). Неймспейс: `monitoring-demo`.
 
-**Проверка:**
-
+**Проверка корректности работы:**
+Все поды ищз неймспейсам monitoring-demo должны быть runnung. Можно посмотреть на демо видео к третьей итерации в ветке reports.
 ```bash
 kubectl get pods -n monitoring-demo
 ```
@@ -68,15 +56,6 @@ cp .env.example .env
 # 2. Запустить все сервисы (Redis, Neo4j, Backend, Frontend)
 docker compose up --build -d
 ```
-
-**Что поднимется:**
-
-| Сервис | Контейнер | Описание |
-|--------|-----------|----------|
-| Redis | `resource-redis` | Кэш / хранение сессий |
-| Neo4j | `resource-neo4j` | Графовая БД |
-| Backend | `resource-backend` | FastAPI API (порт 8000) |
-| Frontend | `resource-frontend` | React UI + Nginx (порт 3000) |
 
 **Остановка:**
 
