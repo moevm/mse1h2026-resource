@@ -1,18 +1,15 @@
 FROM python:3.12-slim
 
-ARG APP_NAME=main.py
-
 WORKDIR /app
 
-COPY requirements.txt requirements.txt
-
-RUN pip install -r requirements.txt
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN adduser --disabled-password --gecos "" appuser && chown -R appuser:appuser /app
+RUN adduser --disabled-password --gecos "" appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
-EXPOSE 8000
-
-CMD python ${APP_NAME}
+EXPOSE 8001
+CMD ["opentelemetry-instrument", "python3", "app_client.py"]

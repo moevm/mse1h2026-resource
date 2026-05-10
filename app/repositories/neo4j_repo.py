@@ -87,7 +87,7 @@ def _upsert_nodes_tx(tx: ManagedTransaction, nodes: List[Dict], source: str, now
                 "    r.last_seen_at = $now, "
                 "    r.source = $source, "
                 "    r += $props "
-                "RETURN r"
+                "WITH r SET r:Resource"
             )
             tx.run(fallback, **params)
             count += 1
@@ -134,8 +134,11 @@ def _upsert_edges_tx(tx: ManagedTransaction, edges: List[Dict], source: str, now
             "props": props,
         }
 
-        tx.run(query, **params)
-        count += 1
+        try:
+            tx.run(query, **params)
+            count += 1
+        except Exception:
+            pass
     return count
 
 
@@ -201,28 +204,6 @@ def _read_all_nodes(
             limit=limit,
         )
     return [_node_record_to_dict(record["r"]) for record in result]
-
-
-def _read_all_edges(tx: ManagedTransaction, limit: int) -> List[Dict]:
-    result = tx.run(
-        "MATCH (a:Resource)-[rel]->(b:Resource) "
-        "RETURN a.external_id AS source_id, "
-        "       b.external_id AS target_id, "
-        "       type(rel) AS type, "
-        "       properties(rel) AS props "
-        "LIMIT $limit",
-        limit=limit,
-    )
-    rows = []
-    for record in result:
-        row = {
-            "source_id": record["source_id"],
-            "target_id": record["target_id"],
-            "type": record["type"],
-        }
-        row.update(record["props"] or {})
-        rows.append(row)
-    return rows
 
 
 def _read_edges_for_nodes(

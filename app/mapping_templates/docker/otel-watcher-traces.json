@@ -2,8 +2,8 @@
   "id": "watcher-otel-traces-v1",
   "name": "Watcher: OpenTelemetry Traces",
   "source_type": "watcher-otel-traces",
-  "version": "2.0.0",
-  "description": "Maps normalized OTLP telemetry (spans, logs, metrics) from otel-watcher into topology nodes and edges.",
+  "version": "3.0.0",
+  "description": "Maps normalized OTLP telemetry (spans, logs, metrics) from otel-watcher into topology nodes and edges. Covers Docker monitoring stack: FastAPI+PostgreSQL, Flask, Golang.",
   "is_active": false,
   "created_by": "builtin",
   "edge_preset_id": "default",
@@ -41,8 +41,14 @@
       "target_node_type": "Service"
     },
     {
+      "id": "service-framework",
+      "source_path": "sdk_name",
+      "target_field": "framework",
+      "target_node_type": "Service"
+    },
+    {
       "id": "service-calls-peer",
-      "source_path": "peer_service",
+      "source_path": "peer_target",
       "target_field": "calls_services",
       "target_node_type": "Service"
     },
@@ -52,7 +58,7 @@
       "target_field": "reads_databases",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "value if source_data.get('db_statement','').strip().lower().startswith('select') else None" }
+      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() == 'select' or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith('select')) else None" }
     },
     {
       "id": "service-writes-db",
@@ -60,7 +66,7 @@
       "target_field": "writes_databases",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "value if source_data.get('db_statement','').strip().lower().startswith(('insert','update','delete','create','alter','drop')) else None" }
+      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() in ('insert','update','delete','create','alter','drop') or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith(('insert','update','delete','create','alter','drop'))) else None" }
     },
     {
       "id": "service-reads-table",
@@ -68,7 +74,7 @@
       "target_field": "reads_tables",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "value if source_data.get('db_statement','').strip().lower().startswith('select') else None" }
+      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() == 'select' or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith('select')) else None" }
     },
     {
       "id": "service-writes-table",
@@ -76,7 +82,7 @@
       "target_field": "writes_tables",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "value if source_data.get('db_statement','').strip().lower().startswith(('insert','update','delete','create','alter','drop')) else None" }
+      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() in ('insert','update','delete','create','alter','drop') or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith(('insert','update','delete','create','alter','drop'))) else None" }
     },
     {
       "id": "service-libraries",
@@ -143,6 +149,20 @@
       "target_node_type": "Service"
     },
     {
+      "id": "service-team",
+      "source_path": "team",
+      "target_field": "team",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-status-code",
+      "source_path": "http_status_code",
+      "target_field": "status",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'error' if value and int(value) >= 500 else 'active'" }
+    },
+    {
       "id": "service-cpu-seconds",
       "source_path": "metrics.process_cpu_seconds_total",
       "target_field": "cpu_allocated_cores",
@@ -158,23 +178,37 @@
     },
     {
       "id": "service-http-requests",
-      "source_path": "metrics.http_requests_total",
+      "source_path": "metrics.http_server_requests_seconds_count",
+      "target_field": "rps",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-http-requests-alt",
+      "source_path": "metrics.http_server_requests_total",
+      "target_field": "rps",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-http-requests-flask",
+      "source_path": "metrics.http_server_request_duration_seconds_count",
       "target_field": "rps",
       "target_node_type": "Service"
     },
     {
       "id": "service-http-duration",
-      "source_path": "metrics.http_request_duration_seconds_sum",
+      "source_path": "metrics.http_server_requests_seconds_sum",
       "target_field": "latency_p99_ms",
       "target_node_type": "Service",
       "transform_type": "expression",
       "transform_config": { "expression": "float(value) * 1000" }
     },
     {
-      "id": "service-team",
-      "source_path": "team",
-      "target_field": "team",
-      "target_node_type": "Service"
+      "id": "service-http-duration-flask",
+      "source_path": "metrics.http_server_request_duration_seconds_sum",
+      "target_field": "latency_p99_ms",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "float(value) * 1000" }
     },
     {
       "id": "endpoint-id",
@@ -212,6 +246,18 @@
       "id": "endpoint-method",
       "source_path": "http_method",
       "target_field": "method",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-status-code",
+      "source_path": "http_status_code",
+      "target_field": "current_rps",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-calls",
+      "source_path": "net_peer_name",
+      "target_field": "calls_endpoints",
       "target_node_type": "Endpoint"
     },
     {
@@ -267,6 +313,14 @@
       "source_path": "external_api",
       "target_field": "name",
       "target_node_type": "ExternalAPI"
+    },
+    {
+      "id": "external-api-base-url",
+      "source_path": "external_api",
+      "target_field": "base_url",
+      "target_node_type": "ExternalAPI",
+      "transform_type": "template",
+      "transform_config": { "template": "https://{value}" }
     },
     {
       "id": "secret-id",
@@ -381,7 +435,7 @@
     },
     {
       "id": "cr-otel-endpoint-target",
-      "condition": "http_target != `null`",
+      "condition": "http_target != `null` && http_route == `null`",
       "target_node_type": "Endpoint",
       "priority": 74
     },
@@ -404,16 +458,16 @@
       "priority": 60
     },
     {
-      "id": "cr-otel-library",
-      "condition": "sdk_name != `null`",
-      "target_node_type": "Library",
-      "priority": 50
-    },
-    {
       "id": "cr-otel-team",
       "condition": "team != `null`",
       "target_node_type": "TeamOwner",
       "priority": 55
+    },
+    {
+      "id": "cr-otel-library",
+      "condition": "sdk_name != `null`",
+      "target_node_type": "Library",
+      "priority": 50
     },
     {
       "id": "cr-otel-service",

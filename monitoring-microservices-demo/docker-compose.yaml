@@ -1,7 +1,7 @@
 services:
   # Database to store traces by Grafana Labs
   tempo:
-    image: grafana/tempo:2.6.1  # tested on 2.6.1
+    image: grafana/tempo:2.6.1
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
       - ./etc/tempo/tempo.yaml:/etc/tempo.yaml
@@ -16,7 +16,7 @@ services:
 
   # Jaeger
   jaeger:
-    image: jaegertracing/all-in-one:1.59.0
+    image: jaegertracing/all-in-one:1.64.0
     volumes:
       - ./etc/jaeger/jaeger-ui.json:/etc/jaeger/jaeger-ui.json
     command:
@@ -36,10 +36,10 @@ services:
   # And put them in an OTEL collector pipeline...
   otel-collector:
     # image: otel/opentelemetry-collector-contrib:latest
-    image: otel/opentelemetry-collector:0.112.0
+    image: otel/opentelemetry-collector:0.122.0
     command: [ "--config=/etc/otel-collector.yaml" ]
     volumes:
-      - ./etc/otel-collector/config.yaml:/etc/otel-collector.yaml
+      - ./etc/otel-collector/config.docker.yaml:/etc/otel-collector.yaml
       # - ./etc/otel-collector/simple-debug.yaml:/etc/otel-collector.yaml
     ports:
       # - "1888:1888"   # pprof extension
@@ -54,7 +54,7 @@ services:
       - jaeger
 
   loki:
-    image: grafana/loki:3.1.0 # tested on 3.1.0
+    image: grafana/loki:3.4.2
     command: ["--pattern-ingester.enabled=true", "--config.file=/etc/loki/loki.yaml"]
     ports:
       - "3100:3100"
@@ -79,7 +79,7 @@ services:
       - "5"
 
   prometheus:
-    image: prom/prometheus:v2.55.0
+    image: prom/prometheus:v2.55.1
     hostname: localhost
     command:
       - --config.file=/etc/prometheus.yaml
@@ -95,7 +95,7 @@ services:
       - "9090:9090"
 
   alertmanager:
-    image: prom/alertmanager:v0.27.0
+    image: prom/alertmanager:v0.28.1
     hostname: localhost
     ports:
       - "9093:9093"
@@ -115,7 +115,7 @@ services:
       - CREATE_SESSION=00000000-0000-0000-0000-000000000000
 
   karma:
-    image: ghcr.io/prymitive/karma:v0.120
+    image: ghcr.io/prymitive/karma:v0.121
     ports:
       - '8081:8081'
     environment:
@@ -153,7 +153,7 @@ services:
       - pyrra-init
 
   grafana:
-    image: grafana/grafana:11.3.0 # tested on 11.1.0
+    image: grafana/grafana:11.5.2
     volumes:
       - ./etc/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
       - ./etc/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
@@ -168,7 +168,7 @@ services:
       - GF_INSTALL_PLUGINS=grafana-lokiexplore-app, grafana-pyroscope-app
       # - GF_INSTALL_PLUGINS=https://storage.googleapis.com/integration-artifacts/grafana-lokiexplore-app/grafana-lokiexplore-app-latest.zip;grafana-lokiexplore-app
     ports:
-      - "3000:3000"
+      - "13000:3000"
     depends_on:
       - tempo
       - loki
@@ -182,14 +182,8 @@ services:
       - OTLP_GRPC_ENDPOINT=http://otel-collector:4317
       - DATABASE_URL=postgresql://user:password@postgres-db:5432/db
       - PYROSCOPE_ENDPOINT=http://pyroscope:4040
-    command:
-      - 'python3'
-      # - 'app_with__traces.py'
-      # - 'app_with__traces_logs_metrics_db.py'
-      - 'app_with__traces_logs_metrics_profiles_db.py'
-      - "8000:8000"
     ports:
-      - "8000:8000"
+      - "18000:8000"
     depends_on:
       - otel-collector
       - postgres-db
@@ -217,21 +211,20 @@ services:
       # - OTEL_TRACES_EXPORTER=console
       # - OTEL_METRICS_EXPORTER=none
       # - OTEL_LOGS_EXPORTER=none
-    command:
-      - 'opentelemetry-instrument'
-      - 'python3'
-      # - 'app.py'
-      - 'app_client.py'
     ports:
       - "8001:8001"
       - "9464:9464"
     depends_on:
       - otel-collector
+      - fastapi-app
+      - golang-app
 
   golang-app:
     image: golang_app
     build:
       context: ./golang_app
+    environment:
+      - OTEL_SERVICE_NAME=golang-app
     ports:
       - "8002:8002"
 
@@ -248,23 +241,61 @@ services:
       - "5432:5432"
 
   pyroscope:
-    image: grafana/pyroscope:1.9.1
+    image: grafana/pyroscope:1.12.0
     command: [ "-config.file=/etc/pyroscope.yml" ]
     ports:
       - "4040:4040"
     volumes:
       - ./etc/pyroscope/pyroscope.yml:/etc/pyroscope.yml
 
+  otel-watcher:
+    build:
+      context: ./otel-watcher
+      dockerfile: Dockerfile.docker
+    environment:
+      - RESOURCE_API_URL=http://host.docker.internal:8000
+      - AGENT_NAME=otel-watcher
+      - ADMIN_EMAIL=admin1@example.com
+      - ADMIN_PASSWORD=admin
+      - APP_NAME=monitoring-demo
+      - SCRAPE_TARGETS=fastapi-app:8000,flask-app:9464,otel-collector:8889
+      - SCRAPE_INTERVAL=30
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - otel-collector
+      - fastapi-app
+      - flask-app
+    ports:
+      - "8090:8090"
+
+  k8s-watcher:
+    build:
+      context: ./k8s-watcher
+      dockerfile: Dockerfile.docker
+    environment:
+      - RESOURCE_API_URL=http://host.docker.internal:8000
+      - AGENT_NAME=k8s-watcher
+      - ADMIN_EMAIL=admin1@example.com
+      - ADMIN_PASSWORD=admin
+      - APP_NAME=monitoring-demo
+      - WATCH_NAMESPACE=monitoring-demo
+      - WATCH_INTERVAL=30
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    profiles:
+      - kubernetes
+
   beyla:
-    image: grafana/beyla:2.5.8
+    image: grafana/beyla:2.6.0
     pid: "service:golang-app"
     privileged: true
     environment:
       BEYLA_CONFIG_PATH: /etc/beyla/config.yml
     depends_on:
       - otel-collector
+      - golang-app
     ports:
-      - "8999:8999" # svc metrics
       - "8998:8998" # internal metrics
     volumes:
       - ./etc/beyla/config.yml:/etc/beyla/config.yml

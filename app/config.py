@@ -10,8 +10,6 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = False
 
-    node_ttl_hours: int = 24
-
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_password: str = ""

@@ -1,0 +1,480 @@
+{
+  "id": "watcher-otel-traces-v1",
+  "name": "Watcher: OpenTelemetry Traces",
+  "source_type": "watcher-otel-traces",
+  "version": "3.0.0",
+  "description": "Maps normalized OTLP telemetry (spans, logs, metrics) from otel-watcher into topology nodes and edges. Covers Docker monitoring stack: FastAPI+PostgreSQL, Flask, Golang.",
+  "is_active": false,
+  "created_by": "builtin",
+  "edge_preset_id": "default",
+  "field_mappings": [
+    {
+      "id": "service-id",
+      "source_path": "service_name",
+      "target_field": "id",
+      "target_node_type": "Service",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:service:{value}" }
+    },
+    {
+      "id": "service-name",
+      "source_path": "service_name",
+      "target_field": "name",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-version",
+      "source_path": "service_version",
+      "target_field": "version",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-environment",
+      "source_path": "service_environment",
+      "target_field": "environment",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-language",
+      "source_path": "sdk_language",
+      "target_field": "language",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-framework",
+      "source_path": "sdk_name",
+      "target_field": "framework",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-calls-peer",
+      "source_path": "peer_target",
+      "target_field": "calls_services",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-reads-db",
+      "source_path": "db_name",
+      "target_field": "reads_databases",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() == 'select' or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith('select')) else None" }
+    },
+    {
+      "id": "service-writes-db",
+      "source_path": "db_name",
+      "target_field": "writes_databases",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() in ('insert','update','delete','create','alter','drop') or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith(('insert','update','delete','create','alter','drop'))) else None" }
+    },
+    {
+      "id": "service-reads-table",
+      "source_path": "db_table",
+      "target_field": "reads_tables",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() == 'select' or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith('select')) else None" }
+    },
+    {
+      "id": "service-writes-table",
+      "source_path": "db_table",
+      "target_field": "writes_tables",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() in ('insert','update','delete','create','alter','drop') or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith(('insert','update','delete','create','alter','drop'))) else None" }
+    },
+    {
+      "id": "service-libraries",
+      "source_path": "sdk_name",
+      "target_field": "libraries",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-external-apis",
+      "source_path": "external_api",
+      "target_field": "external_apis",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-auth-secret",
+      "source_path": "auth_secret",
+      "target_field": "auth_secret",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-rate-limit-config",
+      "source_path": "rate_limit_config",
+      "target_field": "rate_limit_config",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-failover",
+      "source_path": "failover_service",
+      "target_field": "failover_service",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-publishes-to",
+      "source_path": "messaging_destination",
+      "target_field": "publishes_to",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "value if source_data.get('messaging_operation','') in ('publish','send') else None" }
+    },
+    {
+      "id": "service-consumes-from",
+      "source_path": "messaging_destination",
+      "target_field": "consumes_from",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "value if source_data.get('messaging_operation','') in ('receive','process') else None" }
+    },
+    {
+      "id": "service-namespace",
+      "source_path": "namespace",
+      "target_field": "namespace",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-job",
+      "source_path": "job",
+      "target_field": "build_id",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-instance",
+      "source_path": "instance",
+      "target_field": "repository_url",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-team",
+      "source_path": "team",
+      "target_field": "team",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-status-code",
+      "source_path": "http_status_code",
+      "target_field": "status",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'error' if value and int(value) >= 500 else 'active'" }
+    },
+    {
+      "id": "service-cpu-seconds",
+      "source_path": "metrics.process_cpu_seconds_total",
+      "target_field": "cpu_allocated_cores",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-memory-bytes",
+      "source_path": "metrics.process_resident_memory_bytes",
+      "target_field": "memory_allocated_mb",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "int(float(value) / 1048576)" }
+    },
+    {
+      "id": "service-http-requests",
+      "source_path": "metrics.http_server_requests_seconds_count",
+      "target_field": "rps",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-http-requests-alt",
+      "source_path": "metrics.http_server_requests_total",
+      "target_field": "rps",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-http-requests-flask",
+      "source_path": "metrics.http_server_request_duration_seconds_count",
+      "target_field": "rps",
+      "target_node_type": "Service"
+    },
+    {
+      "id": "service-http-duration",
+      "source_path": "metrics.http_server_requests_seconds_sum",
+      "target_field": "latency_p99_ms",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "float(value) * 1000" }
+    },
+    {
+      "id": "service-http-duration-flask",
+      "source_path": "metrics.http_server_request_duration_seconds_sum",
+      "target_field": "latency_p99_ms",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "float(value) * 1000" }
+    },
+    {
+      "id": "endpoint-id",
+      "source_path": "span_name",
+      "target_field": "id",
+      "target_node_type": "Endpoint",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:endpoint:{value}" }
+    },
+    {
+      "id": "endpoint-name",
+      "source_path": "span_name",
+      "target_field": "name",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-service-name",
+      "source_path": "service_name",
+      "target_field": "service_name",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-path-route",
+      "source_path": "http_route",
+      "target_field": "path",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-path-target",
+      "source_path": "http_target",
+      "target_field": "path",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-method",
+      "source_path": "http_method",
+      "target_field": "method",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-status-code",
+      "source_path": "http_status_code",
+      "target_field": "current_rps",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "endpoint-calls",
+      "source_path": "net_peer_name",
+      "target_field": "calls_endpoints",
+      "target_node_type": "Endpoint"
+    },
+    {
+      "id": "database-id",
+      "source_path": "db_name",
+      "target_field": "id",
+      "target_node_type": "Database",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:database:{value}" }
+    },
+    {
+      "id": "database-name",
+      "source_path": "db_name",
+      "target_field": "name",
+      "target_node_type": "Database"
+    },
+    {
+      "id": "database-engine",
+      "source_path": "db_system",
+      "target_field": "engine",
+      "target_node_type": "Database"
+    },
+    {
+      "id": "table-id",
+      "source_path": "db_table",
+      "target_field": "id",
+      "target_node_type": "Table",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:table:{value}" }
+    },
+    {
+      "id": "table-name",
+      "source_path": "db_table",
+      "target_field": "name",
+      "target_node_type": "Table"
+    },
+    {
+      "id": "table-database-ref",
+      "source_path": "db_name",
+      "target_field": "database_ref",
+      "target_node_type": "Table"
+    },
+    {
+      "id": "external-api-id",
+      "source_path": "external_api",
+      "target_field": "id",
+      "target_node_type": "ExternalAPI",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:externalapi:{value}" }
+    },
+    {
+      "id": "external-api-name",
+      "source_path": "external_api",
+      "target_field": "name",
+      "target_node_type": "ExternalAPI"
+    },
+    {
+      "id": "external-api-base-url",
+      "source_path": "external_api",
+      "target_field": "base_url",
+      "target_node_type": "ExternalAPI",
+      "transform_type": "template",
+      "transform_config": { "template": "https://{value}" }
+    },
+    {
+      "id": "secret-id",
+      "source_path": "auth_secret",
+      "target_field": "id",
+      "target_node_type": "SecretConfig",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:secretconfig:{value}" }
+    },
+    {
+      "id": "secret-name",
+      "source_path": "auth_secret",
+      "target_field": "name",
+      "target_node_type": "SecretConfig"
+    },
+    {
+      "id": "secret-provider",
+      "source_path": "service_name",
+      "target_field": "provider",
+      "target_node_type": "SecretConfig",
+      "transform_type": "template",
+      "transform_config": { "template": "application" }
+    },
+    {
+      "id": "cache-id",
+      "source_path": "cache_name",
+      "target_field": "id",
+      "target_node_type": "Cache",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:cache:{value}" }
+    },
+    {
+      "id": "cache-name",
+      "source_path": "cache_name",
+      "target_field": "name",
+      "target_node_type": "Cache"
+    },
+    {
+      "id": "queue-id",
+      "source_path": "messaging_destination",
+      "target_field": "id",
+      "target_node_type": "QueueTopic",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:queuetopic:{value}" }
+    },
+    {
+      "id": "queue-name",
+      "source_path": "messaging_destination",
+      "target_field": "name",
+      "target_node_type": "QueueTopic"
+    },
+    {
+      "id": "library-id",
+      "source_path": "sdk_name",
+      "target_field": "id",
+      "target_node_type": "Library",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:library:{value}" }
+    },
+    {
+      "id": "library-name",
+      "source_path": "sdk_name",
+      "target_field": "name",
+      "target_node_type": "Library"
+    },
+    {
+      "id": "library-language",
+      "source_path": "sdk_language",
+      "target_field": "language",
+      "target_node_type": "Library",
+      "default_value": "unknown"
+    },
+    {
+      "id": "team-id",
+      "source_path": "team",
+      "target_field": "id",
+      "target_node_type": "TeamOwner",
+      "transform_type": "template",
+      "transform_config": { "template": "urn:teamowner:{value}" }
+    },
+    {
+      "id": "team-name",
+      "source_path": "team",
+      "target_field": "name",
+      "target_node_type": "TeamOwner"
+    }
+  ],
+  "conditional_rules": [
+    {
+      "id": "cr-otel-external-api",
+      "condition": "external_api != `null`",
+      "target_node_type": "ExternalAPI",
+      "priority": 90
+    },
+    {
+      "id": "cr-otel-database",
+      "condition": "db_system != `null`",
+      "target_node_type": "Database",
+      "priority": 80
+    },
+    {
+      "id": "cr-otel-table",
+      "condition": "db_table != `null`",
+      "target_node_type": "Table",
+      "priority": 79
+    },
+    {
+      "id": "cr-otel-endpoint-route",
+      "condition": "http_route != `null`",
+      "target_node_type": "Endpoint",
+      "priority": 75
+    },
+    {
+      "id": "cr-otel-endpoint-target",
+      "condition": "http_target != `null` && http_route == `null`",
+      "target_node_type": "Endpoint",
+      "priority": 74
+    },
+    {
+      "id": "cr-otel-secret",
+      "condition": "auth_secret != `null`",
+      "target_node_type": "SecretConfig",
+      "priority": 70
+    },
+    {
+      "id": "cr-otel-cache",
+      "condition": "cache_name != `null`",
+      "target_node_type": "Cache",
+      "priority": 65
+    },
+    {
+      "id": "cr-otel-queue",
+      "condition": "messaging_destination != `null`",
+      "target_node_type": "QueueTopic",
+      "priority": 60
+    },
+    {
+      "id": "cr-otel-team",
+      "condition": "team != `null`",
+      "target_node_type": "TeamOwner",
+      "priority": 55
+    },
+    {
+      "id": "cr-otel-library",
+      "condition": "sdk_name != `null`",
+      "target_node_type": "Library",
+      "priority": 50
+    },
+    {
+      "id": "cr-otel-service",
+      "condition": "service_name != `null`",
+      "target_node_type": "Service",
+      "priority": 40
+    }
+  ],
+  "auto_edge_rules": []
+}

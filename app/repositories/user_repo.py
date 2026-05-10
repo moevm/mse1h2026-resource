@@ -67,11 +67,11 @@ def get_by_username(username: str) -> Optional[Dict[str, Any]]:
 def ensure_default_admin() -> None:
     from app.core.security import hash_password
 
-    if get_by_username("admin") is not None:
-        return
-    if get_by_email("admin@example.com") is not None:
-        return
-    create_user("admin@example.com", "admin", hash_password("admin"))
+    if get_by_email("admin@example.com") is None:
+        create_user("admin@example.com", "admin", hash_password("admin"))
+
+    if get_by_email("admin1@example.com") is None:
+        create_user("admin1@example.com", "admin1", hash_password("admin"))
 
 
 def get_by_email(email: str) -> Optional[Dict[str, Any]]:

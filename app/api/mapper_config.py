@@ -246,9 +246,7 @@ async def instantiate_mapping_template(
     # find the first chunk from an agent matching the template's source_type
     sample_chunk_id = request.sample_chunk_id
     if not sample_chunk_id and template.source_type:
-        from app.repositories.agent_repo import agent_repo as _agent_repo
-
-        agents = _agent_repo.list_agents(user_id=user["user_id"])
+        agents = agent_repo.list_agents(user_id=user["user_id"])
         matching_agents = [
             a for a in agents if a.get("source_type") == template.source_type
         ]

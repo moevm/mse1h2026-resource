@@ -8,7 +8,7 @@ from app.models.mapper.mapping import MappingConfig
 from app.models.mapper.template import MappingTemplateSummary
 
 
-TEMPLATES_DIR = Path(__file__).parent.parent.parent / "mapping_templates"
+TEMPLATES_DIR = Path(__file__).parent.parent / "mapping_templates"
 
 
 class MappingTemplateRepository:
@@ -25,7 +25,7 @@ class MappingTemplateRepository:
             self._loaded = True
             return
 
-        for template_file in sorted(TEMPLATES_DIR.glob("*.json")):
+        for template_file in sorted(TEMPLATES_DIR.rglob("*.json")):
             with template_file.open() as fh:
                 raw = json.load(fh)
 

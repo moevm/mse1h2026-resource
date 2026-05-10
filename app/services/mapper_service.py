@@ -205,7 +205,7 @@ class MapperService:
                 node[field_mapping.target_field] = field_mapping.default_value
 
         if "id" not in node:
-            log.debug(f"Skipping node of type {node_type}: missing id field")
+            log.warning(f"Skipping node of type {node_type}: missing id field")
             return None
 
         if not node["id"].startswith("urn:"):
@@ -269,6 +269,7 @@ class MapperService:
         edges: List[Dict[str, Any]] = []
         unresolved: List[UnresolvedReference] = []
         materializable_types = {
+            "Service",
             "TeamOwner",
             "QueueTopic",
             "Cache",
