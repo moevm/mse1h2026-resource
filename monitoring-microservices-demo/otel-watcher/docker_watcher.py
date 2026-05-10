@@ -117,6 +117,10 @@ def split_traces_to_spans(body: dict) -> List[dict]:
         for scope_span in rs.get("scopeSpans", []):
             for span in scope_span.get("spans", []):
                 span_attrs = span.get("attributes", [])
+                # Debug: dump raw attribute keys from every 20th span
+                if len(chunks) % 20 == 0:
+                    attr_keys = [a.get("key") for a in span_attrs]
+                    log.info("RAW_ATTRS svc=%s keys=%s", service_name, attr_keys)
                 span_name = span.get("name", "")
                 span_kind = span.get("kind")
                 peer_service = extract_attr(span_attrs, "peer.service")
@@ -124,10 +128,11 @@ def split_traces_to_spans(body: dict) -> List[dict]:
                 db_name = extract_attr(span_attrs, "db.name")
                 db_table = extract_attr(span_attrs, "db.table")
                 db_statement = extract_attr(span_attrs, "db.statement")
-                http_method = extract_attr(span_attrs, "http.method")
+                # HTTP: try both old (v1.24-) and new (v1.27+) semantic conventions
+                http_method = extract_attr(span_attrs, "http.method") or extract_attr(span_attrs, "http.request.method")
                 http_route = extract_attr(span_attrs, "http.route")
-                http_target = extract_attr(span_attrs, "http.target")
-                http_status_code = extract_attr(span_attrs, "http.status_code")
+                http_target = extract_attr(span_attrs, "http.target") or extract_attr(span_attrs, "url.path") or extract_attr(span_attrs, "http.url")
+                http_status_code = extract_attr(span_attrs, "http.status_code") or extract_attr(span_attrs, "http.response.status_code")
                 messaging_dest = extract_attr(span_attrs, "messaging.destination")
                 messaging_op = extract_attr(span_attrs, "messaging.operation")
                 cache_name = extract_attr(span_attrs, "cache.name")
@@ -137,14 +142,15 @@ def split_traces_to_spans(body: dict) -> List[dict]:
                 failover_service = extract_attr(span_attrs, "failover_service")
                 rpc_service = extract_attr(span_attrs, "rpc.service")
                 rpc_method = extract_attr(span_attrs, "rpc.method")
-                net_peer_name = extract_attr(span_attrs, "net.peer.name")
-                net_peer_ip = extract_attr(span_attrs, "net.sock.peer.addr")
+                # Network: try both old (net.peer.*) and new (server.*) conventions
+                net_peer_name = extract_attr(span_attrs, "net.peer.name") or extract_attr(span_attrs, "server.address")
+                net_peer_ip = extract_attr(span_attrs, "net.sock.peer.addr") or extract_attr(span_attrs, "server.socket.address")
                 server_address = extract_attr(span_attrs, "server.address")
                 db_operation = extract_attr(span_attrs, "db.operation")
                 error_type = extract_attr(span_attrs, "error.type")
-                http_flavor = extract_attr(span_attrs, "http.flavor")
-                http_user_agent = extract_attr(span_attrs, "http.user_agent")
-                net_transport = extract_attr(span_attrs, "net.transport")
+                http_flavor = extract_attr(span_attrs, "http.flavor") or extract_attr(span_attrs, "network.protocol.version")
+                http_user_agent = extract_attr(span_attrs, "http.user_agent") or extract_attr(span_attrs, "user_agent.original")
+                net_transport = extract_attr(span_attrs, "net.transport") or extract_attr(span_attrs, "network.transport")
 
                 # Compute the best available peer target for service-to-service calls
                 peer_target = peer_service or net_peer_name or server_address or None
@@ -192,6 +198,17 @@ def split_traces_to_spans(body: dict) -> List[dict]:
                     "end_time": span.get("endTimeUnixNano"),
                 }
                 chunks.append(chunk)
+
+    # Debug: log key fields from each chunk to diagnose missing edges
+    for c in chunks:
+        pt = c.get("peer_target")
+        nm = c.get("http_method") or c.get("http_route") or c.get("http_target")
+        if pt or nm:
+            log.info("SPAN_DEBUG svc=%s span=%s peer_target=%s http_method=%s http_route=%s "
+                     "http_target=%s db=%s kind=%s",
+                     c.get("service_name"), c.get("span_name"), pt,
+                     c.get("http_method"), c.get("http_route"), c.get("http_target"),
+                     c.get("db_system"), c.get("span_kind"))
     return chunks
 
 
@@ -384,6 +401,24 @@ def metrics_loop():
         time.sleep(SCRAPE_INTERVAL)
 
 
+def trigger_initial_traces():
+    """Send initial requests to services to trigger trace generation for all paths."""
+    time.sleep(15)  # wait for app services to be ready
+
+    targets = [
+        ("flask-app", 8001, "/users"),   # triggers Flask → FastAPI → DB
+        ("flask-app", 8001, "/albums"),   # triggers Flask → Golang
+    ]
+
+    for host, port, path in targets:
+        url = f"http://{host}:{port}{path}"
+        try:
+            resp = requests.get(url, timeout=5)
+            log.info("Initial trace trigger: %s → %d", url, resp.status_code)
+        except Exception as e:
+            log.warning("Initial trace trigger failed for %s: %s", url, e)
+
+
 @app.on_event("startup")
 async def startup():
     global AGENT_TOKEN
@@ -408,6 +443,9 @@ async def startup():
 
     thread = threading.Thread(target=metrics_loop, daemon=True)
     thread.start()
+
+    trigger_thread = threading.Thread(target=trigger_initial_traces, daemon=True)
+    trigger_thread.start()
 
 
 if __name__ == "__main__":

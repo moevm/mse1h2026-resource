@@ -476,5 +476,118 @@
       "priority": 40
     }
   ],
-  "auto_edge_rules": []
+  "auto_edge_rules": [
+    {
+      "id": "service-calls-service",
+      "source_type": "Service",
+      "source_field": "calls_services",
+      "target_type": "Service",
+      "target_field": "name",
+      "edge_type": "calls"
+    },
+    {
+      "id": "service-reads-database",
+      "source_type": "Service",
+      "source_field": "reads_databases",
+      "target_type": "Database",
+      "target_field": "name",
+      "edge_type": "reads"
+    },
+    {
+      "id": "service-writes-database",
+      "source_type": "Service",
+      "source_field": "writes_databases",
+      "target_type": "Database",
+      "target_field": "name",
+      "edge_type": "writes"
+    },
+    {
+      "id": "service-reads-table",
+      "source_type": "Service",
+      "source_field": "reads_tables",
+      "target_type": "Table",
+      "target_field": "name",
+      "edge_type": "reads"
+    },
+    {
+      "id": "service-writes-table",
+      "source_type": "Service",
+      "source_field": "writes_tables",
+      "target_type": "Table",
+      "target_field": "name",
+      "edge_type": "writes"
+    },
+    {
+      "id": "table-belongs-to-database",
+      "source_type": "Table",
+      "source_field": "database_ref",
+      "target_type": "Database",
+      "target_field": "name",
+      "edge_type": "belongsto"
+    },
+    {
+      "id": "endpoint-belongs-to-service",
+      "source_type": "Endpoint",
+      "source_field": "service_name",
+      "target_type": "Service",
+      "target_field": "name",
+      "edge_type": "belongsto"
+    },
+    {
+      "id": "endpoint-calls-service",
+      "source_type": "Endpoint",
+      "source_field": "calls_endpoints",
+      "target_type": "Service",
+      "target_field": "name",
+      "edge_type": "calls"
+    },
+    {
+      "id": "service-publishes-to-queue",
+      "source_type": "Service",
+      "source_field": "publishes_to",
+      "target_type": "QueueTopic",
+      "target_field": "name",
+      "edge_type": "publishes"
+    },
+    {
+      "id": "service-consumes-from-queue",
+      "source_type": "Service",
+      "source_field": "consumes_from",
+      "target_type": "QueueTopic",
+      "target_field": "name",
+      "edge_type": "consumes"
+    },
+    {
+      "id": "service-calls-external-api",
+      "source_type": "Service",
+      "source_field": "external_apis",
+      "target_type": "ExternalAPI",
+      "target_field": "name",
+      "edge_type": "calls"
+    },
+    {
+      "id": "service-uses-secret",
+      "source_type": "Service",
+      "source_field": "auth_secret",
+      "target_type": "SecretConfig",
+      "target_field": "name",
+      "edge_type": "uses"
+    },
+    {
+      "id": "service-owned-by-team",
+      "source_type": "Service",
+      "source_field": "team",
+      "target_type": "TeamOwner",
+      "target_field": "name",
+      "edge_type": "ownedby"
+    },
+    {
+      "id": "service-uses-cache",
+      "source_type": "Service",
+      "source_field": "cache_name",
+      "target_type": "Cache",
+      "target_field": "name",
+      "edge_type": "uses"
+    }
+  ]
 }

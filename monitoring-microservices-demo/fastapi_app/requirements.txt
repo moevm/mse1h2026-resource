@@ -10,3 +10,4 @@ opentelemetry-instrumentation-sqlalchemy==0.52b0
 sqlmodel==0.0.24
 psycopg2-binary==2.9.10
 pyroscope-io==0.8.14
+redis==5.2.1
