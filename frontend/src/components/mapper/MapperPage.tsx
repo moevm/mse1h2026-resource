@@ -1,17 +1,19 @@
-import { useEffect, useCallback, useState } from "react";
-import { DndProvider } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
-import { useMapperStore } from "../../store/mapperStore";
-import { mapperApi } from "../../api/mapperApi";
-import { fetchApplications } from "../../api/applicationsApi";
-import { fetchAgents } from "../../api/agentsApi";
-import { RawDataPanel } from "./RawDataPanel";
-import { SchemaBrowser } from "./SchemaBrowser";
-import { MappingBuilder } from "./MappingBuilder";
-import { TimelineSlider } from "./TimelineSlider";
-import { ResizablePanels } from "./ResizablePanels";
-import { PreviewPanel } from "./PreviewPanel";
-import type { MappingConfig } from "../../types/mapper";
+import { useCallback, useEffect, useState } from 'react';
+
+import { DndProvider } from 'react-dnd';
+import { HTML5Backend } from 'react-dnd-html5-backend';
+
+import { fetchAgents } from '../../api/agentsApi';
+import { fetchApplications } from '../../api/applicationsApi';
+import { mapperApi } from '../../api/mapperApi';
+import { useMapperStore } from '../../store/mapperStore';
+import type { MappingConfig } from '../../types/mapper';
+import { MappingBuilder } from './MappingBuilder';
+import { PreviewPanel } from './PreviewPanel';
+import { RawDataPanel } from './RawDataPanel';
+import { ResizablePanels } from './ResizablePanels';
+import { SchemaBrowser } from './SchemaBrowser';
+import { TimelineSlider } from './TimelineSlider';
 
 interface Agent {
   agent_id: string;
@@ -28,8 +30,8 @@ interface Application {
   agent_count: number;
 }
 
-type MobilePanel = "mappings" | "data" | "config";
-type MockerAction = "run" | "create" | null;
+type MobilePanel = 'mappings' | 'data' | 'config';
+type MockerAction = 'run' | 'create' | null;
 
 export function MapperPage() {
   const {
@@ -61,12 +63,12 @@ export function MapperPage() {
   const [lastReplayAt, setLastReplayAt] = useState<string | null>(null);
   const [deactivateClearLoading, setDeactivateClearLoading] = useState(false);
   const [mockerActionLoading, setMockerActionLoading] = useState<MockerAction>(null);
-  const [mockerMessage, setMockerMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [mockerMessage, setMockerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const [activePanel, setActivePanel] = useState<MobilePanel>("data");
+  const [activePanel, setActivePanel] = useState<MobilePanel>('data');
 
   const buildUniqueMappingName = useCallback(() => {
-    const baseName = selectedAgent ? `${selectedAgent.name} Mapping` : "New Mapping";
+    const baseName = selectedAgent ? `${selectedAgent.name} Mapping` : 'New Mapping';
     const existingNames = new Set(availableMappings.map((mapping) => mapping.name));
 
     if (!existingNames.has(baseName)) {
@@ -87,7 +89,7 @@ export function MapperPage() {
       setApplications(data);
       return data;
     } catch (error) {
-      console.error("Failed to load applications:", error);
+      console.error('Failed to load applications:', error);
       return [] as Application[];
     }
   }, []);
@@ -98,127 +100,192 @@ export function MapperPage() {
       setAgents(data);
       return data;
     } catch (error) {
-      console.error("Failed to load agents:", error);
+      console.error('Failed to load agents:', error);
       return [] as Agent[];
     }
   }, []);
 
   useEffect(() => {
-    loadApplicationsData();
-  }, [loadApplicationsData]);
+    let cancelled = false;
+    async function load() {
+      try {
+        const data = await fetchApplications();
+        if (!cancelled) setApplications(data);
+      } catch (error) {
+        console.error('Failed to load applications:', error);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
-    loadAgentsData();
-  }, [loadAgentsData]);
+    let cancelled = false;
+    async function load() {
+      try {
+        const data = await fetchAgents();
+        if (!cancelled) setAgents(data);
+      } catch (error) {
+        console.error('Failed to load agents:', error);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-  const filteredAgents = selectedAppId
-    ? agents.filter((a) => a.app_id === selectedAppId)
-    : agents;
+  const filteredAgents = selectedAppId ? agents.filter((a) => a.app_id === selectedAppId) : agents;
   const currentSelectedChunkId = selectedChunk?.id ?? null;
   const activeMappings = availableMappings.filter((mapping) => mapping.is_active);
 
-  const loadMappingsForAgent = useCallback(async (_agent: Agent | null) => {
-    setMappingsLoading(true);
-    try {
-      const response = await mapperApi.listMappings({ limit: 100 });
-      setAvailableMappings(response.mappings);
+  const loadMappingsForAgent = useCallback(
+    async (_agent: Agent | null) => {
+      setMappingsLoading(true);
+      try {
+        const response = await mapperApi.listMappings({ limit: 100 });
+        setAvailableMappings(response.mappings);
 
-      const active = response.mappings.find((mapping) => mapping.is_active) || null;
-      setActiveMapping(active);
-      if (active) {
-        setDraftMapping(active);
-      }
-    } catch (error) {
-      console.error("Failed to load mappings:", error);
-    } finally {
-      setMappingsLoading(false);
-    }
-  }, [setDraftMapping]);
-
-  const loadChunksForAgent = useCallback(async (agent: Agent | null) => {
-    if (!agent) {
-      setChunks([]);
-      selectChunk(null);
-      return;
-    }
-
-    setChunksLoading(true);
-    try {
-      const response = await mapperApi.listChunks({
-        agent_id: agent.agent_id,
-        limit: 100,
-      });
-      setChunks(response.chunks);
-
-      if (response.chunks.length === 0) {
-        if (currentSelectedChunkId !== null) {
-          selectChunk(null);
+        const active = response.mappings.find((mapping) => mapping.is_active) ?? null;
+        setActiveMapping(active);
+        if (active) {
+          setDraftMapping(active);
         }
-      } else {
-        const selectedStillExists = currentSelectedChunkId
-          ? response.chunks.find((chunk) => chunk.id === currentSelectedChunkId)
-          : null;
-        const nextChunk = selectedStillExists || response.chunks[0];
-        if (nextChunk.id !== currentSelectedChunkId) {
-          selectChunk(nextChunk);
+      } catch (error) {
+        console.error('Failed to load mappings:', error);
+      } finally {
+        setMappingsLoading(false);
+      }
+    },
+    [setDraftMapping],
+  );
+
+  const loadChunksForAgent = useCallback(
+    async (agent: Agent | null) => {
+      if (!agent) {
+        setChunks([]);
+        selectChunk(null);
+        return;
+      }
+
+      setChunksLoading(true);
+      try {
+        const response = await mapperApi.listChunks({
+          agent_id: agent.agent_id,
+          limit: 100,
+        });
+        setChunks(response.chunks);
+
+        if (response.chunks.length === 0) {
+          if (currentSelectedChunkId !== null) {
+            selectChunk(null);
+          }
+        } else {
+          const selectedStillExists = currentSelectedChunkId
+            ? response.chunks.find((chunk) => chunk.id === currentSelectedChunkId)
+            : null;
+          const nextChunk = selectedStillExists ?? response.chunks[0];
+          if (nextChunk.id !== currentSelectedChunkId) {
+            selectChunk(nextChunk);
+          }
         }
+      } catch (error) {
+        console.error('Failed to load chunks:', error);
+      } finally {
+        setChunksLoading(false);
       }
-    } catch (error) {
-      console.error("Failed to load chunks:", error);
-    } finally {
-      setChunksLoading(false);
-    }
-  }, [currentSelectedChunkId, selectChunk, setChunks, setChunksLoading]);
+    },
+    [currentSelectedChunkId, selectChunk, setChunks, setChunksLoading],
+  );
 
-  const handlePinChunk = useCallback(async (chunkId: string) => {
-    try {
-      await mapperApi.pinChunk(chunkId);
-      setChunks(chunks.map(c => c.id === chunkId ? { ...c, is_pinned: true } : c));
-      if (selectedChunk?.id === chunkId) {
-        selectChunk({ ...selectedChunk, is_pinned: true });
+  const handlePinChunk = useCallback(
+    async (chunkId: string) => {
+      try {
+        await mapperApi.pinChunk(chunkId);
+        setChunks(chunks.map((c) => (c.id === chunkId ? { ...c, is_pinned: true } : c)));
+        if (selectedChunk?.id === chunkId) {
+          selectChunk({ ...selectedChunk, is_pinned: true });
+        }
+      } catch (error) {
+        console.error('Failed to pin chunk:', error);
       }
-    } catch (error) {
-      console.error("Failed to pin chunk:", error);
-    }
-  }, [chunks, selectedChunk, setChunks, selectChunk]);
+    },
+    [chunks, selectedChunk, setChunks, selectChunk],
+  );
 
-  const handleUnpinChunk = useCallback(async (chunkId: string) => {
-    try {
-      await mapperApi.unpinChunk(chunkId);
-      setChunks(chunks.map(c => c.id === chunkId ? { ...c, is_pinned: false } : c));
-      if (selectedChunk?.id === chunkId) {
-        selectChunk({ ...selectedChunk, is_pinned: false });
+  const handleUnpinChunk = useCallback(
+    async (chunkId: string) => {
+      try {
+        await mapperApi.unpinChunk(chunkId);
+        setChunks(chunks.map((c) => (c.id === chunkId ? { ...c, is_pinned: false } : c)));
+        if (selectedChunk?.id === chunkId) {
+          selectChunk({ ...selectedChunk, is_pinned: false });
+        }
+      } catch (error) {
+        console.error('Failed to unpin chunk:', error);
       }
-    } catch (error) {
-      console.error("Failed to unpin chunk:", error);
-    }
-  }, [chunks, selectedChunk, setChunks, selectChunk]);
+    },
+    [chunks, selectedChunk, setChunks, selectChunk],
+  );
 
   useEffect(() => {
-    loadMappingsForAgent(selectedAgent);
-  }, [selectedAgent, loadMappingsForAgent]);
+    let cancelled = false;
+    async function load() {
+      if (!selectedAgent && !cancelled) {
+        return;
+      }
+      setMappingsLoading(true);
+      try {
+        const response = await mapperApi.listMappings({ limit: 100 });
+        if (!cancelled) {
+          setAvailableMappings(response.mappings);
+          const active = response.mappings.find((mapping) => mapping.is_active) ?? null;
+          setActiveMapping(active);
+          if (active) {
+            setDraftMapping(active);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load mappings:', error);
+      } finally {
+        if (!cancelled) setMappingsLoading(false);
+      }
+    }
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAgent, setDraftMapping]);
 
   useEffect(() => {
-    loadChunksForAgent(selectedAgent);
+    void loadChunksForAgent(selectedAgent);
   }, [selectedAgent, loadChunksForAgent]);
 
-  const handleActivate = useCallback(async (mappingId: string) => {
-    try {
-      const updated = await mapperApi.activateMapping(mappingId);
-      setActiveMapping(updated);
-      setDraftMapping(updated);
-      await loadMappingsForAgent(selectedAgent);
-    } catch (error) {
-      console.error("Failed to activate mapping:", error);
-    }
-  }, [loadMappingsForAgent, selectedAgent, setDraftMapping]);
+  const handleActivate = useCallback(
+    async (mappingId: string) => {
+      try {
+        const updated = await mapperApi.activateMapping(mappingId);
+        setActiveMapping(updated);
+        setDraftMapping(updated);
+        await loadMappingsForAgent(selectedAgent);
+      } catch (error) {
+        console.error('Failed to activate mapping:', error);
+      }
+    },
+    [loadMappingsForAgent, selectedAgent, setDraftMapping],
+  );
 
-  const handleSelectMapping = useCallback((mapping: MappingConfig) => {
-    setDraftMapping(mapping);
-    if (mapping.is_active) {
-      setActiveMapping(mapping);
-    }
-  }, [setDraftMapping]);
+  const handleSelectMapping = useCallback(
+    (mapping: MappingConfig) => {
+      setDraftMapping(mapping);
+      if (mapping.is_active) {
+        setActiveMapping(mapping);
+      }
+    },
+    [setDraftMapping],
+  );
 
   const handleDeactivateAndClear = useCallback(async () => {
     const mappingId = draftMapping?.id && draftMapping.is_active ? draftMapping.id : activeMapping?.id;
@@ -227,13 +294,11 @@ export function MapperPage() {
     try {
       const result = await mapperApi.deactivateAndClearMapping(mappingId);
       setActiveMapping(null);
-      setActionMessage(
-        `Deactivated + cleared: ${result.deleted_nodes} nodes, ${result.deleted_edges} edges`
-      );
+      setActionMessage(`Deactivated + cleared: ${result.deleted_nodes} nodes, ${result.deleted_edges} edges`);
       await loadMappingsForAgent(selectedAgent);
     } catch (error) {
-      console.error("Failed to deactivate and clear mapping:", error);
-      setActionMessage("Deactivate + clear failed");
+      console.error('Failed to deactivate and clear mapping:', error);
+      setActionMessage('Deactivate + clear failed');
     } finally {
       setDeactivateClearLoading(false);
     }
@@ -242,11 +307,11 @@ export function MapperPage() {
   const handleNewMapping = useCallback(() => {
     setDraftMapping({
       name: buildUniqueMappingName(),
-      source_type: "custom",
+      source_type: 'custom',
       field_mappings: [],
       conditional_rules: [],
-      edge_preset_id: "default",
-      sample_chunk_id: selectedChunk?.id || null,
+      edge_preset_id: 'default',
+      sample_chunk_id: selectedChunk?.id ?? null,
     });
     clearPreview();
     setActionMessage(null);
@@ -257,12 +322,12 @@ export function MapperPage() {
     if (draftMapping.id) return draftMapping.id;
 
     await saveDraftMapping();
-    return useMapperStore.getState().draftMapping?.id || null;
+    return useMapperStore.getState().draftMapping?.id ?? null;
   }, [draftMapping, saveDraftMapping]);
 
   const handlePreview = useCallback(async () => {
     if (!selectedChunk) {
-      setActionMessage("Select a data chunk first");
+      setActionMessage('Select a data chunk first');
       return;
     }
 
@@ -272,21 +337,16 @@ export function MapperPage() {
     try {
       const mappingId = await ensureDraftMappingId();
       if (!mappingId) {
-        setActionMessage("Create or save a mapping first");
+        setActionMessage('Create or save a mapping first');
         return;
       }
 
       const result = await mapperApi.preview(selectedChunk.id, mappingId);
-      setPreview(
-        result.nodes,
-        result.edges,
-        result.warnings,
-        result.unresolved_references
-      );
+      setPreview(result.nodes, result.edges, result.warnings, result.unresolved_references);
       setActionMessage(`Preview: ${result.nodes.length} nodes, ${result.edges.length} edges`);
     } catch (error) {
-      console.error("Preview failed:", error);
-      setActionMessage("Preview failed");
+      console.error('Preview failed:', error);
+      setActionMessage('Preview failed');
     } finally {
       setPreviewLoading(false);
     }
@@ -294,7 +354,7 @@ export function MapperPage() {
 
   const handleApply = useCallback(async () => {
     if (!selectedChunk) {
-      setActionMessage("Select a data chunk first");
+      setActionMessage('Select a data chunk first');
       return;
     }
 
@@ -304,7 +364,7 @@ export function MapperPage() {
     try {
       const mappingId = await ensureDraftMappingId();
       if (!mappingId) {
-        setActionMessage("Create or save a mapping first");
+        setActionMessage('Create or save a mapping first');
         return;
       }
 
@@ -316,15 +376,10 @@ export function MapperPage() {
       }
 
       const preview = await mapperApi.preview(selectedChunk.id, mappingId);
-      setPreview(
-        preview.nodes,
-        preview.edges,
-        preview.warnings,
-        preview.unresolved_references
-      );
+      setPreview(preview.nodes, preview.edges, preview.warnings, preview.unresolved_references);
     } catch (error) {
-      console.error("Apply failed:", error);
-      setActionMessage("Apply failed");
+      console.error('Apply failed:', error);
+      setActionMessage('Apply failed');
     } finally {
       setPreviewLoading(false);
     }
@@ -337,7 +392,7 @@ export function MapperPage() {
     try {
       const mappingId = await ensureDraftMappingId();
       if (!mappingId) {
-        setActionMessage("Create or save a mapping first");
+        setActionMessage('Create or save a mapping first');
         return;
       }
 
@@ -347,35 +402,35 @@ export function MapperPage() {
 
       if (result.errors.length > 0) {
         setActionMessage(
-          `Replay: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges, errors: ${result.errors.length}`
+          `Replay: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges, errors: ${result.errors.length}`,
         );
       } else {
         setActionMessage(
-          `Replay complete: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges`
+          `Replay complete: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges`,
         );
         setLastReplayAt(new Date().toLocaleString());
       }
     } catch (error) {
-      console.error("Replay failed:", error);
-      setActionMessage("Replay failed");
+      console.error('Replay failed:', error);
+      setActionMessage('Replay failed');
     } finally {
       setReplayLoading(false);
     }
-  }, [ensureDraftMappingId, selectedAgent?.agent_id]);
+  }, [ensureDraftMappingId, selectedAgent]);
 
   const refreshMappings = useCallback(async () => {
     await loadMappingsForAgent(selectedAgent);
   }, [loadMappingsForAgent, selectedAgent]);
 
   const handleRunFullMocker = useCallback(async () => {
-    setMockerActionLoading("run");
+    setMockerActionLoading('run');
     setMockerMessage(null);
     try {
       const result = await mapperApi.runMockerFull();
       setMockerMessage({
-        type: result.success ? "success" : "error",
+        type: result.success ? 'success' : 'error',
         text: result.success
-          ? "Raw data generation completed"
+          ? 'Raw data generation completed'
           : `Raw data generation failed (exit code ${result.exit_code})`,
       });
 
@@ -384,36 +439,27 @@ export function MapperPage() {
         const updatedAgents = await loadAgentsData();
 
         const refreshedSelectedAgent = selectedAgent
-          ? updatedAgents.find((agent) => agent.agent_id === selectedAgent.agent_id) || null
-          : updatedAgents[0] || null;
+          ? (updatedAgents.find((agent) => agent.agent_id === selectedAgent.agent_id) ?? null)
+          : (updatedAgents[0] ?? null);
 
-        if ((selectedAgent?.agent_id || null) !== (refreshedSelectedAgent?.agent_id || null)) {
+        if ((selectedAgent?.agent_id ?? null) !== (refreshedSelectedAgent?.agent_id ?? null)) {
           setSelectedAgent(refreshedSelectedAgent);
         }
 
-        await Promise.all([
-          loadChunksForAgent(refreshedSelectedAgent),
-          loadMappingsForAgent(refreshedSelectedAgent),
-        ]);
+        await Promise.all([loadChunksForAgent(refreshedSelectedAgent), loadMappingsForAgent(refreshedSelectedAgent)]);
       }
     } catch (error) {
       setMockerMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Raw data generation failed",
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Raw data generation failed',
       });
     } finally {
       setMockerActionLoading(null);
     }
-  }, [
-    loadApplicationsData,
-    loadAgentsData,
-    loadChunksForAgent,
-    loadMappingsForAgent,
-    selectedAgent,
-  ]);
+  }, [loadApplicationsData, loadAgentsData, loadChunksForAgent, loadMappingsForAgent, selectedAgent]);
 
   const handleCreateMappings = useCallback(async () => {
-    setMockerActionLoading("create");
+    setMockerActionLoading('create');
     setMockerMessage(null);
     try {
       const templates = await mapperApi.listMappingTemplates();
@@ -422,15 +468,13 @@ export function MapperPage() {
       for (const template of templates.templates) {
         try {
           await mapperApi.instantiateMappingTemplate(template.id, {
-            sample_chunk_id: selectedChunk?.id || null,
+            sample_chunk_id: selectedChunk?.id ?? null,
             activate: true,
           });
           createdCount += 1;
         } catch (error) {
           const detail =
-            typeof error === "object" &&
-            error !== null &&
-            "response" in error
+            typeof error === 'object' && error !== null && 'response' in error
               ? (error as { response?: { status?: number } }).response?.status
               : undefined;
 
@@ -441,19 +485,17 @@ export function MapperPage() {
       }
 
       setMockerMessage({
-        type: "success",
-        text: createdCount > 0
-          ? `Installed ${createdCount} built-in mapping templates`
-          : "Built-in mapping templates already installed",
+        type: 'success',
+        text:
+          createdCount > 0
+            ? `Installed ${createdCount} built-in mapping templates`
+            : 'Built-in mapping templates already installed',
       });
-      await Promise.all([
-        refreshMappings(),
-        loadChunksForAgent(selectedAgent),
-      ]);
+      await Promise.all([refreshMappings(), loadChunksForAgent(selectedAgent)]);
     } catch (error) {
       setMockerMessage({
-        type: "error",
-        text: error instanceof Error ? error.message : "Built-in mapping installation failed",
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Built-in mapping installation failed',
       });
     } finally {
       setMockerActionLoading(null);
@@ -462,22 +504,19 @@ export function MapperPage() {
 
   return (
     <DndProvider backend={HTML5Backend}>
-      <div className="h-full min-h-0 flex flex-col bg-slate-900">
-        
-        <div className="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2 bg-slate-800/50 border-b border-slate-700/50 shrink-0">
-          
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
-            
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <span className="text-xs text-slate-500 uppercase tracking-wide hidden sm:inline">App:</span>
+      <div className="flex h-full min-h-0 flex-col bg-slate-900">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-slate-700/50 bg-slate-800/50 px-3 py-2 sm:gap-3 sm:px-4">
+          <div className="flex w-full flex-col items-start gap-2 sm:w-auto sm:flex-row sm:items-center sm:gap-3">
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <span className="hidden text-xs tracking-wide text-slate-500 uppercase sm:inline">App:</span>
               <select
-                value={selectedAppId || ""}
+                value={selectedAppId ?? ''}
                 onChange={(e) => {
                   setSelectedAppId(e.target.value || null);
                   setSelectedAgent(null);
                   selectChunk(null);
                 }}
-                className="flex-1 sm:flex-none bg-slate-800 text-slate-200 px-2 sm:px-3 py-1.5 rounded border border-slate-600 text-sm sm:min-w-[160px]"
+                className="flex-1 rounded border border-slate-600 bg-slate-800 px-2 py-1.5 text-sm text-slate-200 sm:min-w-[160px] sm:flex-none sm:px-3"
               >
                 <option value="">All Apps</option>
                 {applications.map((app) => (
@@ -488,17 +527,16 @@ export function MapperPage() {
               </select>
             </div>
 
-            
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              <span className="text-xs text-slate-500 uppercase tracking-wide hidden sm:inline">Agent:</span>
+            <div className="flex w-full items-center gap-2 sm:w-auto">
+              <span className="hidden text-xs tracking-wide text-slate-500 uppercase sm:inline">Agent:</span>
               <select
-                value={selectedAgent?.agent_id || ""}
+                value={selectedAgent?.agent_id ?? ''}
                 onChange={(e) => {
                   const agent = filteredAgents.find((a) => a.agent_id === e.target.value);
-                  setSelectedAgent(agent || null);
+                  setSelectedAgent(agent ?? null);
                   selectChunk(null);
                 }}
-                className="flex-1 sm:flex-none bg-slate-800 text-slate-200 px-2 sm:px-3 py-1.5 rounded border border-slate-600 text-sm sm:min-w-[180px]"
+                className="flex-1 rounded border border-slate-600 bg-slate-800 px-2 py-1.5 text-sm text-slate-200 sm:min-w-[180px] sm:flex-none sm:px-3"
               >
                 <option value="">Select Agent...</option>
                 {filteredAgents.map((agent) => (
@@ -510,45 +548,52 @@ export function MapperPage() {
             </div>
           </div>
 
-          <div className="hidden sm:block flex-1" />
+          <div className="hidden flex-1 sm:block" />
 
-          
           {selectedAgent && (
             <div className="flex items-center gap-2 text-sm">
               {activeMappings.length > 0 ? (
                 <>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                  <span className="text-emerald-400 truncate max-w-[150px]">
-                    {activeMappings.length} active mapping{activeMappings.length === 1 ? "" : "s"}
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-500" />
+                  <span className="max-w-[150px] truncate text-emerald-400">
+                    {activeMappings.length} active mapping{activeMappings.length === 1 ? '' : 's'}
                   </span>
                   <button
-                    onClick={handleDeactivateAndClear}
-                    disabled={deactivateClearLoading || !(draftMapping?.id && draftMapping.is_active) && !activeMapping}
-                    className="text-red-400 hover:text-red-300 text-xs underline disabled:text-slate-600"
+                    onClick={() => {
+                      void handleDeactivateAndClear();
+                    }}
+                    disabled={
+                      deactivateClearLoading || (!(draftMapping?.id && draftMapping.is_active) && !activeMapping)
+                    }
+                    className="text-xs text-red-400 underline hover:text-red-300 disabled:text-slate-600"
                   >
-                    {deactivateClearLoading ? "Clearing..." : "Deactivate"}
+                    {deactivateClearLoading ? 'Clearing...' : 'Deactivate'}
                   </button>
                 </>
               ) : (
-                <span className="text-slate-500 text-xs">No active mapping</span>
+                <span className="text-xs text-slate-500">No active mapping</span>
               )}
             </div>
           )}
 
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={handleRunFullMocker}
+              onClick={() => {
+                void handleRunFullMocker();
+              }}
               disabled={mockerActionLoading !== null}
-              className="text-xs bg-sky-600 hover:bg-sky-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+              className="rounded bg-sky-600 px-2.5 py-1 text-xs text-white hover:bg-sky-700 disabled:bg-slate-700 disabled:text-slate-500"
             >
-              {mockerActionLoading === "run" ? "Generating..." : "Generate mock data"}
+              {mockerActionLoading === 'run' ? 'Generating...' : 'Generate mock data'}
             </button>
             <button
-              onClick={handleCreateMappings}
+              onClick={() => {
+                void handleCreateMappings();
+              }}
               disabled={mockerActionLoading !== null}
-              className="text-xs bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+              className="rounded bg-indigo-600 px-2.5 py-1 text-xs text-white hover:bg-indigo-700 disabled:bg-slate-700 disabled:text-slate-500"
             >
-              {mockerActionLoading === "create" ? "Installing..." : "Install built-in mappings"}
+              {mockerActionLoading === 'create' ? 'Installing...' : 'Install built-in mappings'}
             </button>
           </div>
         </div>
@@ -556,77 +601,66 @@ export function MapperPage() {
         {mockerMessage && (
           <div
             className={[
-              "px-3 sm:px-4 py-2 text-xs border-b shrink-0",
-              mockerMessage.type === "success"
-                ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
-                : "bg-red-500/10 text-red-300 border-red-500/30",
-            ].join(" ")}
+              'shrink-0 border-b px-3 py-2 text-xs sm:px-4',
+              mockerMessage.type === 'success'
+                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                : 'border-red-500/30 bg-red-500/10 text-red-300',
+            ].join(' ')}
           >
             {mockerMessage.text}
           </div>
         )}
 
-        
-        <div className="flex lg:hidden border-b border-slate-700/50 bg-slate-800/30 shrink-0">
-          {(["mappings", "data", "config"] as const).map((panel) => (
+        <div className="flex shrink-0 border-b border-slate-700/50 bg-slate-800/30 lg:hidden">
+          {(['mappings', 'data', 'config'] as const).map((panel) => (
             <button
               key={panel}
               onClick={() => setActivePanel(panel)}
               className={[
-                "flex-1 py-2.5 text-xs font-medium capitalize transition-colors",
+                'flex-1 py-2.5 text-xs font-medium capitalize transition-colors',
                 activePanel === panel
-                  ? "text-blue-400 border-b-2 border-blue-500"
-                  : "text-slate-500 hover:text-slate-300",
-              ].join(" ")}
+                  ? 'border-b-2 border-blue-500 text-blue-400'
+                  : 'text-slate-500 hover:text-slate-300',
+              ].join(' ')}
             >
               {panel}
             </button>
           ))}
         </div>
 
-        
-        <div className="flex-1 flex overflow-hidden min-h-0">
-          <ResizablePanels
-            initialSizes={[15, 50, 35]}
-            minSizes={[200, 300, 250]}
-            className="flex-1 min-h-0"
-          >
-            
-            <section className="border-r border-slate-700/50 bg-slate-900 flex flex-col min-h-0">
-              <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          <ResizablePanels initialSizes={[15, 50, 35]} minSizes={[200, 300, 250]} className="min-h-0 flex-1">
+            <section className="flex min-h-0 flex-col border-r border-slate-700/50 bg-slate-900">
+              <div className="shrink-0 border-b border-slate-700/50 bg-slate-800/30 px-3 py-2">
                 <h2 className="text-sm font-semibold text-slate-300">Mappings</h2>
-                <p className="text-xs text-slate-500">
-                  Chunk-matched rules, not agent-bound
-                </p>
+                <p className="text-xs text-slate-500">Chunk-matched rules, not agent-bound</p>
               </div>
-              <div className="flex-1 overflow-auto p-2 space-y-1">
+              <div className="flex-1 space-y-1 overflow-auto p-2">
                 {mappingsLoading ? (
-                  <div className="text-slate-500 text-sm text-center py-4">Loading...</div>
+                  <div className="py-4 text-center text-sm text-slate-500">Loading...</div>
                 ) : availableMappings.length === 0 ? (
-                  <div className="text-slate-500 text-sm text-center py-4">
-                    No mappings installed yet
-                  </div>
+                  <div className="py-4 text-center text-sm text-slate-500">No mappings installed yet</div>
                 ) : (
                   availableMappings.map((m) => (
                     <button
                       key={m.id}
                       onClick={() => handleSelectMapping(m)}
-                      onDoubleClick={() => handleActivate(m.id)}
+                      onDoubleClick={() => {
+                        void handleActivate(m.id);
+                      }}
                       className={[
-                        "w-full text-left px-3 py-2 rounded text-sm transition-colors",
+                        'w-full rounded px-3 py-2 text-left text-sm transition-colors',
                         m.is_active
-                          ? "bg-emerald-600/30 border border-emerald-500/50 text-emerald-300"
-                          : "bg-slate-800/50 hover:bg-slate-700/50 text-slate-300",
-                      ].join(" ")}
+                          ? 'border border-emerald-500/50 bg-emerald-600/30 text-emerald-300'
+                          : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700/50',
+                      ].join(' ')}
                     >
                       <div className="flex items-center gap-2">
-                        {m.is_active && (
-                          <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                        )}
+                        {m.is_active && <span className="h-2 w-2 rounded-full bg-emerald-500" />}
                         <span className="font-medium">{m.name}</span>
                       </div>
-                      <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                        <span>{m.field_mappings?.length || 0} fields</span>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                        <span>{m.field_mappings?.length ?? 0} fields</span>
                         {m.sample_chunk_id && (
                           <button
                             onClick={(e) => {
@@ -634,7 +668,7 @@ export function MapperPage() {
                               const chunk = chunks.find((c) => c.id === m.sample_chunk_id);
                               if (chunk) selectChunk(chunk);
                             }}
-                            className="inline-flex items-center gap-1 text-amber-400 font-mono hover:text-amber-300 hover:underline"
+                            className="inline-flex items-center gap-1 font-mono text-amber-400 hover:text-amber-300 hover:underline"
                             title={`Jump to sample chunk: ${m.sample_chunk_id}`}
                           >
                             📌 chunk: {m.sample_chunk_id.slice(0, 8)}...
@@ -648,16 +682,14 @@ export function MapperPage() {
                 <button
                   onClick={handleNewMapping}
                   disabled={!selectedAgent}
-                  className="w-full mt-2 bg-slate-800/50 hover:bg-slate-700/50 disabled:opacity-50 text-slate-300 px-3 py-2 rounded text-sm border border-dashed border-slate-600"
+                  className="mt-2 w-full rounded border border-dashed border-slate-600 bg-slate-800/50 px-3 py-2 text-sm text-slate-300 hover:bg-slate-700/50 disabled:opacity-50"
                 >
                   + Create New Mapping
                 </button>
               </div>
             </section>
 
-            
-            <section className="flex flex-col min-w-0 min-h-0 bg-slate-900">
-              
+            <section className="flex min-h-0 min-w-0 flex-col bg-slate-900">
               <TimelineSlider
                 chunks={chunks}
                 selectedChunk={selectedChunk}
@@ -668,20 +700,19 @@ export function MapperPage() {
                 sampleChunkId={draftMapping?.sample_chunk_id}
               />
 
-              
               <div className="flex-1 overflow-auto">
                 {selectedChunk ? (
                   <RawDataPanel
                     data={selectedChunk.data}
                     chunkId={selectedChunk.id}
                     onCreateMapping={handleNewMapping}
-                    fieldMappings={draftMapping?.field_mappings || []}
+                    fieldMappings={draftMapping?.field_mappings ?? []}
                   />
                 ) : (
-                  <div className="p-8 text-slate-500 text-center text-sm">
+                  <div className="p-8 text-center text-sm text-slate-500">
                     {chunksLoading ? (
                       <div className="flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 border-2 border-slate-500 border-t-blue-500 rounded-full animate-spin" />
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-blue-500" />
                         Loading data...
                       </div>
                     ) : selectedAgent ? (
@@ -699,11 +730,10 @@ export function MapperPage() {
               </div>
             </section>
 
-            
-            <section className="bg-slate-900 flex flex-col border-l border-slate-700/50 min-h-0">
-              <div className="px-3 py-2 border-b border-slate-700/50 bg-slate-800/30 shrink-0">
+            <section className="flex min-h-0 flex-col border-l border-slate-700/50 bg-slate-900">
+              <div className="shrink-0 border-b border-slate-700/50 bg-slate-800/30 px-3 py-2">
                 <h2 className="text-sm font-semibold text-slate-300">
-                  {draftMapping?.name ? `Edit: ${draftMapping.name}` : "New Mapping"}
+                  {draftMapping?.name ? `Edit: ${draftMapping.name}` : 'New Mapping'}
                 </h2>
               </div>
               {draftMapping ? (
@@ -711,73 +741,73 @@ export function MapperPage() {
                   direction="vertical"
                   initialSizes={[70, 30]}
                   minSizes={[220, 140]}
-                  className="flex-1 min-h-0"
+                  className="min-h-0 flex-1"
                 >
-                  <div className="flex flex-col min-h-0">
+                  <div className="flex min-h-0 flex-col">
                     <ResizablePanels
                       direction="vertical"
                       initialSizes={[50, 50]}
                       minSizes={[150, 150]}
-                      className="flex-1 min-h-0"
+                      className="min-h-0 flex-1"
                     >
-                      <div className="overflow-auto min-h-0">
+                      <div className="min-h-0 overflow-auto">
                         <SchemaBrowser />
                       </div>
-                      <div className="overflow-auto min-h-0 bg-slate-800/20">
+                      <div className="min-h-0 overflow-auto bg-slate-800/20">
                         <MappingBuilder onSaved={refreshMappings} />
                       </div>
                     </ResizablePanels>
                   </div>
 
-                  <div className="border-t border-slate-700/50 bg-slate-800/10 min-h-0 flex flex-col">
-                    <div className="px-3 py-2 border-b border-slate-700/50 flex items-center gap-2 shrink-0">
+                  <div className="flex min-h-0 flex-col border-t border-slate-700/50 bg-slate-800/10">
+                    <div className="flex shrink-0 items-center gap-2 border-b border-slate-700/50 px-3 py-2">
                       <button
-                        onClick={handlePreview}
+                        onClick={() => {
+                          void handlePreview();
+                        }}
                         disabled={!selectedChunk || previewLoading || replayLoading}
-                        className="text-xs bg-blue-600 hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                        className="rounded bg-blue-600 px-2.5 py-1 text-xs text-white hover:bg-blue-700 disabled:bg-slate-700 disabled:text-slate-500"
                       >
                         Preview
                       </button>
                       <button
-                        onClick={handleApply}
+                        onClick={() => {
+                          void handleApply();
+                        }}
                         disabled={!selectedChunk || previewLoading || replayLoading}
-                        className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                        className="rounded bg-emerald-600 px-2.5 py-1 text-xs text-white hover:bg-emerald-700 disabled:bg-slate-700 disabled:text-slate-500"
                       >
                         Apply
                       </button>
                       <button
-                        onClick={handleReplay}
+                        onClick={() => {
+                          void handleReplay();
+                        }}
                         disabled={!draftMapping || previewLoading || replayLoading}
-                        className="text-xs bg-violet-600 hover:bg-violet-700 disabled:bg-slate-700 disabled:text-slate-500 text-white px-2.5 py-1 rounded"
+                        className="rounded bg-violet-600 px-2.5 py-1 text-xs text-white hover:bg-violet-700 disabled:bg-slate-700 disabled:text-slate-500"
                       >
-                        {replayLoading ? "Replaying..." : "Replay"}
+                        {replayLoading ? 'Replaying...' : 'Replay'}
                       </button>
-                      {actionMessage && (
-                        <span className="text-xs text-slate-400">{actionMessage}</span>
-                      )}
-                      {lastReplayAt && (
-                        <span className="text-xs text-slate-500">Last replay: {lastReplayAt}</span>
-                      )}
+                      {actionMessage && <span className="text-xs text-slate-400">{actionMessage}</span>}
+                      {lastReplayAt && <span className="text-xs text-slate-500">Last replay: {lastReplayAt}</span>}
                     </div>
-                    <div className="flex-1 min-h-0 overflow-auto">
+                    <div className="min-h-0 flex-1 overflow-auto">
                       <PreviewPanel loading={previewLoading} />
                     </div>
                   </div>
                 </ResizablePanels>
               ) : (
-                <div className="flex-1 flex flex-col min-h-0">
+                <div className="flex min-h-0 flex-1 flex-col">
                   <ResizablePanels
                     direction="vertical"
                     initialSizes={[50, 50]}
                     minSizes={[150, 150]}
-                    className="flex-1 min-h-0"
+                    className="min-h-0 flex-1"
                   >
-                    <div className="overflow-auto min-h-0">
+                    <div className="min-h-0 overflow-auto">
                       <SchemaBrowser />
                     </div>
-                    <div className="flex items-center justify-center text-slate-500 text-sm">
-                      No mapping selected
-                    </div>
+                    <div className="flex items-center justify-center text-sm text-slate-500">No mapping selected</div>
                   </ResizablePanels>
                 </div>
               )}

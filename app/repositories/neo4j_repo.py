@@ -24,6 +24,18 @@ def _strip_none(d: Dict[str, Any]) -> Dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
 
 
+def _flatten_values(d: Dict[str, Any]) -> Dict[str, Any]:
+    """Neo4j only supports primitive property types — convert nested dicts/lists to JSON strings."""
+    import json
+    out: Dict[str, Any] = {}
+    for k, v in d.items():
+        if isinstance(v, (dict, list)):
+            out[k] = json.dumps(v, default=str)
+        else:
+            out[k] = v
+    return out
+
+
 def upsert_nodes(nodes: List[Dict[str, Any]], source: str) -> int:
     now = _now_iso()
     with neo4j_driver.session() as session:
@@ -38,7 +50,7 @@ def _upsert_nodes_tx(tx: ManagedTransaction, nodes: List[Dict], source: str, now
         external_id = data["id"]
         node_type = data["type"]
         name = data.get("name", external_id)
-        props = {k: v for k, v in data.items() if k not in _NODE_META_KEYS}
+        props = _flatten_values({k: v for k, v in data.items() if k not in _NODE_META_KEYS})
 
         query = (
             "MERGE (r:Resource {external_id: $external_id}) "
@@ -109,7 +121,7 @@ def _upsert_edges_tx(tx: ManagedTransaction, edges: List[Dict], source: str, now
         target_id = data["target_id"]
         edge_type = data["type"].upper()
 
-        props = {k: v for k, v in data.items() if k not in _EDGE_META_KEYS}
+        props = _flatten_values({k: v for k, v in data.items() if k not in _EDGE_META_KEYS})
 
         query = (
             "MATCH (a:Resource {external_id: $source_id}) "
@@ -146,11 +158,12 @@ def get_full_graph(
     limit: int = 500,
     exclude_node_types: Optional[List[str]] = None,
     exclude_edge_types: Optional[List[str]] = None,
+    as_of: Optional[str] = None,
 ) -> Tuple[List[Dict], List[Dict]]:
     with neo4j_driver.session() as session:
-        nodes = session.execute_read(_read_all_nodes, limit, exclude_node_types)
+        nodes = session.execute_read(_read_all_nodes, limit, exclude_node_types, as_of)
         node_ids = [n["id"] for n in nodes]
-        edges = session.execute_read(_read_edges_for_nodes, node_ids, exclude_edge_types)
+        edges = session.execute_read(_read_edges_for_nodes, node_ids, exclude_edge_types, as_of)
     return nodes, edges
 
 
@@ -159,14 +172,15 @@ def get_graph_by_sources(
     limit: int = 500,
     exclude_node_types: Optional[List[str]] = None,
     exclude_edge_types: Optional[List[str]] = None,
+    as_of: Optional[str] = None,
 ) -> Tuple[List[Dict], List[Dict]]:
     if not sources:
         return [], []
 
     with neo4j_driver.session() as session:
-        nodes = session.execute_read(_read_nodes_by_sources, sources, limit, exclude_node_types)
+        nodes = session.execute_read(_read_nodes_by_sources, sources, limit, exclude_node_types, as_of)
         node_ids = [n["id"] for n in nodes]
-        edges = session.execute_read(_read_edges_for_nodes, node_ids, exclude_edge_types)
+        edges = session.execute_read(_read_edges_for_nodes, node_ids, exclude_edge_types, as_of)
     return nodes, edges
 
 
@@ -175,14 +189,18 @@ def _read_nodes_by_sources(
     sources: List[str],
     limit: int,
     exclude_node_types: Optional[List[str]] = None,
+    as_of: Optional[str] = None,
 ) -> List[Dict]:
-    query = "MATCH (r:Resource) WHERE r.source IN $sources "
+    conditions = ["r.source IN $sources"]
     params: Dict[str, Any] = {"sources": sources, "limit": limit}
     if exclude_node_types:
-        query += "AND NOT r.type IN $exclude_node_types "
+        conditions.append("NOT r.type IN $exclude_node_types")
         params["exclude_node_types"] = exclude_node_types
-    query += "RETURN r LIMIT $limit"
-    result = tx.run(query, **params)
+    if as_of:
+        conditions.append("COALESCE(r.created_at, r.updated_at) <= $as_of AND (r.last_seen_at >= $as_of OR r.last_seen_at IS NULL)")
+        params["as_of"] = as_of
+    where = " WHERE " + " AND ".join(conditions)
+    result = tx.run(f"MATCH (r:Resource){where} RETURN r LIMIT $limit", **params)
     return [_node_record_to_dict(record["r"]) for record in result]
 
 
@@ -190,19 +208,21 @@ def _read_all_nodes(
     tx: ManagedTransaction,
     limit: int,
     exclude_node_types: Optional[List[str]] = None,
+    as_of: Optional[str] = None,
 ) -> List[Dict]:
+    conditions = []
+    params: Dict[str, Any] = {"limit": limit}
+
     if exclude_node_types:
-        result = tx.run(
-            "MATCH (r:Resource) WHERE NOT r.type IN $exclude_node_types "
-            "RETURN r LIMIT $limit",
-            exclude_node_types=exclude_node_types,
-            limit=limit,
-        )
-    else:
-        result = tx.run(
-            "MATCH (r:Resource) RETURN r LIMIT $limit",
-            limit=limit,
-        )
+        conditions.append("NOT r.type IN $exclude_node_types")
+        params["exclude_node_types"] = exclude_node_types
+
+    if as_of:
+        conditions.append("COALESCE(r.created_at, r.updated_at) <= $as_of AND (r.last_seen_at >= $as_of OR r.last_seen_at IS NULL)")
+        params["as_of"] = as_of
+
+    where = " WHERE " + " AND ".join(conditions) if conditions else ""
+    result = tx.run(f"MATCH (r:Resource){where} RETURN r LIMIT $limit", **params)
     return [_node_record_to_dict(record["r"]) for record in result]
 
 
@@ -210,6 +230,7 @@ def _read_edges_for_nodes(
     tx: ManagedTransaction,
     node_ids: List[str],
     exclude_edge_types: Optional[List[str]] = None,
+    as_of: Optional[str] = None,
 ) -> List[Dict]:
     if not node_ids:
         return []
@@ -221,6 +242,9 @@ def _read_edges_for_nodes(
     if exclude_edge_types:
         query += "AND NOT type(rel) IN $exclude_edge_types "
         params["exclude_edge_types"] = [t.upper() for t in exclude_edge_types]
+    if as_of:
+        query += "AND rel.first_seen <= $as_of AND (rel.last_seen >= $as_of OR rel.last_seen IS NULL) "
+        params["as_of"] = as_of
     query += (
         "RETURN a.external_id AS source_id, "
         "       b.external_id AS target_id, "
@@ -453,6 +477,223 @@ def _delete_stale_tx(tx: ManagedTransaction, hours: int) -> int:
     )
     record = result.single()
     return record["deleted"] if record else 0
+
+
+def get_timeline_range() -> Dict[str, Optional[str]]:
+    """Return the earliest created_at and latest last_seen_at across all resources."""
+    with neo4j_driver.session() as session:
+        return session.execute_read(_read_timeline_range)
+
+
+def _to_str(val):
+    if val is None:
+        return None
+    if isinstance(val, str):
+        return val
+    if hasattr(val, "iso_format"):
+        return val.iso_format()
+    if hasattr(val, "isoformat"):
+        return val.isoformat()
+    return str(val)
+
+
+def _read_timeline_range(tx: ManagedTransaction) -> Dict[str, Optional[str]]:
+    result = tx.run(
+        "MATCH (r:Resource) "
+        "RETURN min(COALESCE(r.created_at, r.updated_at)) AS min_time, "
+        "       max(r.last_seen_at) AS max_time, "
+        "       count(r) AS total_nodes"
+    )
+    record = result.single()
+    if not record or record["min_time"] is None:
+        return {"min_time": None, "max_time": None, "total_nodes": 0, "total_edges": 0}
+
+    edge_res = tx.run("MATCH (:Resource)-[rel]->(:Resource) RETURN count(rel) AS cnt")
+    edge_rec = edge_res.single()
+    total_edges = edge_rec["cnt"] if edge_rec else 0
+
+    return {
+        "min_time": _to_str(record["min_time"]),
+        "max_time": _to_str(record["max_time"]),
+        "total_nodes": record["total_nodes"],
+        "total_edges": total_edges,
+    }
+
+
+def get_timeline_events(
+    bucket_seconds: int = 30,
+    from_time: Optional[str] = None,
+    to_time: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    with neo4j_driver.session() as session:
+        return session.execute_read(
+            _read_timeline_events, bucket_seconds, from_time, to_time
+        )
+
+
+def _read_timeline_events(
+    tx: ManagedTransaction,
+    bucket_seconds: int,
+    from_time: Optional[str],
+    to_time: Optional[str],
+) -> List[Dict[str, Any]]:
+    conditions = ["r.created_at IS NOT NULL"]
+    params: Dict[str, Any] = {"bucket_seconds": bucket_seconds}
+    if from_time:
+        conditions.append("r.created_at >= $from_time")
+        params["from_time"] = from_time
+    if to_time:
+        conditions.append("r.created_at <= $to_time")
+        params["to_time"] = to_time
+    where = " WHERE " + " AND ".join(conditions)
+
+    node_query = (
+        f"MATCH (r:Resource){where} "
+        "RETURN r.created_at AS created, r.type AS ntype "
+        "ORDER BY created"
+    )
+    node_result = tx.run(node_query, **params)
+
+    bucket_ms = bucket_seconds * 1000
+    node_buckets: Dict[int, Dict] = {}
+
+    for rec in node_result:
+        created_val = rec["created"]
+        ntype = str(rec["ntype"] or "unknown")
+
+        ts_ms: int
+        if isinstance(created_val, (int, float)):
+            ts_ms = int(created_val)
+        elif hasattr(created_val, "to_native"):
+            dt = created_val.to_native()
+            ts_ms = int(dt.timestamp() * 1000)
+        elif isinstance(created_val, str):
+            from datetime import datetime as _dt
+            try:
+                dt = _dt.fromisoformat(created_val.replace("Z", "+00:00"))
+                ts_ms = int(dt.timestamp() * 1000)
+            except Exception:
+                continue
+        else:
+            continue
+
+        bid = ts_ms // bucket_ms
+        if bid not in node_buckets:
+            node_buckets[bid] = {
+                "bucket_id": bid,
+                "timestamp": _to_str(created_val),
+                "nodes_added": 0,
+                "edges_added": 0,
+                "node_types": {},
+                "_ts_ms": ts_ms,
+            }
+        bucket = node_buckets[bid]
+        bucket["nodes_added"] += 1
+        bucket["node_types"][ntype] = bucket["node_types"].get(ntype, 0) + 1
+
+    edge_conditions = ["rel.first_seen IS NOT NULL"]
+    edge_params: Dict[str, Any] = {}
+    if from_time:
+        edge_conditions.append("rel.first_seen >= $from_time")
+        edge_params["from_time"] = from_time
+    if to_time:
+        edge_conditions.append("rel.first_seen <= $to_time")
+        edge_params["to_time"] = to_time
+    edge_where = " WHERE " + " AND ".join(edge_conditions)
+
+    edge_query = (
+        f"MATCH (:Resource)-[rel]->(:Resource){edge_where} "
+        "RETURN rel.first_seen AS first_seen "
+        "ORDER BY first_seen"
+    )
+    edge_result = tx.run(edge_query, **edge_params)
+    for rec in edge_result:
+        fs_val = rec["first_seen"]
+
+        ts_ms: int
+        if isinstance(fs_val, (int, float)):
+            ts_ms = int(fs_val)
+        elif hasattr(fs_val, "to_native"):
+            dt = fs_val.to_native()
+            ts_ms = int(dt.timestamp() * 1000)
+        elif isinstance(fs_val, str):
+            from datetime import datetime as _dt
+            try:
+                dt = _dt.fromisoformat(fs_val.replace("Z", "+00:00"))
+                ts_ms = int(dt.timestamp() * 1000)
+            except Exception:
+                continue
+        else:
+            continue
+
+        bid = ts_ms // bucket_ms
+        if bid in node_buckets:
+            node_buckets[bid]["edges_added"] += 1
+        else:
+            node_buckets[bid] = {
+                "bucket_id": bid,
+                "timestamp": _to_str(fs_val),
+                "nodes_added": 0,
+                "edges_added": 1,
+                "node_types": {},
+                "_ts_ms": ts_ms,
+            }
+
+    sorted_buckets = sorted(node_buckets.values(), key=lambda b: b["bucket_id"])
+
+    running_nodes = 0
+    running_edges = 0
+    for bucket in sorted_buckets:
+        running_nodes += bucket["nodes_added"]
+        running_edges += bucket["edges_added"]
+        bucket["running_total_nodes"] = running_nodes
+        bucket["running_total_edges"] = running_edges
+        bucket.pop("_ts_ms", None)
+
+    return sorted_buckets
+
+
+def get_snapshot_stats(at_time: str) -> Dict[str, Any]:
+    with neo4j_driver.session() as session:
+        return session.execute_read(_read_snapshot_stats, at_time)
+
+
+def _read_snapshot_stats(tx: ManagedTransaction, at_time: str) -> Dict[str, Any]:
+    node_res = tx.run(
+        "MATCH (r:Resource) "
+        "WHERE COALESCE(r.created_at, r.updated_at) <= $at_time "
+        "  AND (r.last_seen_at >= $at_time OR r.last_seen_at IS NULL) "
+        "RETURN r.type AS type, count(*) AS cnt",
+        at_time=at_time,
+    )
+    nodes_by_type: Dict[str, int] = {}
+    total_nodes = 0
+    for rec in node_res:
+        t = str(rec["type"] or "unknown")
+        nodes_by_type[t] = rec["cnt"]
+        total_nodes += rec["cnt"]
+
+    edge_res = tx.run(
+        "MATCH (:Resource)-[rel]->(:Resource) "
+        "WHERE rel.first_seen <= $at_time "
+        "  AND (rel.last_seen >= $at_time OR rel.last_seen IS NULL) "
+        "RETURN type(rel) AS type, count(*) AS cnt",
+        at_time=at_time,
+    )
+    edges_by_type: Dict[str, int] = {}
+    total_edges = 0
+    for rec in edge_res:
+        t = str(rec["type"] or "unknown")
+        edges_by_type[t] = rec["cnt"]
+        total_edges += rec["cnt"]
+
+    return {
+        "at_time": at_time,
+        "total_nodes": total_nodes,
+        "total_edges": total_edges,
+        "nodes_by_type": nodes_by_type,
+        "edges_by_type": edges_by_type,
+    }
 
 
 def _node_record_to_dict(node) -> Dict[str, Any]:

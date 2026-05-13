@@ -1,8 +1,6 @@
 import logging
 import os
 import random
-import threading
-import time
 
 import requests
 from flask import Flask, jsonify, request
@@ -201,32 +199,5 @@ def get_recommendations():
     return jsonify({"recommendations": recommended}), 200
 
 
-def _generate_traffic():
-    """Background thread generating realistic traffic patterns."""
-    time.sleep(20)
-    endpoints = [
-        ("GET", "/api/v1/users"),
-        ("GET", "/api/v1/products"),
-        ("GET", "/api/v1/users/testuser"),
-        ("GET", "/api/v1/products/1"),
-        ("POST", "/api/v1/orders"),
-        ("GET", "/api/v1/analytics"),
-        ("POST", "/api/v1/notifications"),
-        ("GET", "/api/v1/recommendations"),
-        ("GET", "/api/v1/payments/health"),
-    ]
-    while True:
-        try:
-            method, path = random.choice(endpoints)
-            url = f"http://localhost:8001{path}"
-            resp = requests.request(method, url, timeout=5)
-            logger.info("Traffic: %s %s -> %d", method, path, resp.status_code)
-        except Exception as e:
-            logger.debug("Traffic gen: %s", e)
-        time.sleep(random.uniform(3, 10))
-
-
 if __name__ == "__main__":
-    thread = threading.Thread(target=_generate_traffic, daemon=True)
-    thread.start()
     app.run(host="0.0.0.0", port=8001)

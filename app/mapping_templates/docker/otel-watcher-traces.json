@@ -48,7 +48,7 @@
     },
     {
       "id": "service-calls-peer",
-      "source_path": "peer_target",
+      "source_path": "peer_service",
       "target_field": "calls_services",
       "target_node_type": "Service"
     },
@@ -251,8 +251,10 @@
     {
       "id": "endpoint-status-code",
       "source_path": "http_status_code",
-      "target_field": "current_rps",
-      "target_node_type": "Endpoint"
+      "target_field": "status",
+      "target_node_type": "Endpoint",
+      "transform_type": "expression",
+      "transform_config": { "expression": "'error' if value and int(value) >= 500 else 'active'" }
     },
     {
       "id": "endpoint-calls",
@@ -523,7 +525,7 @@
       "source_field": "database_ref",
       "target_type": "Database",
       "target_field": "name",
-      "edge_type": "belongsto"
+      "edge_type": "ownedby"
     },
     {
       "id": "endpoint-belongs-to-service",
@@ -531,7 +533,7 @@
       "source_field": "service_name",
       "target_type": "Service",
       "target_field": "name",
-      "edge_type": "belongsto"
+      "edge_type": "ownedby"
     },
     {
       "id": "endpoint-calls-service",
@@ -547,7 +549,7 @@
       "source_field": "publishes_to",
       "target_type": "QueueTopic",
       "target_field": "name",
-      "edge_type": "publishes"
+      "edge_type": "publishesto"
     },
     {
       "id": "service-consumes-from-queue",
@@ -555,7 +557,7 @@
       "source_field": "consumes_from",
       "target_type": "QueueTopic",
       "target_field": "name",
-      "edge_type": "consumes"
+      "edge_type": "consumesfrom"
     },
     {
       "id": "service-calls-external-api",
@@ -571,7 +573,7 @@
       "source_field": "auth_secret",
       "target_type": "SecretConfig",
       "target_field": "name",
-      "edge_type": "uses"
+      "edge_type": "authenticatesvia"
     },
     {
       "id": "service-owned-by-team",
@@ -587,7 +589,7 @@
       "source_field": "cache_name",
       "target_type": "Cache",
       "target_field": "name",
-      "edge_type": "uses"
+      "edge_type": "dependson"
     }
   ]
 }

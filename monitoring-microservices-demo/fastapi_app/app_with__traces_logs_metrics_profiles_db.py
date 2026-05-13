@@ -3,8 +3,9 @@ from fastapi import FastAPI, HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
 import logging
+import json
 
-from random import randint
+from random import randint, choice
 from time import sleep
 import time
 
@@ -23,9 +24,20 @@ import pyroscope
 from opentelemetry import trace
 from opentelemetry.trace import format_trace_id
 
+import redis
+
 service_name = "fastapi-app"
 otlp_endpoint = os.environ.get("OTLP_GRPC_ENDPOINT", "http://localhost:4317")
 pyroscope_endpoint = os.environ.get("PYROSCOPE_ENDPOINT", "http://localhost:4040")
+redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
+
+redis_client = redis.from_url(redis_url, decode_responses=True)
+
+ATTR_DB_TABLE = "db.table"
+ATTR_DB_OP = "db.operation"
+ATTR_CACHE = "cache_name"
+CACHE_NAME = "user-sessions"
+CACHE_KEY_ALL = "users:all"
 
 
 class PyroscopeMiddleware(BaseHTTPMiddleware):
@@ -78,36 +90,129 @@ instrument_database(engine=engine, tracer=tracer)
 # Create database and tables in database
 create_db_and_tables()
 
+# Seed demo data
+with Session(engine) as session:
+    if not session.exec(select(Users)).first():
+        demo_users = [
+            Users(name="alice", age=28),
+            Users(name="bob", age=35),
+            Users(name="charlie", age=42),
+            Users(name="diana", age=24),
+            Users(name="eve", age=31),
+        ]
+        for u in demo_users:
+            session.add(u)
+        session.commit()
+        logging.info("Seeded %d demo users", len(demo_users))
+
 
 @app.get("/")
 def root_endpoint():
-    logging.info("Hello World")
-    return {"message": "Hello World"}
+    return {"service": service_name, "version": "2.1.0", "status": "healthy"}
+
+
+@app.get("/health")
+def health():
+    return {"status": "healthy"}
 
 
 @app.get("/users", response_model=list[Users])
 def read_users():
-    a = randint(1, 10)
+    span = trace.get_current_span()
 
-    ### sleep 10 seconds in 10% of cases
-    if a == 10:
-        logging.warning("this is a long long operation")
+    # Simulate slow query in 10% of cases
+    if randint(1, 10) == 10:
+        logging.warning("slow query detected on users table")
         do_long_work(10)
 
-    ### emit HTTPException in 10% of cases
-    if a == 9:
-        logging.error("error")
-        raise HTTPException(
-            status_code=500, detail="HTTPException emmited in read_users method"
-        )
+    # Simulate error in 10% of cases
+    if randint(1, 10) == 9:
+        logging.error("database query failed")
+        raise HTTPException(status_code=500, detail="Internal server error")
 
-    #### get users
+    # Check Redis cache first
+    span.set_attribute("cache_name", CACHE_NAME)
+    cached = redis_client.get(CACHE_KEY_ALL)
+    if cached:
+        logging.info("cache HIT for users:all")
+        return json.loads(cached)
+
+    logging.info("cache MISS for users:all, querying database")
+    span.set_attribute(ATTR_DB_TABLE, "users")
+    span.set_attribute(ATTR_DB_OP, "SELECT")
+
     with Session(engine) as session:
         users = session.exec(select(Users)).all()
-        return users
+        result = [{"id": u.id, "name": u.name, "age": u.age} for u in users]
+
+    # Write to cache
+    redis_client.setex(CACHE_KEY_ALL, 30, json.dumps(result))
+    return result
 
 
-@app.get("/do_long_work")  # /do_long_work?sec=10
+@app.get("/users/{user_id}")
+def read_user(user_id: int):
+    span = trace.get_current_span()
+    span.set_attribute("cache_name", CACHE_NAME)
+    span.set_attribute(ATTR_DB_TABLE, "users")
+    span.set_attribute(ATTR_DB_OP, "SELECT")
+
+    # Check cache
+    cached = redis_client.get(f"users:{user_id}")
+    if cached:
+        logging.info("cache HIT for users:%d", user_id)
+        return json.loads(cached)
+
+    with Session(engine) as session:
+        user = session.get(Users, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        result = {"id": user.id, "name": user.name, "age": user.age}
+
+    redis_client.setex(f"users:{user_id}", 60, json.dumps(result))
+    return result
+
+
+@app.post("/users")
+def create_user(user: Users):
+    span = trace.get_current_span()
+    span.set_attribute(ATTR_DB_TABLE, "users")
+    span.set_attribute(ATTR_DB_OP, "INSERT")
+
+    with Session(engine) as session:
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    # Invalidate cache
+    span.set_attribute("cache_name", CACHE_NAME)
+    redis_client.delete(CACHE_KEY_ALL)
+
+    logging.info("Created user: %s (id=%d)", user.name, user.id)
+    return {"id": user.id, "name": user.name, "age": user.age}
+
+
+@app.delete("/users/{user_id}")
+def delete_user(user_id: int):
+    span = trace.get_current_span()
+    span.set_attribute(ATTR_DB_TABLE, "users")
+    span.set_attribute(ATTR_DB_OP, "DELETE")
+
+    with Session(engine) as session:
+        user = session.get(Users, user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        session.delete(user)
+        session.commit()
+
+    span.set_attribute("cache_name", CACHE_NAME)
+    redis_client.delete(CACHE_KEY_ALL, f"users:{user_id}")
+
+    logging.info("Deleted user id=%d", user_id)
+    return {"deleted": user_id}
+
+
+@app.get("/do_long_work")
 def do_long_work(sec: int = 0):
     x = randint(1000, 10000)
     timeout = time.time() + float(sec)

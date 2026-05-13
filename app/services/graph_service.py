@@ -83,6 +83,7 @@ def get_full_graph(
     exclude_node_types: Optional[List[str]] = None,
     exclude_edge_types: Optional[List[str]] = None,
     filter_mode: str = "ghost",
+    as_of: Optional[str] = None,
 ) -> GraphResponse:
     ex_nodes = exclude_node_types if filter_mode == "exclude" else None
     ex_edges = exclude_edge_types if filter_mode == "exclude" else None
@@ -93,6 +94,7 @@ def get_full_graph(
             return GraphResponse(nodes=[], edges=[], node_count=0, edge_count=0)
         raw_nodes, raw_edges = neo4j_repo.get_graph_by_sources(
             agent_names, limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
+            as_of=as_of,
         )
     elif user_id:
         agent_names = agent_repo.get_agent_names_for_user(user_id)
@@ -100,10 +102,11 @@ def get_full_graph(
             return GraphResponse(nodes=[], edges=[], node_count=0, edge_count=0)
         raw_nodes, raw_edges = neo4j_repo.get_graph_by_sources(
             agent_names, limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
+            as_of=as_of,
         )
     else:
         raw_nodes, raw_edges = neo4j_repo.get_full_graph(
-            limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
+            limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges, as_of=as_of,
         )
     return _build_response(raw_nodes, raw_edges)
 

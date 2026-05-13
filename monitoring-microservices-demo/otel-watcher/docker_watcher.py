@@ -10,7 +10,7 @@ import os
 import logging
 import threading
 import time
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Any, Dict, List, Optional
 
 import requests
@@ -403,20 +403,158 @@ def metrics_loop():
 
 def trigger_initial_traces():
     """Send initial requests to services to trigger trace generation for all paths."""
-    time.sleep(15)  # wait for app services to be ready
+    time.sleep(15)
 
     targets = [
-        ("flask-app", 8001, "/users"),   # triggers Flask → FastAPI → DB
-        ("flask-app", 8001, "/albums"),   # triggers Flask → Golang
+        ("flask-app", 8001, "/api/v1/users"),
+        ("flask-app", 8001, "/api/v1/products"),
+        ("flask-app", 8001, "/api/v1/orders"),
+        ("flask-app", 8001, "/api/v1/analytics"),
+        ("flask-app", 8001, "/api/v1/recommendations"),
+        ("flask-app", 8001, "/api/v1/notifications"),
     ]
 
     for host, port, path in targets:
         url = f"http://{host}:{port}{path}"
         try:
-            resp = requests.get(url, timeout=5)
-            log.info("Initial trace trigger: %s → %d", url, resp.status_code)
+            method = "POST" if "orders" in path or "notifications" in path else "GET"
+            resp = requests.request(method, url, timeout=5)
+            log.info("Initial trace trigger: %s %s → %d", method, url, resp.status_code)
         except Exception as e:
             log.warning("Initial trace trigger failed for %s: %s", url, e)
+
+
+def push_infra_topology():
+    """Push full infrastructure topology via /api/v1/ingest/topology on startup."""
+    time.sleep(5)
+    if not AGENT_TOKEN:
+        return
+
+    topology = {
+        "source": "otel-watcher",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "nodes": [
+            {"id": "urn:service:flask-app", "type": "Service", "name": "API Gateway (Flask)", "status": "active",
+             "properties": {"language": "python", "framework": "flask", "port": 8001, "team": "platform"}},
+            {"id": "urn:service:fastapi-app", "type": "Service", "name": "User Service (FastAPI)", "status": "active",
+             "properties": {"language": "python", "framework": "fastapi", "port": 8000, "team": "backend"}},
+            {"id": "urn:service:golang-app", "type": "Service", "name": "Product Service (Go)", "status": "active",
+             "properties": {"language": "go", "framework": "net/http", "port": 8002, "team": "backend"}},
+            {"id": "urn:service:otel-collector", "type": "Service", "name": "OTel Collector", "status": "active",
+             "properties": {"language": "go", "framework": "otelcol", "version": "0.112.0", "team": "platform"}},
+            {"id": "urn:service:otel-watcher", "type": "Service", "name": "Topology Agent (Watcher)", "status": "active",
+             "properties": {"language": "python", "framework": "fastapi", "port": 8090, "team": "platform"}},
+            {"id": "urn:service:prometheus", "type": "Service", "name": "Prometheus", "status": "active",
+             "properties": {"framework": "prometheus", "version": "2.55.0", "port": 9090, "team": "platform"}},
+            {"id": "urn:service:grafana", "type": "Service", "name": "Grafana", "status": "active",
+             "properties": {"framework": "grafana", "version": "11.3.0", "port": 3000, "team": "platform"}},
+            {"id": "urn:service:loki", "type": "Service", "name": "Loki (Logs)", "status": "active",
+             "properties": {"framework": "loki", "version": "3.1.0", "port": 3100, "team": "platform"}},
+            {"id": "urn:service:tempo", "type": "Service", "name": "Tempo (Traces)", "status": "active",
+             "properties": {"framework": "tempo", "version": "2.6.1", "team": "platform"}},
+            {"id": "urn:service:jaeger", "type": "Service", "name": "Jaeger (Traces UI)", "status": "active",
+             "properties": {"framework": "jaeger", "version": "1.59.0", "port": 16686, "team": "platform"}},
+            {"id": "urn:service:beyla", "type": "Service", "name": "Beyla (eBPF Agent)", "status": "active",
+             "properties": {"framework": "beyla", "version": "2.5.8", "port": 8999, "team": "platform"}},
+            {"id": "urn:service:pyroscope", "type": "Service", "name": "Pyroscope (Profiling)", "status": "active",
+             "properties": {"framework": "pyroscope", "version": "1.9.1", "port": 4040, "team": "platform"}},
+            {"id": "urn:service:alertmanager", "type": "Service", "name": "Alertmanager", "status": "active",
+             "properties": {"framework": "alertmanager", "version": "0.27.0", "port": 9093, "team": "platform"}},
+            {"id": "urn:service:karma", "type": "Service", "name": "Karma (Alert UI)", "status": "active",
+             "properties": {"framework": "karma", "version": "0.120", "port": 8081, "team": "platform"}},
+            {"id": "urn:service:pyrra-api", "type": "Service", "name": "Pyrra SLO API", "status": "active",
+             "properties": {"framework": "pyrra", "version": "0.7.7", "port": 9099, "team": "platform"}},
+            {"id": "urn:service:pyrra-filesystem", "type": "Service", "name": "Pyrra SLO Rules", "status": "active",
+             "properties": {"framework": "pyrra", "version": "0.7.7", "team": "platform"}},
+            {"id": "urn:database:postgres-db", "type": "Database", "name": "PostgreSQL", "status": "active",
+             "properties": {"engine": "postgresql", "version": "16", "port": 5432, "owner_service": "fastapi-app"}},
+            {"id": "urn:cache:redis", "type": "Cache", "name": "Redis", "status": "active",
+             "properties": {"engine": "redis", "version": "7", "port": 6379, "owner_service": "fastapi-app"}},
+            {"id": "urn:externalapi:stripe.com", "type": "ExternalAPI", "name": "Stripe (Payments)", "status": "active",
+             "properties": {"base_url": "https://api.stripe.com"}},
+            {"id": "urn:externalapi:analytics.mixpanel.com", "type": "ExternalAPI", "name": "Mixpanel (Analytics)", "status": "active",
+             "properties": {"base_url": "https://analytics.mixpanel.com"}},
+            {"id": "urn:externalapi:ml.recommendations.internal", "type": "ExternalAPI", "name": "ML Recommendations", "status": "active",
+             "properties": {"base_url": "http://ml.recommendations.internal"}},
+            {"id": "urn:queuetopic:order-events", "type": "QueueTopic", "name": "order-events", "status": "active",
+             "properties": {"protocol": "kafka", "team": "orders"}},
+            {"id": "urn:queuetopic:notification-events", "type": "QueueTopic", "name": "notification-events", "status": "active",
+             "properties": {"protocol": "kafka", "team": "notifications"}},
+            {"id": "urn:slaslo:api-availability", "type": "SLASLO", "name": "API Availability SLO", "status": "active",
+             "properties": {"slo_target": "99.9%", "window": "30d", "service_ref": "flask-app"}},
+            {"id": "urn:slaslo:db-latency", "type": "SLASLO", "name": "DB Latency SLO", "status": "active",
+             "properties": {"slo_target": "p99 < 100ms", "window": "30d", "service_ref": "fastapi-app"}},
+        ],
+        "edges": [
+            # Application layer
+            {"source_id": "urn:service:flask-app", "target_id": "urn:service:fastapi-app", "type": "calls",
+             "properties": {"protocol": "http"}},
+            {"source_id": "urn:service:flask-app", "target_id": "urn:service:golang-app", "type": "calls",
+             "properties": {"protocol": "http"}},
+            {"source_id": "urn:service:flask-app", "target_id": "urn:externalapi:stripe.com", "type": "calls",
+             "properties": {"protocol": "https"}},
+            {"source_id": "urn:service:flask-app", "target_id": "urn:externalapi:analytics.mixpanel.com", "type": "calls",
+             "properties": {"protocol": "https"}},
+            {"source_id": "urn:service:flask-app", "target_id": "urn:externalapi:ml.recommendations.internal", "type": "calls"},
+            {"source_id": "urn:service:flask-app", "target_id": "urn:queuetopic:order-events", "type": "publishesto"},
+            {"source_id": "urn:service:flask-app", "target_id": "urn:queuetopic:notification-events", "type": "publishesto"},
+            {"source_id": "urn:service:fastapi-app", "target_id": "urn:database:postgres-db", "type": "reads"},
+            {"source_id": "urn:service:fastapi-app", "target_id": "urn:database:postgres-db", "type": "writes"},
+            {"source_id": "urn:service:fastapi-app", "target_id": "urn:cache:redis", "type": "dependson",
+             "properties": {"purpose": "caching"}},
+            {"source_id": "urn:service:fastapi-app", "target_id": "urn:service:pyroscope", "type": "calls"},
+
+            # Telemetry pipeline
+            {"source_id": "urn:service:fastapi-app", "target_id": "urn:service:otel-collector", "type": "calls",
+             "properties": {"protocol": "grpc", "purpose": "telemetry"}},
+            {"source_id": "urn:service:flask-app", "target_id": "urn:service:otel-collector", "type": "calls",
+             "properties": {"protocol": "grpc", "purpose": "telemetry"}},
+            {"source_id": "urn:service:beyla", "target_id": "urn:service:otel-collector", "type": "calls",
+             "properties": {"protocol": "grpc", "purpose": "traces"}},
+            {"source_id": "urn:service:golang-app", "target_id": "urn:service:beyla", "type": "dependson",
+             "properties": {"instrumentation": "ebpf"}},
+            {"source_id": "urn:service:otel-collector", "target_id": "urn:service:tempo", "type": "calls",
+             "properties": {"protocol": "grpc", "purpose": "traces"}},
+            {"source_id": "urn:service:otel-collector", "target_id": "urn:service:jaeger", "type": "calls",
+             "properties": {"protocol": "grpc", "purpose": "traces"}},
+            {"source_id": "urn:service:otel-collector", "target_id": "urn:service:loki", "type": "calls",
+             "properties": {"protocol": "http", "purpose": "logs"}},
+            {"source_id": "urn:service:otel-collector", "target_id": "urn:service:prometheus", "type": "calls",
+             "properties": {"protocol": "http", "purpose": "metrics"}},
+            {"source_id": "urn:service:otel-collector", "target_id": "urn:service:otel-watcher", "type": "calls",
+             "properties": {"protocol": "http", "purpose": "traces+logs"}},
+
+            # Monitoring layer
+            {"source_id": "urn:service:prometheus", "target_id": "urn:service:alertmanager", "type": "calls"},
+            {"source_id": "urn:service:alertmanager", "target_id": "urn:service:karma", "type": "calls"},
+            {"source_id": "urn:service:prometheus", "target_id": "urn:service:pyrra-api", "type": "calls"},
+            {"source_id": "urn:service:pyrra-api", "target_id": "urn:service:pyrra-filesystem", "type": "calls"},
+
+            # Grafana data sources
+            {"source_id": "urn:service:grafana", "target_id": "urn:service:prometheus", "type": "reads"},
+            {"source_id": "urn:service:grafana", "target_id": "urn:service:loki", "type": "reads"},
+            {"source_id": "urn:service:grafana", "target_id": "urn:service:tempo", "type": "reads"},
+            {"source_id": "urn:service:grafana", "target_id": "urn:service:pyroscope", "type": "reads"},
+
+            # SLO bindings
+            {"source_id": "urn:slaslo:api-availability", "target_id": "urn:service:flask-app", "type": "dependson"},
+            {"source_id": "urn:slaslo:db-latency", "target_id": "urn:service:fastapi-app", "type": "dependson"},
+        ],
+    }
+
+    try:
+        resp = requests.post(
+            f"{RESOURCE_API_URL}/api/v1/ingest/topology",
+            json=topology,
+            headers={"X-Agent-Token": AGENT_TOKEN, "Content-Type": "application/json"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        result = resp.json()
+        log.info("Pushed infra topology: %d nodes, %d edges, errors=%s",
+                 result.get("nodes_processed", 0), result.get("edges_processed", 0), result.get("errors", []))
+    except Exception as e:
+        log.error("Failed to push infra topology: %s", e)
 
 
 @app.on_event("startup")
@@ -446,6 +584,9 @@ async def startup():
 
     trigger_thread = threading.Thread(target=trigger_initial_traces, daemon=True)
     trigger_thread.start()
+
+    topo_thread = threading.Thread(target=push_infra_topology, daemon=True)
+    topo_thread.start()
 
 
 if __name__ == "__main__":

@@ -1,15 +1,15 @@
 // Raw Data Types
 export type RawDataSource =
-  | "opentelemetry-traces"
-  | "opentelemetry-metrics"
-  | "istio-metrics"
-  | "istio-access-logs"
-  | "kubernetes-api"
-  | "prometheus"
-  | "terraform-state"
-  | "argocd"
-  | "api-gateway"
-  | "custom";
+  | 'opentelemetry-traces'
+  | 'opentelemetry-metrics'
+  | 'istio-metrics'
+  | 'istio-access-logs'
+  | 'kubernetes-api'
+  | 'prometheus'
+  | 'terraform-state'
+  | 'argocd'
+  | 'api-gateway'
+  | 'custom';
 
 export interface RawDataChunk {
   id: string;
@@ -34,7 +34,7 @@ export interface RawDataListResponse {
 }
 
 // Mapping Types
-export type TransformType = "direct" | "template" | "conditional" | "expression" | "lookup";
+export type TransformType = 'direct' | 'template' | 'conditional' | 'expression' | 'lookup';
 
 export interface FieldMapping {
   id: string;
@@ -200,30 +200,30 @@ export interface NodeTypeSchema {
 
 // Node types for schema browser
 export const NODE_TYPES: string[] = [
-  "Service",
-  "Endpoint",
-  "Deployment",
-  "Pod",
-  "Node",
-  "Database",
-  "Table",
-  "QueueTopic",
-  "Cache",
-  "ExternalAPI",
-  "SecretConfig",
-  "Library",
-  "TeamOwner",
-  "SLASLO",
-  "RegionCluster",
+  'Service',
+  'Endpoint',
+  'Deployment',
+  'Pod',
+  'Node',
+  'Database',
+  'Table',
+  'QueueTopic',
+  'Cache',
+  'ExternalAPI',
+  'SecretConfig',
+  'Library',
+  'TeamOwner',
+  'SLASLO',
+  'RegionCluster',
 ];
 
 // Common fields for all nodes
 export const NODE_BASE_FIELDS: SchemaField[] = [
-  { name: "id", type: "string", required: true, description: "URN identifier" },
-  { name: "name", type: "string", required: true, description: "Human-readable name" },
-  { name: "type", type: "string", required: true, description: "Node type" },
-  { name: "status", type: "string", required: false, description: "active/inactive/degraded/offline" },
-  { name: "environment", type: "string", required: false, description: "Deployment environment" },
-  { name: "description", type: "string", required: false },
-  { name: "tags", type: "object", required: false, description: "Key-value labels" },
+  { name: 'id', type: 'string', required: true, description: 'URN identifier' },
+  { name: 'name', type: 'string', required: true, description: 'Human-readable name' },
+  { name: 'type', type: 'string', required: true, description: 'Node type' },
+  { name: 'status', type: 'string', required: false, description: 'active/inactive/degraded/offline' },
+  { name: 'environment', type: 'string', required: false, description: 'Deployment environment' },
+  { name: 'description', type: 'string', required: false },
+  { name: 'tags', type: 'object', required: false, description: 'Key-value labels' },
 ];

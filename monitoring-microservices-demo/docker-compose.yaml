@@ -182,11 +182,13 @@ services:
       - OTLP_GRPC_ENDPOINT=http://otel-collector:4317
       - DATABASE_URL=postgresql://user:password@postgres-db:5432/db
       - PYROSCOPE_ENDPOINT=http://pyroscope:4040
+      - REDIS_URL=redis://redis:6379/0
     ports:
       - "18000:8000"
     depends_on:
       - otel-collector
       - postgres-db
+      - redis
 
   flask-app:
     image: flask_app
@@ -240,6 +242,11 @@ services:
     ports:
       - "5432:5432"
 
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
   pyroscope:
     image: grafana/pyroscope:1.12.0
     command: [ "-config.file=/etc/pyroscope.yml" ]
@@ -258,7 +265,7 @@ services:
       - ADMIN_EMAIL=admin1@example.com
       - ADMIN_PASSWORD=admin
       - APP_NAME=monitoring-demo
-      - SCRAPE_TARGETS=fastapi-app:8000,flask-app:9464,otel-collector:8889
+      - SCRAPE_TARGETS=fastapi-app:8000,flask-app:9464,otel-collector:8889,golang-app:8002,beyla:8999
       - SCRAPE_INTERVAL=30
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -299,6 +306,18 @@ services:
       - "8998:8998" # internal metrics
     volumes:
       - ./etc/beyla/config.yml:/etc/beyla/config.yml
+
+  traffic-generator:
+    build:
+      context: ./traffic_generator
+    environment:
+      - FASTAPI_URL=http://fastapi-app:8000
+      - FLASK_URL=http://flask-app:8001
+      - GOLANG_URL=http://golang-app:8002
+    depends_on:
+      - fastapi-app
+      - flask-app
+      - golang-app
 
 
 volumes:

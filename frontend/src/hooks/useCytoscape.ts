@@ -1,337 +1,339 @@
-import { useState, useEffect, useRef, useCallback, type RefObject } from "react";
-import cytoscape, { type Core, type EventObject } from "cytoscape";
-import { useGraphDataStore, useGraphFilterStore, useGraphUiStore } from "../features/graph/store";
-import { toCytoscapeElements, filterDanglingEdges, diffCytoscapeGraph } from "../utils/cytoHelpers";
-import { buildCytoscapeStyles } from "../utils/cytoscapeStyles";
+import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
+
+import cytoscape, { type Core, type EventObject } from 'cytoscape';
+
+import { useGraphDataStore, useGraphFilterStore, useGraphUiStore } from '../features/graph/store';
+import { diffCytoscapeGraph, filterDanglingEdges, toCytoscapeElements } from '../utils/cytoHelpers';
+import { buildCytoscapeStyles } from '../utils/cytoscapeStyles';
 
 function isAlive(cy: Core | null): cy is Core {
-    return cy !== null && !cy.destroyed();
+  return cy !== null && !cy.destroyed();
 }
 
 const COSE_BASE: Record<string, unknown> = {
-    name: "cose",
-    nodeRepulsion: () => 14000,
-    idealEdgeLength: () => 90,
-    gravity: 0.5,
-    nodeDimensionsIncludeLabels: true,
-    padding: 40,
+  name: 'cose',
+  nodeRepulsion: () => 14000,
+  idealEdgeLength: () => 90,
+  gravity: 0.5,
+  nodeDimensionsIncludeLabels: true,
+  padding: 40,
 };
 
 export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
-    const cyRef = useRef<Core | null>(null);
-    const layoutRef = useRef<cytoscape.Layouts | null>(null);
+  const cyRef = useRef<Core | null>(null);
+  const layoutRef = useRef<cytoscape.Layouts | null>(null);
 
-    const [cyGen, setCyGen] = useState(0);
+  const [cyGen, setCyGen] = useState(0);
 
-    const nodes = useGraphDataStore((s) => s.nodes);
-    const edges = useGraphDataStore((s) => s.edges);
+  const nodes = useGraphDataStore((s) => s.nodes);
+  const edges = useGraphDataStore((s) => s.edges);
 
-    const hiddenNodeTypes = useGraphFilterStore((s) => s.hiddenNodeTypes);
-    const hiddenEdgeTypes = useGraphFilterStore((s) => s.hiddenEdgeTypes);
-    const filterMode = useGraphFilterStore((s) => s.filterMode);
-    const searchQuery = useGraphFilterStore((s) => s.searchQuery);
+  const hiddenNodeTypes = useGraphFilterStore((s) => s.hiddenNodeTypes);
+  const hiddenEdgeTypes = useGraphFilterStore((s) => s.hiddenEdgeTypes);
+  const filterMode = useGraphFilterStore((s) => s.filterMode);
+  const searchQuery = useGraphFilterStore((s) => s.searchQuery);
 
-    const selectedNodeId = useGraphUiStore((s) => s.selectedNodeId);
-    const highlightedNodeIds = useGraphUiStore((s) => s.highlightedNodeIds);
-    const highlightedEdgeIds = useGraphUiStore((s) => s.highlightedEdgeIds);
-    const focusedNodeIds = useGraphUiStore((s) => s.focusedNodeIds);
-    const nodePositions = useGraphUiStore((s) => s.nodePositions);
-    const selectNode = useGraphUiStore((s) => s.selectNode);
-    const hoverNode = useGraphUiStore((s) => s.hoverNode);
-    const setNodePositions = useGraphUiStore((s) => s.setNodePositions);
+  const selectedNodeId = useGraphUiStore((s) => s.selectedNodeId);
+  const highlightedNodeIds = useGraphUiStore((s) => s.highlightedNodeIds);
+  const highlightedEdgeIds = useGraphUiStore((s) => s.highlightedEdgeIds);
+  const focusedNodeIds = useGraphUiStore((s) => s.focusedNodeIds);
+  const nodePositions = useGraphUiStore((s) => s.nodePositions);
+  const selectNode = useGraphUiStore((s) => s.selectNode);
+  const hoverNode = useGraphUiStore((s) => s.hoverNode);
+  const setNodePositions = useGraphUiStore((s) => s.setNodePositions);
 
-    const nodePositionsRef = useRef(nodePositions);
+  const nodePositionsRef = useRef(nodePositions);
+  const setNodePositionsRef = useRef(setNodePositions);
+  const filterModeRef = useRef(filterMode);
+  const hiddenNodeTypesRef = useRef(hiddenNodeTypes);
+  const hiddenEdgeTypesRef = useRef(hiddenEdgeTypes);
+  const selectNodeRef = useRef(selectNode);
+  const hoverNodeRef = useRef(hoverNode);
+
+  useEffect(() => {
     nodePositionsRef.current = nodePositions;
-    const setNodePositionsRef = useRef(setNodePositions);
     setNodePositionsRef.current = setNodePositions;
-    const filterModeRef = useRef(filterMode);
     filterModeRef.current = filterMode;
-    const hiddenNodeTypesRef = useRef(hiddenNodeTypes);
     hiddenNodeTypesRef.current = hiddenNodeTypes;
-    const hiddenEdgeTypesRef = useRef(hiddenEdgeTypes);
     hiddenEdgeTypesRef.current = hiddenEdgeTypes;
-    const selectNodeRef = useRef(selectNode);
     selectNodeRef.current = selectNode;
-    const hoverNodeRef = useRef(hoverNode);
     hoverNodeRef.current = hoverNode;
+  });
 
-    const savePositions = useCallback(() => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
-        const pos: Record<string, { x: number; y: number }> = {};
+  const savePositions = useCallback(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+    const pos: Record<string, { x: number; y: number }> = {};
+    cy.nodes().forEach((n) => {
+      pos[n.id()] = { ...n.position() };
+    });
+    setNodePositionsRef.current(pos);
+  }, []);
+
+  const stopLayout = useCallback(() => {
+    layoutRef.current?.stop();
+    layoutRef.current = null;
+    if (isAlive(cyRef.current)) cyRef.current.stop(true, true);
+  }, []);
+
+  const runCose = useCallback(
+    (opts: Record<string, unknown>) => {
+      stopLayout();
+      if (!isAlive(cyRef.current)) return;
+      layoutRef.current = cyRef.current.layout({
+        ...COSE_BASE,
+        ...opts,
+      } as unknown as cytoscape.LayoutOptions);
+      layoutRef.current.run();
+    },
+    [stopLayout],
+  );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const cy = cytoscape({
+      container,
+      elements: [],
+      style: buildCytoscapeStyles(hiddenNodeTypesRef.current, hiddenEdgeTypesRef.current, filterModeRef.current),
+      layout: { name: 'preset' },
+      minZoom: 0.05,
+      maxZoom: 6,
+      wheelSensitivity: 0.6,
+      boxSelectionEnabled: false,
+    });
+
+    cy.on('tap', 'node', (e: EventObject) => selectNodeRef.current(e.target.id() as string));
+    cy.on('tap', (e: EventObject) => {
+      if (e.target === cy) selectNodeRef.current(null);
+    });
+    cy.on('mouseover', 'node', (e: EventObject) => hoverNodeRef.current(e.target.id() as string));
+    cy.on('mouseout', 'node', () => hoverNodeRef.current(null));
+
+    cyRef.current = cy;
+    setCyGen((g) => g + 1);
+
+    return () => {
+      layoutRef.current?.stop();
+      layoutRef.current = null;
+      cy.stop(true, true);
+      cy.destroy();
+      cyRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+
+    if (nodes.length === 0) {
+      stopLayout();
+      cy.batch(() => cy.elements().remove());
+      return;
+    }
+
+    const safeEdges = filterDanglingEdges(nodes, edges);
+
+    if (cy.elements().length === 0) {
+      const elements = toCytoscapeElements(nodes, safeEdges);
+      cy.batch(() => cy.add(elements));
+
+      const saved = nodePositionsRef.current;
+      if (Object.keys(saved).length > 0) {
         cy.nodes().forEach((n) => {
-            pos[n.id()] = { ...n.position() };
+          const p = saved[n.id()];
+          if (p) n.position(p);
         });
-        setNodePositionsRef.current(pos);
-    }, []);
+        cy.fit(undefined, 40);
+      } else {
+        runCose({ animate: false, numIter: 1500, fit: true });
+      }
+      savePositions();
+      return;
+    }
 
-    const stopLayout = useCallback(() => {
-        layoutRef.current?.stop();
-        layoutRef.current = null;
-        if (isAlive(cyRef.current)) cyRef.current.stop(true, true);
-    }, []);
+    const diff = diffCytoscapeGraph(cy, nodes, safeEdges);
 
-    const runCose = useCallback(
-        (opts: Record<string, unknown>) => {
-            stopLayout();
-            if (!isAlive(cyRef.current)) return;
-            layoutRef.current = cyRef.current.layout({
-                ...COSE_BASE,
-                ...opts,
-            } as unknown as cytoscape.LayoutOptions);
-            layoutRef.current.run();
-        },
-        [stopLayout],
-    );
+    const hasAdditions = diff.toAdd.length > 0;
+    const hasRemovals = diff.toRemoveIds.length > 0;
+    const hasUpdates = diff.toUpdateNodes.length > 0 || diff.toUpdateEdges.length > 0;
 
-    useEffect(() => {
-        const container = containerRef.current;
-        if (!container) return;
+    cy.batch(() => {
+      if (hasRemovals) {
+        diff.toRemoveIds.forEach((id) => cy.getElementById(id).remove());
+      }
+      diff.toUpdateNodes.forEach(({ id, data }) => cy.getElementById(id).data(data));
+      diff.toUpdateEdges.forEach(({ id, data }) => cy.getElementById(id).data(data));
+      if (hasAdditions) {
+        cy.add(diff.toAdd);
+      }
+    });
 
-        const cy = cytoscape({
-            container,
-            elements: [],
-            style: buildCytoscapeStyles(
-                hiddenNodeTypesRef.current,
-                hiddenEdgeTypesRef.current,
-                filterModeRef.current,
-            ),
-            layout: { name: "preset" },
-            minZoom: 0.05,
-            maxZoom: 6,
-            wheelSensitivity: 0.6,
-            boxSelectionEnabled: false,
-        });
+    if (diff.newNodeIds.size > 0) {
+      const existingNodes = cy.nodes().filter((n) => !diff.newNodeIds.has(n.id()));
+      existingNodes.lock();
+      runCose({ animate: false, numIter: 1000, fit: false });
+      existingNodes.unlock();
+      savePositions();
+    } else if (hasRemovals && !hasUpdates) {
+      cy.fit(undefined, 40);
+    }
+  }, [nodes, edges, cyGen, stopLayout, runCose, savePositions]);
 
-        cy.on("tap", "node", (e: EventObject) => selectNodeRef.current(e.target.id() as string));
-        cy.on("tap", (e: EventObject) => {
-            if (e.target === cy) selectNodeRef.current(null);
-        });
-        cy.on("mouseover", "node", (e: EventObject) =>
-            hoverNodeRef.current(e.target.id() as string),
-        );
-        cy.on("mouseout", "node", () => hoverNodeRef.current(null));
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
 
-        cyRef.current = cy;
-        setCyGen((g) => g + 1);
+    const style = buildCytoscapeStyles(hiddenNodeTypes, hiddenEdgeTypes, filterMode);
+    cy.style(style);
+  }, [hiddenNodeTypes, hiddenEdgeTypes, filterMode, cyGen]);
 
-        return () => {
-            layoutRef.current?.stop();
-            layoutRef.current = null;
-            cy.stop(true, true);
-            cy.destroy();
-            cyRef.current = null;
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+
+    cy.elements().removeClass('faded search-hit');
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matched = cy.nodes().filter((n) => {
+        const label = ((n.data('label') as string) ?? '').toLowerCase();
+        const id = ((n.data('id') as string) ?? '').toLowerCase();
+        return label.includes(q) || id.includes(q);
+      });
+      if (matched.length) {
+        cy.elements().addClass('faded');
+        matched.removeClass('faded').addClass('search-hit');
+        matched.connectedEdges().removeClass('faded');
+      }
+    }
+  }, [searchQuery, cyGen]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+
+    cy.nodes().removeClass('path-node');
+    cy.edges().removeClass('path-edge');
+
+    if (highlightedNodeIds.size > 0) {
+      highlightedNodeIds.forEach((id) => cy.getElementById(id).addClass('path-node'));
+    }
+    if (highlightedEdgeIds.size > 0) {
+      highlightedEdgeIds.forEach((id) => cy.getElementById(id).addClass('path-edge'));
+    }
+  }, [highlightedNodeIds, highlightedEdgeIds, cyGen]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+
+    cy.elements().removeClass('focus-dim');
+    if (focusedNodeIds.size === 0) return;
+
+    cy.elements().addClass('focus-dim');
+
+    focusedNodeIds.forEach((id) => {
+      const node = cy.getElementById(id);
+      node.removeClass('focus-dim');
+      node.connectedEdges().removeClass('focus-dim');
+    });
+  }, [focusedNodeIds, cyGen]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+
+    cy.nodes().unselect();
+    if (selectedNodeId) cy.getElementById(selectedNodeId).select();
+  }, [selectedNodeId, cyGen]);
+
+  const fitGraph = useCallback(() => {
+    if (isAlive(cyRef.current)) cyRef.current.fit(undefined, 40);
+  }, []);
+
+  const runLayout = useCallback(
+    (name = 'cose') => {
+      const cy = cyRef.current;
+      if (!isAlive(cy)) return;
+
+      let opts: Record<string, unknown>;
+      if (name === 'circle') {
+        opts = {
+          name: 'circle',
+          spacingFactor: 0.55,
+          padding: 20,
+          animate: true,
+          animationDuration: 500,
         };
-    }, []);
+      } else if (name === 'grid') {
+        opts = {
+          name: 'grid',
+          spacingFactor: 0.8,
+          padding: 20,
+          animate: true,
+          animationDuration: 400,
+        };
+      } else {
+        opts = {
+          ...COSE_BASE,
+          name,
+          animate: true,
+          animationDuration: 600,
+          numIter: 1500,
+          fit: true,
+        };
+      }
 
-    useEffect(() => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
+      stopLayout();
+      const targetElements = cy.elements(':visible');
+      layoutRef.current = targetElements.layout(opts as unknown as cytoscape.LayoutOptions);
+      layoutRef.current.run();
+    },
+    [stopLayout],
+  );
 
-        if (nodes.length === 0) {
-            stopLayout();
-            cy.batch(() => cy.elements().remove());
-            return;
-        }
+  const zoomIn = useCallback(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+    cy.zoom({
+      level: cy.zoom() * 1.3,
+      renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 },
+    });
+  }, []);
 
-        const safeEdges = filterDanglingEdges(nodes, edges);
+  const zoomOut = useCallback(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+    cy.zoom({
+      level: cy.zoom() / 1.3,
+      renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 },
+    });
+  }, []);
 
-        if (cy.elements().length === 0) {
-            const elements = toCytoscapeElements(nodes, safeEdges);
-            cy.batch(() => cy.add(elements));
-
-            const saved = nodePositionsRef.current;
-            if (Object.keys(saved).length > 0) {
-                cy.nodes().forEach((n) => {
-                    const p = saved[n.id()];
-                    if (p) n.position(p);
-                });
-                cy.fit(undefined, 40);
-            } else {
-                runCose({ animate: false, numIter: 1500, fit: true });
-            }
-            savePositions();
-            return;
-        }
-
-        const diff = diffCytoscapeGraph(cy, nodes, safeEdges);
-
-        const hasAdditions = diff.toAdd.length > 0;
-        const hasRemovals = diff.toRemoveIds.length > 0;
-        const hasUpdates = diff.toUpdateNodes.length > 0 || diff.toUpdateEdges.length > 0;
-
-        cy.batch(() => {
-            if (hasRemovals) {
-                diff.toRemoveIds.forEach((id) => cy.getElementById(id).remove());
-            }
-            diff.toUpdateNodes.forEach(({ id, data }) => cy.getElementById(id).data(data));
-            diff.toUpdateEdges.forEach(({ id, data }) => cy.getElementById(id).data(data));
-            if (hasAdditions) {
-                cy.add(diff.toAdd);
-            }
-        });
-
-        if (diff.newNodeIds.size > 0) {
-            const existingNodes = cy.nodes().filter((n) => !diff.newNodeIds.has(n.id()));
-            existingNodes.lock();
-            runCose({ animate: false, numIter: 1000, fit: false });
-            existingNodes.unlock();
-            savePositions();
-        } else if (hasRemovals && !hasUpdates) {
-            cy.fit(undefined, 40);
-        }
-    }, [nodes, edges, cyGen, stopLayout, runCose, savePositions]);
-
-    useEffect(() => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
-
-        const style = buildCytoscapeStyles(hiddenNodeTypes, hiddenEdgeTypes, filterMode);
-        cy.style(style as unknown as string);
-    }, [hiddenNodeTypes, hiddenEdgeTypes, filterMode, cyGen]);
-
-    useEffect(() => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
-
-        cy.elements().removeClass("faded search-hit");
-
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            const matched = cy.nodes().filter((n) => {
-                const label = ((n.data("label") as string) ?? "").toLowerCase();
-                const id = ((n.data("id") as string) ?? "").toLowerCase();
-                return label.includes(q) || id.includes(q);
-            });
-            if (matched.length) {
-                cy.elements().addClass("faded");
-                matched.removeClass("faded").addClass("search-hit");
-                matched.connectedEdges().removeClass("faded");
-            }
-        }
-    }, [searchQuery, cyGen]);
-
-    useEffect(() => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
-
-        cy.nodes().removeClass("path-node");
-        cy.edges().removeClass("path-edge");
-
-        if (highlightedNodeIds.size > 0) {
-            highlightedNodeIds.forEach((id) => cy.getElementById(id).addClass("path-node"));
-        }
-        if (highlightedEdgeIds.size > 0) {
-            highlightedEdgeIds.forEach((id) => cy.getElementById(id).addClass("path-edge"));
-        }
-    }, [highlightedNodeIds, highlightedEdgeIds, cyGen]);
-
-    useEffect(() => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
-
-        cy.elements().removeClass("focus-dim");
-        if (focusedNodeIds.size === 0) return;
-
-        cy.elements().addClass("focus-dim");
-
-        focusedNodeIds.forEach((id) => {
-            const node = cy.getElementById(id);
-            node.removeClass("focus-dim");
-            node.connectedEdges().removeClass("focus-dim");
-        });
-    }, [focusedNodeIds, cyGen]);
-
-    useEffect(() => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
-
-        cy.nodes().unselect();
-        if (selectedNodeId) cy.getElementById(selectedNodeId).select();
-    }, [selectedNodeId, cyGen]);
-
-    const fitGraph = useCallback(() => {
-        if (isAlive(cyRef.current)) cyRef.current.fit(undefined, 40);
-    }, []);
-
-    const runLayout = useCallback(
-        (name = "cose") => {
-            const cy = cyRef.current;
-            if (!isAlive(cy)) return;
-
-            let opts: Record<string, unknown>;
-            if (name === "circle") {
-                opts = {
-                    name: "circle",
-                    spacingFactor: 0.55,
-                    padding: 20,
-                    animate: true,
-                    animationDuration: 500,
-                };
-            } else if (name === "grid") {
-                opts = {
-                    name: "grid",
-                    spacingFactor: 0.8,
-                    padding: 20,
-                    animate: true,
-                    animationDuration: 400,
-                };
-            } else {
-                opts = {
-                    ...COSE_BASE,
-                    name,
-                    animate: true,
-                    animationDuration: 600,
-                    numIter: 1500,
-                    fit: true,
-                };
-            }
-
-            stopLayout();
-            const targetElements = cy.elements(":visible");
-            layoutRef.current = targetElements.layout(opts as unknown as cytoscape.LayoutOptions);
-            layoutRef.current.run();
+  const centerOn = useCallback((nodeId: string) => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+    const node = cy.getElementById(nodeId);
+    if (node.length) {
+      const nodePos = node.position();
+      const zoom = 1.5;
+      cy.animate(
+        {
+          pan: {
+            x: cy.width() / 2 - nodePos.x * zoom,
+            y: cy.height() / 2 - nodePos.y * zoom,
+          },
+          zoom: zoom,
         },
-        [stopLayout],
-    );
+        {
+          duration: 400,
+          easing: 'ease-in-out',
+        },
+      );
+    }
+  }, []);
 
-    const zoomIn = useCallback(() => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
-        cy.zoom({
-            level: cy.zoom() * 1.3,
-            renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 },
-        });
-    }, []);
-
-    const zoomOut = useCallback(() => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
-        cy.zoom({
-            level: cy.zoom() / 1.3,
-            renderedPosition: { x: cy.width() / 2, y: cy.height() / 2 },
-        });
-    }, []);
-
-    const centerOn = useCallback((nodeId: string) => {
-        const cy = cyRef.current;
-        if (!isAlive(cy)) return;
-        const node = cy.getElementById(nodeId);
-        if (node.length) {
-            const nodePos = node.position();
-            const zoom = 1.5;
-            cy.animate({
-                pan: {
-                    x: cy.width() / 2 - nodePos.x * zoom,
-                    y: cy.height() / 2 - nodePos.y * zoom,
-                },
-                zoom: zoom,
-            }, {
-                duration: 400,
-                easing: "ease-in-out",
-            });
-        }
-    }, []);
-
-    return { cyRef, fitGraph, runLayout, zoomIn, zoomOut, centerOn };
+  return { cyRef, fitGraph, runLayout, zoomIn, zoomOut, centerOn };
 }

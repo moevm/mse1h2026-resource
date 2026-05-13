@@ -63,3 +63,33 @@ class ImpactRequest(BaseModel):
     node_id: str
     depth: int = Field(3, ge=1, le=6)
     direction: str = Field("downstream", pattern="^(upstream|downstream|both)$")
+
+
+class TimelineRangeResponse(BaseModel):
+    min_time: Optional[str] = None
+    max_time: Optional[str] = None
+    total_nodes: int = 0
+    total_edges: int = 0
+
+
+class TimelineEventBucket(BaseModel):
+    timestamp: str
+    nodes_added: int = 0
+    edges_added: int = 0
+    node_types: Dict[str, int] = Field(default_factory=dict)
+    running_total_nodes: int = 0
+    running_total_edges: int = 0
+
+
+class TimelineEventsResponse(BaseModel):
+    events: List[TimelineEventBucket]
+    min_time: Optional[str] = None
+    max_time: Optional[str] = None
+
+
+class SnapshotStatsResponse(BaseModel):
+    at_time: str
+    total_nodes: int = 0
+    total_edges: int = 0
+    nodes_by_type: Dict[str, int] = Field(default_factory=dict)
+    edges_by_type: Dict[str, int] = Field(default_factory=dict)
