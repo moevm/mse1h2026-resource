@@ -102,6 +102,7 @@ volumes:
 
 networks:
   edge_net:
+    name: resource-edge-net
     driver: bridge
   data_net:
     driver: bridge

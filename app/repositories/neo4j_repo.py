@@ -15,6 +15,8 @@ _NODE_META_KEYS = {"id", "type", "name", "description", "tags",
 _EDGE_META_KEYS = {"source_id", "target_id", "type",
                    "first_seen", "last_seen", "weight", "status"}
 
+_EDGE_LOAD_PROPS = {"call_count", "error_count", "total_duration_ns", "last_call_at"}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -106,33 +108,65 @@ def _upsert_nodes_tx(tx: ManagedTransaction, nodes: List[Dict], source: str, now
     return count
 
 
-def upsert_edges(edges: List[Dict[str, Any]], source: str) -> int:
+def upsert_edges(
+    edges: List[Dict[str, Any]],
+    source: str,
+    trace_metrics: Optional[Dict[str, Any]] = None,
+) -> int:
+    """Upsert edges. If ``trace_metrics`` is provided, every edge accumulates
+    one span-call into its ``call_count`` / ``error_count`` / ``total_duration_ns``
+    properties. Expected keys: ``is_error: bool``, ``duration_ns: int``.
+    """
     now = _now_iso()
     with neo4j_driver.session() as session:
-        count = session.execute_write(_upsert_edges_tx, edges, source, now)
+        count = session.execute_write(_upsert_edges_tx, edges, source, now, trace_metrics)
     return count
 
 
-def _upsert_edges_tx(tx: ManagedTransaction, edges: List[Dict], source: str, now: str) -> int:
+def _upsert_edges_tx(
+    tx: ManagedTransaction,
+    edges: List[Dict],
+    source: str,
+    now: str,
+    trace_metrics: Optional[Dict[str, Any]] = None,
+) -> int:
     count = 0
+    has_trace = trace_metrics is not None
+    is_error = bool(trace_metrics.get("is_error")) if has_trace else False
+    duration_ns = int(trace_metrics.get("duration_ns") or 0) if has_trace else 0
+
     for raw in edges:
         data = _strip_none(raw)
         source_id = data["source_id"]
         target_id = data["target_id"]
         edge_type = data["type"].upper()
 
-        props = _flatten_values({k: v for k, v in data.items() if k not in _EDGE_META_KEYS})
+        # Strip aggregate-managed props so a mapping cannot overwrite counters.
+        props = _flatten_values({
+            k: v for k, v in data.items()
+            if k not in _EDGE_META_KEYS and k not in _EDGE_LOAD_PROPS
+        })
+
+        trace_clause = ""
+        if has_trace:
+            trace_clause = (
+                ", rel.call_count = coalesce(rel.call_count, 0) + 1"
+                ", rel.error_count = coalesce(rel.error_count, 0) + $err_inc"
+                ", rel.total_duration_ns = coalesce(rel.total_duration_ns, 0) + $dur_ns"
+                ", rel.last_call_at = $now"
+            )
 
         query = (
             "MATCH (a:Resource {external_id: $source_id}) "
             "MATCH (b:Resource {external_id: $target_id}) "
             f"MERGE (a)-[rel:{edge_type}]->(b) "
-            "ON CREATE SET rel.first_seen = $now "
+            "ON CREATE SET rel.first_seen = $now, "
+            "    rel.call_count = 0, rel.error_count = 0, rel.total_duration_ns = 0 "
             "SET rel.last_seen = $now, "
             "    rel.status = $status, "
             "    rel.weight = $weight, "
             "    rel.source = $source, "
-            "    rel += $props "
+            f"    rel += $props{trace_clause} "
             "RETURN rel"
         )
 
@@ -145,6 +179,9 @@ def _upsert_edges_tx(tx: ManagedTransaction, edges: List[Dict], source: str, now
             "now": now,
             "props": props,
         }
+        if has_trace:
+            params["err_inc"] = 1 if is_error else 0
+            params["dur_ns"] = duration_ns
 
         try:
             tx.run(query, **params)

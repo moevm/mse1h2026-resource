@@ -1,15 +1,14 @@
 FROM python:3.12-slim
 
 WORKDIR /app
-COPY docker_watcher.py .
-COPY register.py .
+COPY tempo_watcher.py register.py ./
 
-RUN pip install --no-cache-dir fastapi uvicorn requests opentelemetry-proto \
+RUN pip install --no-cache-dir fastapi uvicorn requests \
     && adduser --disabled-password --gecos "" appuser \
     && mkdir -p /data \
     && chown -R appuser:appuser /app /data
 USER appuser
 VOLUME ["/data"]
 
-EXPOSE 8090
-CMD ["python", "docker_watcher.py"]
+EXPOSE 8091
+CMD ["python", "tempo_watcher.py"]

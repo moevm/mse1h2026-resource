@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+export type EdgeDisplayMode = 'topology' | 'load';
+
 interface GraphUiState {
   selectedNodeId: string | null;
   hoveredNodeId: string | null;
@@ -11,6 +13,8 @@ interface GraphUiState {
   selectedAppId: string | null;
   backendStatus: 'connected' | 'disconnected' | 'checking';
   nodePositions: Record<string, { x: number; y: number }>;
+  edgeDisplayMode: EdgeDisplayMode;
+  setEdgeDisplayMode: (m: EdgeDisplayMode) => void;
 
   selectNode: (id: string | null) => void;
   hoverNode: (id: string | null) => void;
@@ -38,6 +42,7 @@ const initialState = {
   selectedAppId: null as string | null,
   backendStatus: 'checking' as const,
   nodePositions: {} as Record<string, { x: number; y: number }>,
+  edgeDisplayMode: 'topology' as EdgeDisplayMode,
 };
 
 export const useGraphUiStore = create<GraphUiState>((set) => ({
@@ -59,5 +64,6 @@ export const useGraphUiStore = create<GraphUiState>((set) => ({
   setBackendStatus: (s) => set({ backendStatus: s }),
   setNodePositions: (positions) => set({ nodePositions: positions }),
   clearNodePositions: () => set({ nodePositions: {} }),
+  setEdgeDisplayMode: (m) => set({ edgeDisplayMode: m }),
   reset: () => set(initialState),
 }));

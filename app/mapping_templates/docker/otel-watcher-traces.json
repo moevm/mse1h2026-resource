@@ -50,7 +50,9 @@
       "id": "service-calls-peer",
       "source_path": "peer_service",
       "target_field": "calls_services",
-      "target_node_type": "Service"
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "None if (source_data.get('db_system') or source_data.get('db_name') or source_data.get('cache_name') or source_data.get('messaging_destination')) else value" }
     },
     {
       "id": "service-reads-db",
@@ -260,7 +262,9 @@
       "id": "endpoint-calls",
       "source_path": "net_peer_name",
       "target_field": "calls_endpoints",
-      "target_node_type": "Endpoint"
+      "target_node_type": "Endpoint",
+      "transform_type": "expression",
+      "transform_config": { "expression": "None if (source_data.get('db_system') or source_data.get('db_name') or source_data.get('cache_name') or source_data.get('messaging_destination')) else value" }
     },
     {
       "id": "database-id",

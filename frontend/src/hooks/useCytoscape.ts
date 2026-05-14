@@ -32,6 +32,7 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
   const hiddenEdgeTypes = useGraphFilterStore((s) => s.hiddenEdgeTypes);
   const filterMode = useGraphFilterStore((s) => s.filterMode);
   const searchQuery = useGraphFilterStore((s) => s.searchQuery);
+  const edgeDisplayMode = useGraphUiStore((s) => s.edgeDisplayMode);
 
   const selectedNodeId = useGraphUiStore((s) => s.selectedNodeId);
   const highlightedNodeIds = useGraphUiStore((s) => s.highlightedNodeIds);
@@ -96,7 +97,7 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
     const cy = cytoscape({
       container,
       elements: [],
-      style: buildCytoscapeStyles(hiddenNodeTypesRef.current, hiddenEdgeTypesRef.current, filterModeRef.current),
+      style: buildCytoscapeStyles(hiddenNodeTypesRef.current, hiddenEdgeTypesRef.current, filterModeRef.current, edgeDisplayMode),
       layout: { name: 'preset' },
       minZoom: 0.05,
       maxZoom: 6,
@@ -185,9 +186,34 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
     const cy = cyRef.current;
     if (!isAlive(cy)) return;
 
-    const style = buildCytoscapeStyles(hiddenNodeTypes, hiddenEdgeTypes, filterMode);
+    const style = buildCytoscapeStyles(hiddenNodeTypes, hiddenEdgeTypes, filterMode, edgeDisplayMode);
     cy.style(style);
-  }, [hiddenNodeTypes, hiddenEdgeTypes, filterMode, cyGen]);
+  }, [hiddenNodeTypes, hiddenEdgeTypes, filterMode, edgeDisplayMode, cyGen]);
+
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+
+    let maxCalls = 0;
+    cy.edges().forEach((e) => {
+      const c = Number(e.data('call_count') ?? 0);
+      if (c > maxCalls) maxCalls = c;
+    });
+
+    cy.batch(() => {
+      cy.edges().forEach((e) => {
+        const calls = Number(e.data('call_count') ?? 0);
+        const errs = Number(e.data('error_count') ?? 0);
+        if (calls > 0) {
+          e.data('load_norm', maxCalls > 0 ? calls / maxCalls : 0);
+          e.data('error_rate', calls > 0 ? errs / calls : 0);
+        } else {
+          e.removeData('load_norm');
+          e.removeData('error_rate');
+        }
+      });
+    });
+  }, [edges, edgeDisplayMode, cyGen]);
 
   useEffect(() => {
     const cy = cyRef.current;

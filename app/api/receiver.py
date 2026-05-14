@@ -17,6 +17,66 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 
+def _extract_trace_metrics(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    if not isinstance(payload, dict):
+        return None
+    is_span = payload.get("kind") == "span" or payload.get("trace_id") is not None
+    if not is_span:
+        return None
+
+    status_code = payload.get("http_status_code")
+    is_error = False
+    try:
+        if status_code is not None and int(status_code) >= 500:
+            is_error = True
+    except (TypeError, ValueError):
+        pass
+
+    duration_ns = 0
+    start = payload.get("start_time")
+    end = payload.get("end_time")
+    try:
+        if start is not None and end is not None:
+            duration_ns = max(0, int(end) - int(start))
+    except (TypeError, ValueError):
+        duration_ns = 0
+
+    return {"is_error": is_error, "duration_ns": duration_ns}
+
+
+def _trace_caller_edge(
+    payload: Dict[str, Any],
+) -> Optional[tuple[Dict[str, Any], Dict[str, Any]]]:
+    """If the span chunk has a ``caller_service`` (set by tempo-watcher from
+    the actual trace tree), return ``(caller_node, edge)`` so the receiver can
+    upsert the upstream Service node and the authoritative caller→callee edge.
+
+    Direction matters: the edge goes FROM caller_service TO service_name,
+    which is the opposite of what the peer.service-based mapping rule produces
+    for SERVER spans. Trace-derived edges should be preferred since they come
+    from the real parent chain, not from an attribute that may not be set.
+    """
+    if not isinstance(payload, dict):
+        return None
+    caller = payload.get("caller_service")
+    callee = payload.get("service_name")
+    if not caller or not callee or caller == callee:
+        return None
+
+    caller_node = {
+        "id": f"urn:service:{caller}",
+        "type": "Service",
+        "name": caller,
+        "status": "active",
+    }
+    edge = {
+        "source_id": f"urn:service:{caller}",
+        "target_id": f"urn:service:{callee}",
+        "type": "calls",
+    }
+    return caller_node, edge
+
+
 @router.post(
     "/raw",
     summary="Receive raw telemetry data",
@@ -66,6 +126,17 @@ async def receive_raw_data(
 
             nodes, edges, unresolved = mapper_service.map_chunk(temp_chunk, mapping)
 
+            # Trace-aware enrichment: when the chunk carries caller_service
+            # (set by tempo-watcher), make sure the upstream Service node and
+            # its calls→callee edge are produced regardless of what the
+            # template's peer.service rules infer. This is the authoritative
+            # signal from the real trace tree.
+            caller_extra = _trace_caller_edge(payload)
+            if caller_extra:
+                caller_node, caller_edge = caller_extra
+                nodes.append(caller_node)
+                edges.append(caller_edge)
+
             if nodes:
                 upsert_nodes(nodes, source=agent_name)
                 nodes_created = len(nodes)
@@ -76,7 +147,8 @@ async def receive_raw_data(
                 unresolved.extend(new_unresolved)
 
             if edges:
-                upsert_edges(edges, source=agent_name)
+                trace_metrics = _extract_trace_metrics(payload)
+                upsert_edges(edges, source=agent_name, trace_metrics=trace_metrics)
                 edges_created = len(edges)
 
             if not nodes and not edges:

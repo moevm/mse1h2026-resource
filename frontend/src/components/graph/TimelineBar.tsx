@@ -7,8 +7,6 @@ import { useCyContext } from '../../context/CytoscapeContext';
 
 const REFRESH_RANGE_MS = 30_000;
 const REFRESH_EVENTS_MS = 15_000;
-const BUCKET_SECONDS = 15;
-const DEBOUNCE_MS = 300;
 
 const SPEED_OPTIONS: PlaybackSpeed[] = [1, 2, 5, 10];
 
@@ -30,6 +28,27 @@ const NODE_TYPE_COLORS: Record<string, string> = {
   Node: '#fbbf24',
 };
 
+interface Slot {
+  index: number;
+  startMs: number;
+  endMs: number;
+  count: number;
+  nodesAdded: number;
+  edgesAdded: number;
+  topType: string | null;
+  events: { timestamp: string; nodes: number; edges: number }[];
+}
+
+/**
+ * Rolling-window timeline. The view is a fixed-length strip of N slots
+ * (configurable). Each slot represents `chunkBucketSeconds` of real time.
+ * The right edge tracks "now"; as time advances, the oldest slot falls off
+ * the left. Events are mapped into slot indexes purely by their timestamp,
+ * so layout is deterministic and never reflows when new data arrives.
+ *
+ * Clicking or dragging snaps to slot boundaries. Arrow keys step between
+ * slots that contain at least one event; Space toggles playback.
+ */
 export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   const nodes = useGraphDataStore((s) => s.nodes);
   const edges = useGraphDataStore((s) => s.edges);
@@ -37,102 +56,139 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   const { loadFullGraph } = useGraph();
   const { fitGraph } = useCyContext();
 
-  const range = useTimelineStore((s) => s.range);
   const events = useTimelineStore((s) => s.events);
   const currentTime = useTimelineStore((s) => s.currentTime);
   const isPlaying = useTimelineStore((s) => s.isPlaying);
   const playbackSpeed = useTimelineStore((s) => s.playbackSpeed);
-  const rangeLoading = useTimelineStore((s) => s.rangeLoading);
+  const eventsLoading = useTimelineStore((s) => s.eventsLoading);
   const fetchRange = useTimelineStore((s) => s.fetchRange);
   const fetchEvents = useTimelineStore((s) => s.fetchEvents);
   const goLive = useTimelineStore((s) => s.goLive);
   const setPlaybackSpeed = useTimelineStore((s) => s.setPlaybackSpeed);
+  const chunkCount = useTimelineStore((s) => s.chunkCount);
+  const chunkBucketSeconds = useTimelineStore((s) => s.chunkBucketSeconds);
+  const windowStart = useTimelineStore((s) => s.windowStart);
+  const setChunkCount = useTimelineStore((s) => s.setChunkCount);
+  const setChunkBucketSeconds = useTimelineStore((s) => s.setChunkBucketSeconds);
 
-  const [trackWidth, setTrackWidth] = useState(0);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stripRef = useRef<HTMLDivElement>(null);
   const playbackRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const playbackIdxRef = useRef(0);
+  const [stripWidth, setStripWidth] = useState(0);
+  const [chunkCountInput, setChunkCountInput] = useState(String(chunkCount));
+  const [bucketInput, setBucketInput] = useState(String(chunkBucketSeconds));
 
-  const nodeTypes = useMemo(() => new Set(nodes.map((n) => n.type)).size, [nodes]);
-  const edgeTypes = useMemo(() => new Set(edges.map((e) => e.type)).size, [edges]);
-  const isLive = currentTime === null;
+  // Sync input fields when the store changes (e.g., reset).
+  useEffect(() => setChunkCountInput(String(chunkCount)), [chunkCount]);
+  useEffect(() => setBucketInput(String(chunkBucketSeconds)), [chunkBucketSeconds]);
 
-  // Fetch range periodically
+  // Initial + periodic fetch. fetchEvents re-anchors windowEnd to "now".
   useEffect(() => {
     void fetchRange();
     const id = setInterval(() => void fetchRange(), REFRESH_RANGE_MS);
     return () => clearInterval(id);
   }, [fetchRange]);
 
-  // Fetch events when range appears
   useEffect(() => {
-    if (!range?.min_time) return;
-    void fetchEvents(BUCKET_SECONDS);
-    const id = setInterval(() => void fetchEvents(BUCKET_SECONDS), REFRESH_EVENTS_MS);
+    void fetchEvents();
+    const id = setInterval(() => void fetchEvents(), REFRESH_EVENTS_MS);
     return () => clearInterval(id);
-  }, [range?.min_time, fetchEvents]);
+  }, [fetchEvents, chunkCount, chunkBucketSeconds]);
 
-  // Observe track width
+  // Track strip width for cursor positioning.
   useEffect(() => {
-    const el = trackRef.current;
+    const el = stripRef.current;
     if (!el) return;
-    const observer = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        setTrackWidth(entry.contentRect.width);
-      }
+    const obs = new ResizeObserver((entries) => {
+      for (const entry of entries) setStripWidth(entry.contentRect.width);
     });
-    observer.observe(el);
-    // Also set initial width
-    setTrackWidth(el.clientWidth);
-    return () => observer.disconnect();
-  }, [range, events]);
+    obs.observe(el);
+    setStripWidth(el.clientWidth);
+    return () => obs.disconnect();
+  }, []);
 
-  const timeRange = useMemo(() => {
-    if (!range?.min_time || !range?.max_time) return null;
-    return {
-      min: new Date(range.min_time).getTime(),
-      max: new Date(range.max_time).getTime(),
-    };
-  }, [range]);
+  // --- Slot derivation ---
+  // Window is left-anchored: windowStart comes from the store (bucket-aligned
+  // to the oldest visible event). windowEnd is derived. The first event ever
+  // received lands at slot 0; later events fill slots to the right.
+  const bucketMs = chunkBucketSeconds * 1000;
+  const windowEnd = windowStart + chunkCount * bucketMs;
 
-  const timeToX = useCallback(
+  const slots = useMemo<Slot[]>(() => {
+    const out: Slot[] = Array.from({ length: chunkCount }, (_, i) => ({
+      index: i,
+      startMs: windowStart + i * bucketMs,
+      endMs: windowStart + (i + 1) * bucketMs,
+      count: 0,
+      nodesAdded: 0,
+      edgesAdded: 0,
+      topType: null,
+      events: [],
+    }));
+
+    for (const ev of events) {
+      const ts = new Date(ev.timestamp).getTime();
+      if (ts < windowStart || ts >= windowEnd) continue;
+      const idx = Math.min(chunkCount - 1, Math.floor((ts - windowStart) / bucketMs));
+      const slot = out[idx];
+      slot.count += ev.nodes_added + ev.edges_added;
+      slot.nodesAdded += ev.nodes_added;
+      slot.edgesAdded += ev.edges_added;
+      slot.events.push({
+        timestamp: ev.timestamp,
+        nodes: ev.nodes_added,
+        edges: ev.edges_added,
+      });
+      if (!slot.topType) {
+        const topEntry = Object.entries(ev.node_types).sort((a, b) => b[1] - a[1])[0];
+        if (topEntry) slot.topType = topEntry[0];
+      }
+    }
+    return out;
+  }, [events, chunkCount, bucketMs, windowStart, windowEnd]);
+
+  const maxSlotCount = useMemo(
+    () => Math.max(1, ...slots.map((s) => s.count)),
+    [slots],
+  );
+
+  const nonEmptySlots = useMemo(
+    () => slots.filter((s) => s.count > 0),
+    [slots],
+  );
+
+  // Map a time-of-cursor to a slot index. -1 means out of window.
+  const tsToSlotIdx = useCallback(
     (ts: number): number => {
-      if (!timeRange || timeRange.max === timeRange.min || trackWidth === 0) return 0;
-      return ((ts - timeRange.min) / (timeRange.max - timeRange.min)) * trackWidth;
+      if (ts < windowStart || ts >= windowEnd) return -1;
+      return Math.min(chunkCount - 1, Math.floor((ts - windowStart) / bucketMs));
     },
-    [timeRange, trackWidth],
+    [windowStart, windowEnd, chunkCount, bucketMs],
   );
 
-  const xToTime = useCallback(
-    (x: number): number => {
-      if (!timeRange || trackWidth === 0) return timeRange?.min ?? Date.now();
-      return timeRange.min + (x / trackWidth) * (timeRange.max - timeRange.min);
-    },
-    [timeRange, trackWidth],
-  );
+  const slotWidth = stripWidth / chunkCount;
 
-  // Load graph at specific time (debounced for drag, immediate for click)
-  const loadAtTimeImmediate = useCallback(
-    (iso: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = null;
+  // --- Stats ---
+  const nodeTypes = useMemo(() => new Set(nodes.map((n) => n.type)).size, [nodes]);
+  const edgeTypes = useMemo(() => new Set(edges.map((e) => e.type)).size, [edges]);
+  const windowTotal = useMemo(
+    () => slots.reduce((a, s) => a + s.count, 0),
+    [slots],
+  );
+  const isLive = currentTime === null;
+
+  // --- Graph loading ---
+  const loadAtSlotStart = useCallback(
+    (slot: Slot) => {
+      // Use slot's start as the "as_of" so the graph reflects state at that
+      // chunk's beginning. Pick the first event timestamp inside the slot if
+      // one exists, else the slot start itself.
+      const iso = slot.events.length > 0
+        ? slot.events[0].timestamp
+        : new Date(slot.startMs).toISOString();
+      useTimelineStore.setState({ currentTime: iso });
       void loadFullGraph(limit, selectedAppId ?? undefined, iso).then(() => {
         try { fitGraph(); } catch { /* cy not ready */ }
       }).catch(() => {});
-    },
-    [limit, selectedAppId, loadFullGraph, fitGraph],
-  );
-
-  const loadAtTimeDebounced = useCallback(
-    (iso: string) => {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => {
-        debounceRef.current = null;
-        void loadFullGraph(limit, selectedAppId ?? undefined, iso).then(() => {
-          try { fitGraph(); } catch { /* cy not ready */ }
-        }).catch(() => {});
-      }, DEBOUNCE_MS);
     },
     [limit, selectedAppId, loadFullGraph, fitGraph],
   );
@@ -148,112 +204,104 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
 
   const startPlayback = useCallback(() => {
     stopPlayback();
-    const evts = useTimelineStore.getState().events;
-    if (evts.length === 0) return;
+    if (nonEmptySlots.length === 0) return;
 
     const ct = useTimelineStore.getState().currentTime;
-    let startIdx = 0;
-    if (ct) {
-      startIdx = evts.findIndex((e) => e.timestamp >= ct);
-      if (startIdx < 0) startIdx = 0;
-    }
-    playbackIdxRef.current = startIdx;
+    const startIdx = ct
+      ? Math.max(0, nonEmptySlots.findIndex((s) => s.events.some((e) => e.timestamp >= ct)))
+      : 0;
+    let cursor = startIdx;
 
     const speed = useTimelineStore.getState().playbackSpeed;
-    const intervals: Record<PlaybackSpeed, number> = { 1: 2000, 2: 1000, 5: 500, 10: 300 };
-
+    const intervals: Record<PlaybackSpeed, number> = { 1: 1500, 2: 800, 5: 400, 10: 250 };
     useTimelineStore.setState({ isPlaying: true });
 
     playbackRef.current = setInterval(() => {
-      const idx = playbackIdxRef.current;
-      const currentEvts = useTimelineStore.getState().events;
-      if (idx >= currentEvts.length) {
+      if (cursor >= nonEmptySlots.length) {
         stopPlayback();
         return;
       }
-      const ev = currentEvts[idx];
-      useTimelineStore.setState({ currentTime: ev.timestamp });
-      loadAtTimeImmediate(ev.timestamp);
-      playbackIdxRef.current = idx + 1;
+      loadAtSlotStart(nonEmptySlots[cursor]);
+      cursor += 1;
     }, intervals[speed]);
-  }, [stopPlayback, loadAtTimeImmediate]);
+  }, [stopPlayback, nonEmptySlots, loadAtSlotStart]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (playbackRef.current) clearInterval(playbackRef.current);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
+  useEffect(() => () => {
+    if (playbackRef.current) clearInterval(playbackRef.current);
   }, []);
 
   const handlePlayPause = useCallback(() => {
-    if (isPlaying) {
-      stopPlayback();
-    } else {
-      startPlayback();
-    }
+    if (isPlaying) stopPlayback();
+    else startPlayback();
   }, [isPlaying, startPlayback, stopPlayback]);
 
   const handleGoLive = useCallback(() => {
     stopPlayback();
     goLive();
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = null;
     void loadFullGraph(limit, selectedAppId ?? undefined).then(() => {
       try { fitGraph(); } catch { /* cy not ready */ }
     }).catch(() => {});
   }, [stopPlayback, goLive, limit, selectedAppId, loadFullGraph, fitGraph]);
 
-  const handleStepForward = useCallback(() => {
-    stopPlayback();
-    const evts = useTimelineStore.getState().events;
-    if (evts.length === 0) return;
-    const ct = useTimelineStore.getState().currentTime;
-    let idx = ct ? evts.findIndex((e) => e.timestamp > ct) : 0;
-    if (idx < 0) idx = evts.length - 1;
-    const nextTime = evts[idx].timestamp;
-    useTimelineStore.setState({ currentTime: nextTime });
-    loadAtTimeImmediate(nextTime);
-  }, [stopPlayback, loadAtTimeImmediate]);
+  const handleStep = useCallback(
+    (dir: 1 | -1) => {
+      stopPlayback();
+      if (nonEmptySlots.length === 0) return;
+      const ct = useTimelineStore.getState().currentTime;
+      const ctMs = ct ? new Date(ct).getTime() : Number.POSITIVE_INFINITY;
 
-  const handleStepBackward = useCallback(() => {
-    stopPlayback();
-    const evts = useTimelineStore.getState().events;
-    if (evts.length === 0) return;
-    const ct = useTimelineStore.getState().currentTime;
-    if (!ct) {
-      // If live, jump to last event
-      const lastTime = evts[evts.length - 1].timestamp;
-      useTimelineStore.setState({ currentTime: lastTime });
-      loadAtTimeImmediate(lastTime);
-      return;
-    }
-    const idx = evts.findIndex((e) => e.timestamp >= ct);
-    const prevIdx = Math.max(0, idx - 1);
-    const prevTime = evts[prevIdx].timestamp;
-    useTimelineStore.setState({ currentTime: prevTime });
-    loadAtTimeImmediate(prevTime);
-  }, [stopPlayback, loadAtTimeImmediate]);
+      // Locate the non-empty slot that currently holds ctMs. A slot owns
+      // [startMs, endMs); if ctMs is past every slot (e.g. Live), curIdx
+      // stays -1 and we fall back to the nearest neighbour by position.
+      const curIdx = nonEmptySlots.findIndex(
+        (s) => s.startMs <= ctMs && ctMs < s.endMs,
+      );
 
-  // --- Track interaction ---
-  const handleTrackMouseDown = useCallback(
+      if (dir > 0) {
+        if (curIdx >= 0 && curIdx < nonEmptySlots.length - 1) {
+          loadAtSlotStart(nonEmptySlots[curIdx + 1]);
+        } else if (curIdx === -1) {
+          // ctMs precedes everything → first slot.
+          const first = nonEmptySlots.find((s) => s.startMs > ctMs);
+          if (first) loadAtSlotStart(first);
+          else handleGoLive();
+        } else {
+          handleGoLive();
+        }
+      } else {
+        if (curIdx > 0) {
+          loadAtSlotStart(nonEmptySlots[curIdx - 1]);
+        } else if (curIdx === -1) {
+          // ctMs is past the last slot (or Live) → jump to the latest one.
+          const prev = [...nonEmptySlots].reverse().find((s) => s.endMs <= ctMs);
+          if (prev) loadAtSlotStart(prev);
+          else loadAtSlotStart(nonEmptySlots[nonEmptySlots.length - 1]);
+        }
+        // curIdx === 0: already at oldest, do nothing.
+      }
+    },
+    [nonEmptySlots, stopPlayback, loadAtSlotStart, handleGoLive],
+  );
+
+  // --- Click / drag scrubbing (snaps to slot) ---
+  const handleStripMouseDown = useCallback(
     (e: React.MouseEvent) => {
-      if (!timeRange || trackWidth === 0) return;
-      const el = trackRef.current;
-      if (!el) return;
+      const el = stripRef.current;
+      if (!el || slotWidth === 0) return;
       const rect = el.getBoundingClientRect();
-
       stopPlayback();
 
+      let lastSlotIdx = -1;
       const scrubTo = (clientX: number) => {
-        const nx = clientX - rect.left;
-        const clamped = Math.max(0, Math.min(el.clientWidth, nx));
-        const ts = xToTime(clamped);
-        const iso = new Date(ts).toISOString();
-        useTimelineStore.setState({ currentTime: iso });
-        loadAtTimeDebounced(iso);
+        const nx = Math.max(0, Math.min(el.clientWidth - 1, clientX - rect.left));
+        const idx = Math.min(chunkCount - 1, Math.floor(nx / slotWidth));
+        if (idx === lastSlotIdx) return;
+        lastSlotIdx = idx;
+        const slot = slots[idx];
+        // Only snap to slots that actually have data; skip empty.
+        if (slot.count === 0) return;
+        loadAtSlotStart(slot);
       };
-
       scrubTo(e.clientX);
 
       const onMove = (ev: MouseEvent) => {
@@ -267,56 +315,70 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     },
-    [timeRange, trackWidth, stopPlayback, xToTime, loadAtTimeDebounced],
+    [stopPlayback, slots, chunkCount, slotWidth, loadAtSlotStart],
   );
 
-  // --- Computed values ---
-  const currentX = useMemo(() => {
-    if (isLive || !currentTime || !timeRange || trackWidth === 0) return trackWidth;
-    return timeToX(new Date(currentTime).getTime());
-  }, [isLive, currentTime, trackWidth, timeToX, timeRange]);
+  // --- Keyboard navigation ---
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      const t = ev.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (ev.key === 'ArrowLeft') { ev.preventDefault(); handleStep(-1); }
+      else if (ev.key === 'ArrowRight') { ev.preventDefault(); handleStep(1); }
+      else if (ev.key === 'Home') {
+        ev.preventDefault();
+        stopPlayback();
+        if (nonEmptySlots.length > 0) loadAtSlotStart(nonEmptySlots[0]);
+      }
+      else if (ev.key === 'End') { ev.preventDefault(); handleGoLive(); }
+      else if (ev.key === ' ') { ev.preventDefault(); handlePlayPause(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [handleStep, handleGoLive, handlePlayPause, stopPlayback, loadAtSlotStart, nonEmptySlots]);
 
-  const maxEventCount = useMemo(
-    () => Math.max(1, ...events.map((e) => e.nodes_added + e.edges_added)),
-    [events],
-  );
+  // --- Cursor position ---
+  const currentSlotIdx = useMemo(() => {
+    if (isLive || !currentTime) return -1;
+    return tsToSlotIdx(new Date(currentTime).getTime());
+  }, [isLive, currentTime, tsToSlotIdx]);
 
-  const tickMarks = useMemo(() => {
-    if (!timeRange || timeRange.max === timeRange.min || trackWidth < 50) return [];
-    const span = timeRange.max - timeRange.min;
-    const targetTicks = Math.max(3, Math.floor(trackWidth / 120));
-    const interval = span / targetTicks;
-    const marks: { x: number; label: string }[] = [];
-    for (let i = 0; i <= targetTicks; i++) {
-      const ts = timeRange.min + interval * i;
-      marks.push({
-        x: timeToX(ts),
-        label: new Date(ts).toLocaleTimeString('ru-RU', {
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit',
-        }),
-      });
-    }
-    return marks;
-  }, [timeRange, trackWidth, timeToX]);
+  const formatTimeShort = (ms: number) =>
+    new Date(ms).toLocaleTimeString('ru-RU', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+    });
 
-  const hasData = range?.min_time != null && range?.max_time != null;
-  const hasEvents = events.length > 0;
+  const commitChunkCount = () => {
+    const n = parseInt(chunkCountInput, 10);
+    if (Number.isFinite(n) && n >= 2 && n <= 120) setChunkCount(n);
+    else setChunkCountInput(String(chunkCount));
+  };
+  const commitBucket = () => {
+    const n = parseInt(bucketInput, 10);
+    if (Number.isFinite(n) && n >= 1 && n <= 3600) setChunkBucketSeconds(n);
+    else setBucketInput(String(chunkBucketSeconds));
+  };
 
   return (
-    <div className="shrink-0 border-t border-slate-800/70 bg-slate-950/90">
-      {/* Stats row */}
+    <div className="shrink-0 border-t border-slate-800/70 bg-slate-950/95">
+      {/* Top row: stats + window summary */}
       <div className="flex h-7 items-center gap-3 px-4 text-[11px]">
         <Stat label="Nodes" value={nodes.length} />
-        <div className="h-3 w-px bg-slate-800" />
+        <Sep />
         <Stat label="Edges" value={edges.length} />
-        <div className="h-3 w-px bg-slate-800" />
+        <Sep />
         <Stat label="Node types" value={nodeTypes} />
-        <div className="h-3 w-px bg-slate-800" />
+        <Sep />
         <Stat label="Edge types" value={edgeTypes} />
-        {rangeLoading && (
-          <span className="ml-1 text-[10px] text-slate-500">Loading timeline...</span>
+        <Sep />
+        <span className="text-slate-500">
+          Window: <span className="font-mono text-slate-300">{chunkCount}×{chunkBucketSeconds}s</span>
+          <span className="ml-1 text-slate-600">({windowTotal} events)</span>
+        </span>
+        {eventsLoading && (
+          <span className="text-[10px] text-slate-500">Loading...</span>
         )}
         {isLive ? (
           <span className="ml-auto flex items-center gap-1.5 text-[10px] text-emerald-400">
@@ -326,12 +388,8 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         ) : currentTime ? (
           <span className="ml-auto font-mono text-[10px] text-slate-400">
             {new Date(currentTime).toLocaleString('ru-RU', {
-              day: '2-digit',
-              month: '2-digit',
-              year: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit',
+              day: '2-digit', month: '2-digit', year: '2-digit',
+              hour: '2-digit', minute: '2-digit', second: '2-digit',
             })}
           </span>
         ) : null}
@@ -339,21 +397,21 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
 
       {/* Controls row */}
       <div className="flex items-center gap-1.5 px-4 pb-1">
-        <CtrlBtn onClick={handleStepBackward} disabled={events.length === 0} title="Step back">
+        <CtrlBtn onClick={() => handleStep(-1)} disabled={nonEmptySlots.length === 0} title="Step back (←)">
           <SvgIcon d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z M8 6v12h-2V6z" />
         </CtrlBtn>
-        <CtrlBtn onClick={handlePlayPause} disabled={!hasData || !hasEvents} title={isPlaying ? 'Pause' : 'Play'}>
+        <CtrlBtn onClick={handlePlayPause} disabled={nonEmptySlots.length === 0} title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}>
           {isPlaying ? (
             <SvgIcon d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
           ) : (
             <SvgIcon d="M8 5v14l11-7z" />
           )}
         </CtrlBtn>
-        <CtrlBtn onClick={handleStepForward} disabled={events.length === 0} title="Step forward">
+        <CtrlBtn onClick={() => handleStep(1)} disabled={nonEmptySlots.length === 0} title="Step forward (→)">
           <SvgIcon d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z M16 6v12h2V6z" />
         </CtrlBtn>
 
-        <div className="mx-1 h-4 w-px bg-slate-800" />
+        <Sep />
 
         <div className="flex items-center gap-0.5 rounded-md bg-slate-900/80 p-0.5">
           {SPEED_OPTIONS.map((sp) => (
@@ -362,9 +420,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
               onClick={() => setPlaybackSpeed(sp)}
               className={[
                 'rounded px-1.5 py-0.5 text-[9px] font-semibold transition-colors',
-                playbackSpeed === sp
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-500 hover:text-slate-300',
+                playbackSpeed === sp ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300',
               ].join(' ')}
             >
               {sp}x
@@ -372,10 +428,40 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           ))}
         </div>
 
+        <Sep />
+
+        {/* Config inputs */}
+        <label className="flex items-center gap-1 text-[10px] text-slate-500">
+          chunks
+          <input
+            type="number"
+            min={2}
+            max={120}
+            value={chunkCountInput}
+            onChange={(e) => setChunkCountInput(e.target.value)}
+            onBlur={commitChunkCount}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            className="w-12 rounded bg-slate-900/80 px-1 py-0.5 text-center font-mono text-[10px] text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </label>
+        <label className="flex items-center gap-1 text-[10px] text-slate-500">
+          bucket(s)
+          <input
+            type="number"
+            min={1}
+            max={3600}
+            value={bucketInput}
+            onChange={(e) => setBucketInput(e.target.value)}
+            onBlur={commitBucket}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            className="w-14 rounded bg-slate-900/80 px-1 py-0.5 text-center font-mono text-[10px] text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
+          />
+        </label>
+
         {!isLive && (
           <button
             onClick={handleGoLive}
-            className="ml-1 flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-semibold text-emerald-400 transition-colors hover:bg-slate-800"
+            className="ml-auto flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/20"
           >
             <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
             Live
@@ -383,113 +469,109 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         )}
       </div>
 
-      {/* Track */}
+      {/* Strip: fixed slot grid */}
       <div className="px-4 pb-2">
-        {hasData && timeRange ? (
-          <div
-            ref={trackRef}
-            className="relative h-12 cursor-crosshair select-none overflow-hidden rounded-md bg-slate-900/60"
-            onMouseDown={handleTrackMouseDown}
-          >
-            {/* Filled area up to current time */}
-            {!isLive && currentTime && currentX > 0 && (
-              <div
-                className="pointer-events-none absolute top-0 h-full bg-blue-500/5"
-                style={{ left: 0, width: Math.min(currentX, trackWidth) }}
+        <div
+          ref={stripRef}
+          className="relative h-14 cursor-pointer select-none overflow-hidden rounded-md bg-slate-900/60"
+          onMouseDown={handleStripMouseDown}
+          title="Click or drag a chunk to jump. ← → step, Home first, End live, Space play."
+        >
+          {/* Grid background: subtle vertical dividers */}
+          <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
+            {Array.from({ length: chunkCount + 1 }).map((_, i) => (
+              <line
+                key={i}
+                x1={i * slotWidth}
+                x2={i * slotWidth}
+                y1={0}
+                y2={56}
+                stroke="#1e293b"
+                strokeWidth={1}
+                opacity={i % 5 === 0 ? 0.9 : 0.35}
               />
-            )}
+            ))}
 
-            {/* Event bars */}
-            <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
-              {events.map((ev, i) => {
-                const x = timeToX(new Date(ev.timestamp).getTime());
-                if (x < -5 || x > trackWidth + 5) return null;
-                const total = ev.nodes_added + ev.edges_added;
-                const barMaxH = 28;
-                const h = Math.max(3, (total / maxEventCount) * barMaxH);
-                const barW = Math.max(4, Math.min(8, trackWidth / Math.max(events.length, 1) - 2));
-                const topTypes = Object.entries(ev.node_types).sort((a, b) => b[1] - a[1]);
-                const color = topTypes.length > 0 ? (NODE_TYPE_COLORS[topTypes[0][0]] ?? '#3b82f6') : '#3b82f6';
-                return (
+            {/* Slot bars */}
+            {slots.map((slot) => {
+              const x = slot.index * slotWidth;
+              const barW = Math.max(2, slotWidth - 3);
+              const barMaxH = 36;
+              const h = slot.count > 0 ? Math.max(3, (slot.count / maxSlotCount) * barMaxH) : 0;
+              const color = slot.topType ? (NODE_TYPE_COLORS[slot.topType] ?? '#3b82f6') : '#475569';
+              const isActive = slot.index === currentSlotIdx;
+              const hasData = slot.count > 0;
+              return (
+                <g key={slot.index}>
+                  {/* Hover/click hit area covering the full slot column */}
                   <rect
-                    key={i}
-                    x={x - barW / 2}
-                    y={36 - h}
-                    width={barW}
-                    height={h}
-                    rx={1.5}
-                    fill={color}
-                    opacity={0.65}
+                    x={x}
+                    y={0}
+                    width={slotWidth}
+                    height={56}
+                    fill={isActive ? 'rgba(96,165,250,0.08)' : 'transparent'}
                   />
-                );
-              })}
-            </svg>
+                  {hasData && (
+                    <rect
+                      x={x + (slotWidth - barW) / 2}
+                      y={44 - h}
+                      width={barW}
+                      height={h}
+                      rx={1.5}
+                      fill={color}
+                      opacity={isActive ? 1 : 0.7}
+                      stroke={isActive ? '#60a5fa' : 'none'}
+                      strokeWidth={isActive ? 1.5 : 0}
+                    />
+                  )}
+                </g>
+              );
+            })}
+          </svg>
 
-            {/* Current time needle */}
-            {!isLive && currentTime && currentX > 0 && (
-              <div
-                className="pointer-events-none absolute top-0 h-full w-0.5 bg-blue-400"
-                style={{
-                  left: Math.max(0, Math.min(trackWidth, currentX)),
-                  boxShadow: '0 0 8px rgba(96,165,250,0.6)',
-                  zIndex: 10,
-                }}
-              >
-                <div className="absolute -top-0.5 left-1/2 h-3 w-3 -translate-x-1/2 rounded-full border-2 border-blue-400 bg-slate-900" />
-              </div>
-            )}
+          {/* Live indicator at right edge */}
+          {isLive && (
+            <div
+              className="pointer-events-none absolute top-0 h-full w-0.5 bg-emerald-400"
+              style={{ left: stripWidth - 1, boxShadow: '0 0 6px rgba(52,211,153,0.5)' }}
+            />
+          )}
 
-            {/* Live indicator at right edge */}
-            {isLive && (
-              <div
-                className="pointer-events-none absolute top-0 h-full w-0.5 bg-emerald-400"
-                style={{ left: trackWidth - 1, boxShadow: '0 0 6px rgba(52,211,153,0.5)' }}
-              />
-            )}
-
-            {/* Tick marks */}
-            <div className="absolute bottom-0 left-0 right-0 h-5">
-              {tickMarks.map((tick, i) => (
+          {/* Time axis labels (every 5th boundary or at edges) */}
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4">
+            {Array.from({ length: chunkCount + 1 }).map((_, i) => {
+              if (i !== 0 && i !== chunkCount && i % 5 !== 0) return null;
+              const ts = windowStart + i * bucketMs;
+              return (
                 <span
                   key={i}
-                  className="absolute text-[7px] text-slate-600"
-                  style={{ left: tick.x, transform: 'translateX(-50%)' }}
+                  className="absolute font-mono text-[8px] text-slate-500"
+                  style={{ left: i * slotWidth, transform: 'translateX(-50%)' }}
                 >
-                  {tick.label}
+                  {formatTimeShort(ts)}
                 </span>
-              ))}
-            </div>
+              );
+            })}
           </div>
-        ) : (
-          <div className="flex h-12 items-center justify-center rounded-md bg-slate-900/60 text-[11px] text-slate-600">
-            {rangeLoading ? 'Loading timeline...' : 'Waiting for data...'}
-          </div>
-        )}
+        </div>
 
-        {/* Date range labels */}
-        {hasData && timeRange && (
-          <div className="mt-0.5 flex justify-between text-[9px] text-slate-600">
-            <span>
-              {new Date(timeRange.min).toLocaleString('ru-RU', {
-                day: '2-digit',
-                month: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
+        {/* Hover info row */}
+        {currentSlotIdx >= 0 && slots[currentSlotIdx] && (
+          <div className="mt-1 flex items-center gap-3 text-[10px] text-slate-500">
+            <span className="font-mono text-slate-400">
+              {formatTimeShort(slots[currentSlotIdx].startMs)} – {formatTimeShort(slots[currentSlotIdx].endMs)}
             </span>
-            {hasEvents && (
-              <span className="text-slate-500">
-                {events.reduce((a, e) => a + e.nodes_added, 0)} nodes appeared in {events.length} events
+            <span>+{slots[currentSlotIdx].nodesAdded} nodes</span>
+            <span>+{slots[currentSlotIdx].edgesAdded} edges</span>
+            {slots[currentSlotIdx].topType && (
+              <span className="flex items-center gap-1">
+                <span
+                  className="inline-block h-1.5 w-1.5 rounded-full"
+                  style={{ backgroundColor: NODE_TYPE_COLORS[slots[currentSlotIdx].topType!] ?? '#3b82f6' }}
+                />
+                {slots[currentSlotIdx].topType}
               </span>
             )}
-            <span>
-              {new Date(timeRange.max).toLocaleString('ru-RU', {
-                day: '2-digit',
-                month: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </span>
           </div>
         )}
       </div>
@@ -504,6 +586,10 @@ function Stat({ label, value }: Readonly<{ label: string; value: number }>) {
       <span className="font-medium text-slate-300 tabular-nums">{value.toLocaleString()}</span>
     </span>
   );
+}
+
+function Sep() {
+  return <div className="h-3 w-px bg-slate-800" />;
 }
 
 function CtrlBtn({

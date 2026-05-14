@@ -255,18 +255,45 @@ services:
     volumes:
       - ./etc/pyroscope/pyroscope.yml:/etc/pyroscope.yml
 
+  tempo-watcher:
+    build:
+      context: ./tempo-watcher
+      dockerfile: Dockerfile
+    environment:
+      - RESOURCE_API_URL=http://resource-backend:8000
+      - TEMPO_URL=http://tempo:3200
+      - AGENT_NAME=tempo-watcher
+      - ADMIN_EMAIL=admin1@example.com
+      - ADMIN_PASSWORD=admin
+      - APP_NAME=monitoring-demo
+      - POLL_INTERVAL=15
+      - LAG_SECONDS=15
+      - MAX_TRACES=200
+      - AGENT_TOKEN_FILE=/data/agent.token
+      - LAST_END_FILE=/data/last_end
+    volumes:
+      - tempo-watcher-data:/data
+    depends_on:
+      - tempo
+    networks:
+      - default
+      - resource-edge-net
+
   otel-watcher:
     build:
       context: ./otel-watcher
       dockerfile: Dockerfile.docker
     environment:
-      - RESOURCE_API_URL=http://host.docker.internal:8000
+      - RESOURCE_API_URL=http://resource-backend:8000
       - AGENT_NAME=otel-watcher
       - ADMIN_EMAIL=admin1@example.com
       - ADMIN_PASSWORD=admin
       - APP_NAME=monitoring-demo
       - SCRAPE_TARGETS=fastapi-app:8000,flask-app:9464,otel-collector:8889,golang-app:8002,beyla:8999
       - SCRAPE_INTERVAL=30
+      - AGENT_TOKEN_FILE=/data/agent.token
+    volumes:
+      - otel-watcher-data:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -275,6 +302,9 @@ services:
       - flask-app
     ports:
       - "8090:8090"
+    networks:
+      - default
+      - resource-edge-net
 
   k8s-watcher:
     build:
@@ -325,3 +355,11 @@ volumes:
   alertmanager-data: {}
   tempo-data: {}
   prometheus-data: {}
+  otel-watcher-data: {}
+  tempo-watcher-data: {}
+
+networks:
+  default:
+  resource-edge-net:
+    external: true
+    name: resource-edge-net

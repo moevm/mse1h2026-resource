@@ -8,6 +8,7 @@ export function buildCytoscapeStyles(
   hiddenNodeTypes: Set<string>,
   hiddenEdgeTypes: Set<string>,
   filterMode: 'ghost' | 'exclude' = 'ghost',
+  edgeDisplayMode: 'topology' | 'load' = 'topology',
 ): Stylesheet[] {
   return [
     {
@@ -107,6 +108,8 @@ export function buildCytoscapeStyles(
     ...buildEdgeTypeStyles(hiddenEdgeTypes, filterMode),
 
     ...buildCallsEdgeMetricStyles(),
+
+    ...(edgeDisplayMode === 'load' ? buildEdgeLoadStyles() : []),
 
     {
       selector: 'edge:selected',
@@ -231,6 +234,51 @@ function buildEdgeTypeStyles(hiddenTypes: Set<string>, filterMode: 'ghost' | 'ex
       },
     };
   });
+}
+
+function buildEdgeLoadStyles(): Stylesheet[] {
+  return [
+    {
+      selector: 'edge',
+      style: {
+        width: 1,
+        opacity: 0.35,
+        'line-color': '#475569',
+        'target-arrow-color': '#475569',
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'edge[load_norm]',
+      style: {
+        width: 'mapData(load_norm, 0, 1, 1.5, 9)',
+        opacity: 0.85,
+        'line-color': '#3b82f6',
+        'target-arrow-color': '#3b82f6',
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'edge[error_rate > 0.01][error_rate <= 0.05]',
+      style: {
+        'line-color': '#f59e0b',
+        'target-arrow-color': '#f59e0b',
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'edge[error_rate > 0.05]',
+      style: {
+        'line-color': '#ef4444',
+        'target-arrow-color': '#ef4444',
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'edge[call_count]',
+      style: {
+        label: 'data(call_count)',
+        'font-size': '10px',
+        color: '#cbd5e1',
+      } as unknown as Record<string, string | number>,
+    },
+  ];
 }
 
 function buildCallsEdgeMetricStyles(): Stylesheet[] {

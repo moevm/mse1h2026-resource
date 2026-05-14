@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { CytoscapeProvider } from '../../context/CytoscapeContext';
-import { useGraphDataStore, useGraphFilterStore, useGraphUiStore } from '../../features/graph/store';
+import { useGraphDataStore, useGraphFilterStore, useGraphUiStore, useTimelineStore } from '../../features/graph/store';
 import { useApplications } from '../../hooks/useApplications';
 import { useGraph } from '../../hooks/useGraph';
 import { useLogStore } from '../../store/logStore';
@@ -107,7 +107,11 @@ export function GraphPage() {
           size="sm"
           icon={<IconRefresh className="h-3.5 w-3.5" />}
           onClick={() => {
-            void loadFullGraph(limitInput, selectedAppId ?? undefined);
+            // Respect the current timeline scrub position: if the user is on
+            // a past moment, reload at that moment, not Live. Otherwise null
+            // → no as_of → Live.
+            const currentTime = useTimelineStore.getState().currentTime;
+            void loadFullGraph(limitInput, selectedAppId ?? undefined, currentTime ?? undefined);
           }}
         >
           Reload

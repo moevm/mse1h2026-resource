@@ -29,8 +29,29 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "otel-watcher")
 SCRAPE_INTERVAL = int(os.environ.get("SCRAPE_INTERVAL", "30"))
 SCRAPE_TARGETS = os.environ.get("SCRAPE_TARGETS", "fastapi-app:8000,flask-app:9464,otel-collector:8889")
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN")
+AGENT_TOKEN_FILE = os.environ.get("AGENT_TOKEN_FILE", "/data/agent.token")
 
 app = FastAPI()
+
+
+def _load_cached_token() -> Optional[str]:
+    try:
+        with open(AGENT_TOKEN_FILE, "r", encoding="utf-8") as f:
+            tok = f.read().strip()
+            return tok or None
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
+
+
+def _save_cached_token(tok: str) -> None:
+    try:
+        d = os.path.dirname(AGENT_TOKEN_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(AGENT_TOKEN_FILE, "w", encoding="utf-8") as f:
+            f.write(tok)
+    except (PermissionError, OSError) as e:
+        log.warning("Could not persist AGENT_TOKEN to %s: %s", AGENT_TOKEN_FILE, e)
 
 
 class OTLPEncoder(json.JSONEncoder):
@@ -557,36 +578,62 @@ def push_infra_topology():
         log.error("Failed to push infra topology: %s", e)
 
 
-@app.on_event("startup")
-async def startup():
+def _registration_loop():
+    """Acquire AGENT_TOKEN with infinite retry, then bootstrap mappings and
+    background workers. Runs in a daemon thread so the OTLP receiver is
+    serving immediately and incoming traces are accepted (but dropped) until
+    the main API comes up and registration completes.
+    """
     global AGENT_TOKEN
+
+    # 1) Try cache first — survives restarts and avoids spawning a new agent
+    #    every time the container reboots.
     if not AGENT_TOKEN:
-        from register import register_agent
+        cached = _load_cached_token()
+        if cached:
+            AGENT_TOKEN = cached
+            log.info("Loaded AGENT_TOKEN from cache file %s", AGENT_TOKEN_FILE)
+
+    # 2) Register against the API with infinite retry.
+    while not AGENT_TOKEN:
         try:
-            AGENT_TOKEN = register_agent(AGENT_NAME, "watcher-otel-traces")
-            log.info("Auto-registered agent, token: %s...%s", AGENT_TOKEN[:8], AGENT_TOKEN[-4:])
+            from register import register_agent
+            tok = register_agent(AGENT_NAME, "watcher-otel-traces")
+            AGENT_TOKEN = tok
+            _save_cached_token(tok)
+            log.info("Auto-registered agent, token: %s...%s", tok[:8], tok[-4:])
         except Exception as e:
-            log.error("Auto-registration failed: %s", e)
-            return
-    else:
-        log.info("Using pre-set AGENT_TOKEN=%s...%s", AGENT_TOKEN[:8], AGENT_TOKEN[-4:])
+            log.warning("Registration attempt failed, retrying in 15s: %s", e)
+            time.sleep(15)
 
-    verify_agent_token()
+    # 3) Validate. If the cached token is stale (DB wipe etc.), purge and
+    #    loop back to step 2 to get a fresh one.
+    if not verify_agent_token():
+        log.warning("Stored AGENT_TOKEN is invalid — purging cache and re-registering")
+        try:
+            os.remove(AGENT_TOKEN_FILE)
+        except OSError:
+            pass
+        AGENT_TOKEN = None
+        return _registration_loop()
 
-    from register import setup_default_mappings
+    # 4) Activate default mappings + start background workers.
     try:
+        from register import setup_default_mappings
         setup_default_mappings()
     except Exception as e:
         log.warning("Could not activate default mappings: %s", e)
 
-    thread = threading.Thread(target=metrics_loop, daemon=True)
-    thread.start()
+    threading.Thread(target=metrics_loop, daemon=True).start()
+    threading.Thread(target=trigger_initial_traces, daemon=True).start()
+    threading.Thread(target=push_infra_topology, daemon=True).start()
 
-    trigger_thread = threading.Thread(target=trigger_initial_traces, daemon=True)
-    trigger_thread.start()
 
-    topo_thread = threading.Thread(target=push_infra_topology, daemon=True)
-    topo_thread.start()
+@app.on_event("startup")
+async def startup():
+    if AGENT_TOKEN:
+        log.info("Using pre-set AGENT_TOKEN=%s...%s", AGENT_TOKEN[:8], AGENT_TOKEN[-4:])
+    threading.Thread(target=_registration_loop, daemon=True).start()
 
 
 if __name__ == "__main__":

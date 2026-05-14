@@ -7,6 +7,8 @@ export function GraphControls() {
   const { fitGraph, runLayout, zoomIn, zoomOut, centerOn } = useCyContext();
   const selectedNodeId = useGraphUiStore((s) => s.selectedNodeId);
   const clearVisualFocus = useGraphUiStore((s) => s.clearVisualFocus);
+  const edgeDisplayMode = useGraphUiStore((s) => s.edgeDisplayMode);
+  const setEdgeDisplayMode = useGraphUiStore((s) => s.setEdgeDisplayMode);
   const nodes = useGraphDataStore((s) => s.nodes);
 
   const typeCounts = new Map<string, number>();
@@ -29,6 +31,31 @@ export function GraphControls() {
         <div className="mx-1 h-5 w-px bg-slate-700/60" />
         <Button variant="ghost" size="sm" onClick={() => { if (selectedNodeId) centerOn(selectedNodeId); }} title="Center selected node" disabled={!selectedNodeId} className="font-medium hover:bg-slate-800">Center</Button>
         <Button variant="ghost" size="sm" onClick={clearVisualFocus} title="Clear highlights" className="font-medium hover:bg-slate-800">Clear</Button>
+        <div className="mx-1 h-5 w-px bg-slate-700/60" />
+        <div className="flex items-center gap-0.5 rounded-md bg-slate-800/60 p-0.5" title="Edge display mode">
+          <button
+            onClick={() => setEdgeDisplayMode('topology')}
+            className={[
+              'rounded px-2 py-1 text-[11px] font-medium transition-colors',
+              edgeDisplayMode === 'topology'
+                ? 'bg-slate-700 text-slate-100'
+                : 'text-slate-400 hover:text-slate-200',
+            ].join(' ')}
+          >
+            Topology
+          </button>
+          <button
+            onClick={() => setEdgeDisplayMode('load')}
+            className={[
+              'rounded px-2 py-1 text-[11px] font-medium transition-colors',
+              edgeDisplayMode === 'load'
+                ? 'bg-blue-600 text-white'
+                : 'text-slate-400 hover:text-slate-200',
+            ].join(' ')}
+          >
+            Load
+          </button>
+        </div>
       </div>
 
       {typeEntries.length > 0 && (

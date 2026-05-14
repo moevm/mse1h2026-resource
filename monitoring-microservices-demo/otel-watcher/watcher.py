@@ -21,11 +21,7 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "otel-watcher")
 SCRAPE_INTERVAL = int(os.environ.get("SCRAPE_INTERVAL", "30"))
 SCRAPE_TARGETS = os.environ.get("SCRAPE_TARGETS", "fastapi-app:8000,flask-app:9464,otel-collector:8889")
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN")
-
-if not AGENT_TOKEN:
-    log.error("AGENT_TOKEN environment variable is required!")
-    log.error("Register this agent in the UI first, then set AGENT_TOKEN to the returned token.")
-    log.error("Example: AGENT_TOKEN=<token-from-ui> python watcher.py")
+AGENT_TOKEN_FILE = os.environ.get("AGENT_TOKEN_FILE", "/data/agent.token")
 
 app = FastAPI()
 
@@ -342,19 +338,76 @@ def metrics_loop():
         time.sleep(SCRAPE_INTERVAL)
 
 
+def _load_cached_token() -> Optional[str]:
+    try:
+        with open(AGENT_TOKEN_FILE, "r", encoding="utf-8") as f:
+            tok = f.read().strip()
+            return tok or None
+    except (FileNotFoundError, PermissionError, OSError):
+        return None
+
+
+def _save_cached_token(tok: str) -> None:
+    try:
+        d = os.path.dirname(AGENT_TOKEN_FILE)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(AGENT_TOKEN_FILE, "w", encoding="utf-8") as f:
+            f.write(tok)
+    except (PermissionError, OSError) as e:
+        log.warning("Could not persist AGENT_TOKEN to %s: %s", AGENT_TOKEN_FILE, e)
+
+
+def _auto_register() -> Optional[str]:
+    """Obtain an agent token automatically: cached file → register via API.
+    Also activates the default OTel mapping template on first registration.
+    """
+    cached = _load_cached_token()
+    if cached:
+        log.info("Loaded AGENT_TOKEN from cache file %s", AGENT_TOKEN_FILE)
+        return cached
+
+    try:
+        from register import register_agent, setup_default_mappings
+        log.info("No AGENT_TOKEN set — auto-registering agent '%s'", AGENT_NAME)
+        tok = register_agent(AGENT_NAME, "watcher-otel-traces")
+        _save_cached_token(tok)
+        try:
+            setup_default_mappings()
+        except Exception as e:
+            log.warning("setup_default_mappings failed: %s", e)
+        return tok
+    except Exception as e:
+        log.error("Auto-registration failed: %s", e)
+        return None
+
+
 @app.on_event("startup")
 async def startup():
+    global AGENT_TOKEN
+    if not AGENT_TOKEN:
+        AGENT_TOKEN = _auto_register()
     if not AGENT_TOKEN:
         log.error("="*60)
-        log.error("AGENT_TOKEN is not set!")
-        log.error("1. Go to the Resource UI → Agents page")
-        log.error("2. Register a new agent (name=%s, type=otel-traces)", AGENT_NAME)
-        log.error("3. Copy the returned token")
-        log.error("4. Set AGENT_TOKEN=<copied-token> in environment")
+        log.error("AGENT_TOKEN is not set and auto-registration failed.")
+        log.error("Check that RESOURCE_API_URL (%s) is reachable and that", RESOURCE_API_URL)
+        log.error("ADMIN_EMAIL/ADMIN_PASSWORD env vars point at a valid admin.")
         log.error("="*60)
         return
     log.info("Starting otel-watcher with AGENT_TOKEN=%s...%s", AGENT_TOKEN[:8], AGENT_TOKEN[-4:])
-    verify_agent_token()
+    if not verify_agent_token():
+        # Token is bad (likely stale cached one after a DB wipe). Drop cache and
+        # re-register so the agent recovers without manual intervention.
+        log.warning("Cached AGENT_TOKEN is invalid — purging cache and re-registering")
+        try:
+            os.remove(AGENT_TOKEN_FILE)
+        except OSError:
+            pass
+        AGENT_TOKEN = _auto_register()
+        if not AGENT_TOKEN:
+            log.error("Re-registration after invalid token failed; giving up")
+            return
+        verify_agent_token()
     thread = threading.Thread(target=metrics_loop, daemon=True)
     thread.start()
 
