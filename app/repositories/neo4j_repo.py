@@ -108,19 +108,238 @@ def _upsert_nodes_tx(tx: ManagedTransaction, nodes: List[Dict], source: str, now
     return count
 
 
+TRACE_BUCKET_SECONDS = 10
+
+
+def _record_trace_bucket(tx: ManagedTransaction, when_iso: str, is_error: bool) -> None:
+    from datetime import datetime as _dt
+    try:
+        dt = _dt.fromisoformat(when_iso.replace("Z", "+00:00"))
+        ts_ms = int(dt.timestamp() * 1000)
+    except Exception:
+        return
+    bucket_ms = TRACE_BUCKET_SECONDS * 1000
+    bucket_ts = (ts_ms // bucket_ms) * bucket_ms
+    tx.run(
+        "MERGE (b:TraceBucket {bucket_ts: $bucket_ts}) "
+        "ON CREATE SET b.span_count = 0, b.error_count = 0 "
+        "SET b.span_count = b.span_count + 1, "
+        "    b.error_count = b.error_count + $err_inc",
+        bucket_ts=bucket_ts,
+        err_inc=1 if is_error else 0,
+    )
+
+
+def _edge_sig(source_id: str, target_id: str, edge_type: str) -> str:
+    return f"{source_id}|{target_id}|{edge_type.upper()}"
+
+
+def _record_edge_activity(
+    tx: ManagedTransaction,
+    edge_sigs: List[str],
+    when_iso: str,
+    is_error: bool,
+    duration_ns: int,
+) -> None:
+    from datetime import datetime as _dt
+    try:
+        dt = _dt.fromisoformat(when_iso.replace("Z", "+00:00"))
+        ts_ms = int(dt.timestamp() * 1000)
+    except Exception:
+        return
+    bucket_ms = TRACE_BUCKET_SECONDS * 1000
+    bucket_ts = (ts_ms // bucket_ms) * bucket_ms
+    tx.run(
+        "UNWIND $sigs AS sig "
+        "MERGE (a:EdgeActivity {edge_sig: sig, bucket_ts: $bucket_ts}) "
+        "ON CREATE SET a.span_count = 0, a.error_count = 0, a.total_duration_ns = 0 "
+        "SET a.span_count = a.span_count + 1, "
+        "    a.error_count = a.error_count + $err_inc, "
+        "    a.total_duration_ns = a.total_duration_ns + $dur_ns",
+        sigs=edge_sigs,
+        bucket_ts=bucket_ts,
+        err_inc=1 if is_error else 0,
+        dur_ns=int(duration_ns),
+    )
+
+
+def ensure_activity_indexes() -> None:
+    with neo4j_driver.session() as session:
+        session.run(
+            "CREATE INDEX edge_activity_sig_ts IF NOT EXISTS "
+            "FOR (a:EdgeActivity) ON (a.edge_sig, a.bucket_ts)"
+        )
+        session.run(
+            "CREATE INDEX trace_bucket_ts IF NOT EXISTS "
+            "FOR (b:TraceBucket) ON (b.bucket_ts)"
+        )
+
+
+def cleanup_activity_older_than(cutoff_ms: int) -> Dict[str, int]:
+    with neo4j_driver.session() as session:
+        return session.execute_write(_cleanup_activity_tx, cutoff_ms)
+
+
+def _cleanup_activity_tx(tx: ManagedTransaction, cutoff_ms: int) -> Dict[str, int]:
+    r1 = tx.run(
+        "MATCH (a:EdgeActivity) WHERE a.bucket_ts < $cutoff DETACH DELETE a RETURN count(*) AS c",
+        cutoff=cutoff_ms,
+    ).single()
+    r2 = tx.run(
+        "MATCH (b:TraceBucket) WHERE b.bucket_ts < $cutoff DETACH DELETE b RETURN count(*) AS c",
+        cutoff=cutoff_ms,
+    ).single()
+    return {
+        "edge_activity_deleted": int(r1["c"]) if r1 else 0,
+        "trace_buckets_deleted": int(r2["c"]) if r2 else 0,
+    }
+
+
 def upsert_edges(
     edges: List[Dict[str, Any]],
     source: str,
     trace_metrics: Optional[Dict[str, Any]] = None,
 ) -> int:
-    """Upsert edges. If ``trace_metrics`` is provided, every edge accumulates
-    one span-call into its ``call_count`` / ``error_count`` / ``total_duration_ns``
-    properties. Expected keys: ``is_error: bool``, ``duration_ns: int``.
-    """
     now = _now_iso()
     with neo4j_driver.session() as session:
         count = session.execute_write(_upsert_edges_tx, edges, source, now, trace_metrics)
+        if trace_metrics is not None and edges:
+            is_err = bool(trace_metrics.get("is_error"))
+            dur_ns = int(trace_metrics.get("duration_ns") or 0)
+            session.execute_write(_record_trace_bucket, now, is_err)
+            sigs = [
+                _edge_sig(e["source_id"], e["target_id"], e["type"])
+                for e in edges
+                if e.get("source_id") and e.get("target_id") and e.get("type")
+            ]
+            if sigs:
+                session.execute_write(
+                    _record_edge_activity, sigs, now, is_err, dur_ns,
+                )
     return count
+
+
+def get_edge_activity_window(
+    edge_sigs: List[str],
+    from_time: Optional[str],
+    to_time: Optional[str],
+) -> Dict[str, Dict[str, int]]:
+    if not edge_sigs:
+        return {}
+    with neo4j_driver.session() as session:
+        return session.execute_read(_read_edge_activity_window, edge_sigs, from_time, to_time)
+
+
+def _read_edge_activity_window(
+    tx: ManagedTransaction,
+    edge_sigs: List[str],
+    from_time: Optional[str],
+    to_time: Optional[str],
+) -> Dict[str, Dict[str, int]]:
+    from datetime import datetime as _dt
+
+    def _iso_to_ms(s: Optional[str]) -> Optional[int]:
+        if not s:
+            return None
+        try:
+            return int(_dt.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000)
+        except Exception:
+            return None
+
+    from_ms = _iso_to_ms(from_time)
+    to_ms = _iso_to_ms(to_time)
+
+    conditions = ["a.edge_sig IN $sigs"]
+    params: Dict[str, Any] = {"sigs": edge_sigs}
+    if from_ms is not None:
+        conditions.append("a.bucket_ts >= $from_ms")
+        params["from_ms"] = from_ms
+    if to_ms is not None:
+        conditions.append("a.bucket_ts < $to_ms")
+        params["to_ms"] = to_ms
+    where = " WHERE " + " AND ".join(conditions)
+
+    query = (
+        f"MATCH (a:EdgeActivity){where} "
+        "RETURN a.edge_sig AS sig, "
+        "       sum(a.span_count) AS spans, "
+        "       sum(a.error_count) AS errs, "
+        "       sum(a.total_duration_ns) AS dur"
+    )
+    out: Dict[str, Dict[str, int]] = {}
+    result = tx.run(query, **params)
+    for rec in result:
+        out[rec["sig"]] = {
+            "span_count": int(rec["spans"] or 0),
+            "error_count": int(rec["errs"] or 0),
+            "total_duration_ns": int(rec["dur"] or 0),
+        }
+    return out
+
+
+def get_trace_activity(
+    from_time: Optional[str],
+    to_time: Optional[str],
+    bucket_seconds: int,
+) -> List[Dict[str, Any]]:
+    with neo4j_driver.session() as session:
+        return session.execute_read(_read_trace_activity, from_time, to_time, bucket_seconds)
+
+
+def _read_trace_activity(
+    tx: ManagedTransaction,
+    from_time: Optional[str],
+    to_time: Optional[str],
+    bucket_seconds: int,
+) -> List[Dict[str, Any]]:
+    from datetime import datetime as _dt
+
+    def _iso_to_ms(s: Optional[str]) -> Optional[int]:
+        if not s:
+            return None
+        try:
+            return int(_dt.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000)
+        except Exception:
+            return None
+
+    from_ms = _iso_to_ms(from_time)
+    to_ms = _iso_to_ms(to_time)
+
+    conditions = []
+    params: Dict[str, Any] = {}
+    if from_ms is not None:
+        conditions.append("b.bucket_ts >= $from_ms")
+        params["from_ms"] = from_ms
+    if to_ms is not None:
+        conditions.append("b.bucket_ts < $to_ms")
+        params["to_ms"] = to_ms
+    where = (" WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    query = (
+        f"MATCH (b:TraceBucket){where} "
+        "RETURN b.bucket_ts AS ts, b.span_count AS spans, b.error_count AS errs "
+        "ORDER BY ts"
+    )
+    result = tx.run(query, **params)
+
+    out_bucket_ms = max(bucket_seconds, TRACE_BUCKET_SECONDS) * 1000
+    agg: Dict[int, Dict[str, int]] = {}
+    for rec in result:
+        ts = int(rec["ts"])
+        bid = (ts // out_bucket_ms) * out_bucket_ms
+        cell = agg.setdefault(bid, {"span_count": 0, "error_count": 0})
+        cell["span_count"] += int(rec["spans"] or 0)
+        cell["error_count"] += int(rec["errs"] or 0)
+
+    return [
+        {
+            "bucket_ts": bid,
+            "timestamp": _dt.utcfromtimestamp(bid / 1000).isoformat() + "+00:00",
+            "span_count": cell["span_count"],
+            "error_count": cell["error_count"],
+        }
+        for bid, cell in sorted(agg.items())
+    ]
 
 
 def _upsert_edges_tx(

@@ -49,13 +49,24 @@ export function useGraph() {
   }, [setBackendStatus, addLog]);
 
   const loadFullGraph = useCallback(
-    async (limit = 500, appId?: string, asOf?: string) => {
+    async (
+      limit = 500,
+      appId?: string,
+      asOf?: string,
+      window?: { start: string; end: string },
+    ) => {
       setLoading(true);
       const appInfo = appId ? ` (app=${appId.slice(0, 8)}...)` : '';
       const timeInfo = asOf ? ` as_of=${asOf}` : '';
-      addLog('info', 'graph', `Loading full graph (limit=${limit}${appInfo}${timeInfo})...`);
+      const winInfo = window ? ` window=[${window.start.slice(11, 19)}..${window.end.slice(11, 19)}]` : '';
+      addLog('info', 'graph', `Loading full graph (limit=${limit}${appInfo}${timeInfo}${winInfo})...`);
       try {
-        const res = await fetchFullGraph(limit, appId, asOf);
+        const res = await fetchFullGraph(limit, {
+          appId,
+          asOf,
+          windowStart: window?.start,
+          windowEnd: window?.end,
+        });
         setGraph(res.nodes, res.edges);
         clearVisualFocus();
         syncFilters();

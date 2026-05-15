@@ -11,9 +11,15 @@ export function GraphCanvas() {
 
   const loading = useGraphUiStore((s) => s.loading);
   const nodes = useGraphDataStore((s) => s.nodes);
+  const edges = useGraphDataStore((s) => s.edges);
   const hoveredNodeId = useGraphUiStore((s) => s.hoveredNodeId);
+  const hoveredEdgeId = useGraphUiStore((s) => s.hoveredEdgeId);
+  const edgeDisplayMode = useGraphUiStore((s) => s.edgeDisplayMode);
 
   const hoveredNode = hoveredNodeId ? nodes.find((n) => n.id === hoveredNodeId) : null;
+  const hoveredEdge = hoveredEdgeId
+    ? edges.find((e) => `${e.source_id}::${e.target_id}::${e.type}` === hoveredEdgeId)
+    : null;
 
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const rafRef = useRef<number | null>(null);
@@ -29,7 +35,7 @@ export function GraphCanvas() {
 
   const handleMouseMove = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!hoveredNode) return;
+      if (!hoveredNode && !hoveredEdge) return;
 
       const rect = e.currentTarget.getBoundingClientRect();
       const next = { x: e.clientX - rect.left, y: e.clientY - rect.top };
@@ -40,7 +46,7 @@ export function GraphCanvas() {
         rafRef.current = null;
       });
     },
-    [hoveredNode],
+    [hoveredNode, hoveredEdge],
   );
 
   return (
@@ -79,8 +85,124 @@ export function GraphCanvas() {
       <div ref={containerRef} className="h-full w-full cursor-default" />
 
       {hoveredNode && <NodeTooltip node={hoveredNode} x={mousePos.x} y={mousePos.y} />}
+      {!hoveredNode && hoveredEdge && (
+        <EdgeTooltip edge={hoveredEdge} mode={edgeDisplayMode} x={mousePos.x} y={mousePos.y} />
+      )}
     </div>
   );
+}
+
+interface TooltipEdge {
+  source_id: string;
+  target_id: string;
+  type: string;
+  status?: string;
+  properties: Record<string, unknown>;
+}
+
+function EdgeTooltip({
+  edge,
+  mode,
+  x,
+  y,
+}: Readonly<{
+  edge: TooltipEdge;
+  mode: 'topology' | 'load';
+  x: number;
+  y: number;
+}>) {
+  const p = edge.properties;
+  const callsWindow = numOrNull(p.call_count_window);
+  const errsWindow = numOrNull(p.error_count_window);
+  const avgLatencyWindow = numOrNull(p.avg_latency_ms_window);
+  const callsAll = numOrNull(p.call_count);
+  const errsAll = numOrNull(p.error_count);
+  const totalDurNs = numOrNull(p.total_duration_ns);
+  const lastCallAt = typeof p.last_call_at === 'string' ? p.last_call_at : null;
+
+  const showWindow = callsWindow !== null;
+  const calls = showWindow ? callsWindow! : (callsAll ?? 0);
+  const errs = showWindow ? (errsWindow ?? 0) : (errsAll ?? 0);
+  const avgMs = showWindow
+    ? (avgLatencyWindow ?? 0)
+    : (callsAll && totalDurNs ? totalDurNs / callsAll / 1_000_000 : 0);
+  const errRate = calls > 0 ? errs / calls : 0;
+
+  const OFFSET = 14;
+  const style: React.CSSProperties = {
+    left: x + OFFSET,
+    top: y + OFFSET,
+    maxWidth: 260,
+  };
+
+  return (
+    <div
+      className="pointer-events-none absolute z-50 rounded-xl border border-slate-700 bg-slate-800/95 p-3 text-xs shadow-2xl backdrop-blur-sm"
+      style={style}
+    >
+      <div className="mb-1.5 flex items-center gap-2">
+        <span className="rounded bg-slate-700/70 px-1.5 py-0.5 font-mono text-[10px] uppercase text-slate-200">
+          {edge.type}
+        </span>
+        {showWindow ? (
+          <span className="text-[9px] uppercase tracking-wide text-blue-400">window</span>
+        ) : (
+          <span className="text-[9px] uppercase tracking-wide text-slate-500">all-time</span>
+        )}
+        {mode === 'load' && (
+          <span className="text-[9px] uppercase tracking-wide text-slate-500">load mode</span>
+        )}
+      </div>
+      <p className="truncate font-mono text-[10px] text-slate-300">{edge.source_id}</p>
+      <p className="truncate font-mono text-[10px] text-slate-500">→ {edge.target_id}</p>
+
+      <div className="mt-2 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-slate-700 pt-2">
+        <span className="text-slate-500">calls</span>
+        <span className="text-right font-mono text-slate-200 tabular-nums">{calls.toLocaleString()}</span>
+
+        <span className="text-slate-500">errors</span>
+        <span className={['text-right font-mono tabular-nums', errs > 0 ? 'text-red-400' : 'text-slate-200'].join(' ')}>
+          {errs.toLocaleString()}
+        </span>
+
+        <span className="text-slate-500">error rate</span>
+        <span className={['text-right font-mono tabular-nums', errRate > 0.05 ? 'text-red-400' : errRate > 0.01 ? 'text-yellow-400' : 'text-slate-200'].join(' ')}>
+          {(errRate * 100).toFixed(2)}%
+        </span>
+
+        <span className="text-slate-500">avg latency</span>
+        <span className="text-right font-mono text-slate-200 tabular-nums">
+          {avgMs > 0 ? `${avgMs.toFixed(1)} ms` : '—'}
+        </span>
+
+        {lastCallAt && (
+          <>
+            <span className="text-slate-500">last call</span>
+            <span className="text-right font-mono text-[10px] text-slate-400 tabular-nums">
+              {ageString(lastCallAt)}
+            </span>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function numOrNull(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function ageString(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  if (ms < 0) return 'just now';
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s ago`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  return `${h}h ago`;
 }
 
 interface TooltipNode {

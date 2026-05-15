@@ -1,11 +1,16 @@
 import { create } from 'zustand';
 
 import { fetchTimelineRange, type TimelineRange } from '../../../api/graphApi';
-import { fetchTimelineEvents, type TimelineEvent } from '../../../api/timelineApi';
+import {
+  fetchTimelineEvents,
+  fetchTraceActivity,
+  type TimelineEvent,
+  type TraceActivityBucket,
+} from '../../../api/timelineApi';
 
 export type PlaybackSpeed = 1 | 2 | 5 | 10;
+export type TimelineMode = 'topology' | 'activity';
 
-// Default rolling-window shape: 20 chunks of 30s = 10-minute view.
 const DEFAULT_CHUNK_COUNT = 20;
 const DEFAULT_BUCKET_SECONDS = 30;
 
@@ -15,20 +20,18 @@ interface TimelineState {
   rangeError: string | null;
 
   events: TimelineEvent[];
+  activity: TraceActivityBucket[];
   eventsLoading: boolean;
   eventsError: string | null;
 
-  currentTime: string | null; // null = live
+  currentTime: string | null;
   isPlaying: boolean;
   playbackSpeed: PlaybackSpeed;
 
-  // Rolling window config. Window length = chunkCount * chunkBucketSeconds.
-  // The window is LEFT-anchored: windowStart is bucket-aligned to the oldest
-  // event in view (or "now" if there are none). New events arriving past
-  // windowEnd slide the window forward, dropping the oldest bucket.
   chunkCount: number;
   chunkBucketSeconds: number;
-  windowStart: number; // unix ms, bucket-aligned
+  windowStart: number;
+  mode: TimelineMode;
 
   fetchRange: () => Promise<void>;
   fetchEvents: () => Promise<void>;
@@ -37,6 +40,7 @@ interface TimelineState {
   setPlaybackSpeed: (speed: PlaybackSpeed) => void;
   setChunkCount: (n: number) => void;
   setChunkBucketSeconds: (s: number) => void;
+  setMode: (m: TimelineMode) => void;
   goLive: () => void;
   reset: () => void;
 }
@@ -46,6 +50,7 @@ const initialState = {
   rangeLoading: false,
   rangeError: null as string | null,
   events: [] as TimelineEvent[],
+  activity: [] as TraceActivityBucket[],
   eventsLoading: false,
   eventsError: null as string | null,
   currentTime: null as string | null,
@@ -54,7 +59,38 @@ const initialState = {
   chunkCount: DEFAULT_CHUNK_COUNT,
   chunkBucketSeconds: DEFAULT_BUCKET_SECONDS,
   windowStart: Date.now() - DEFAULT_CHUNK_COUNT * DEFAULT_BUCKET_SECONDS * 1000,
+  mode: 'activity' as TimelineMode,
 };
+
+function pickEarliestMs(
+  events: TimelineEvent[],
+  activity: TraceActivityBucket[],
+): number | null {
+  let earliest: number | null = null;
+  for (const e of events) {
+    const t = new Date(e.timestamp).getTime();
+    if (earliest === null || t < earliest) earliest = t;
+  }
+  for (const b of activity) {
+    if (earliest === null || b.bucket_ts < earliest) earliest = b.bucket_ts;
+  }
+  return earliest;
+}
+
+function pickLatestMs(
+  events: TimelineEvent[],
+  activity: TraceActivityBucket[],
+): number | null {
+  let latest: number | null = null;
+  for (const e of events) {
+    const t = new Date(e.timestamp).getTime();
+    if (latest === null || t > latest) latest = t;
+  }
+  for (const b of activity) {
+    if (latest === null || b.bucket_ts > latest) latest = b.bucket_ts;
+  }
+  return latest;
+}
 
 export const useTimelineStore = create<TimelineState>((set, get) => ({
   ...initialState,
@@ -72,35 +108,30 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   },
 
   fetchEvents: async () => {
-    const { chunkCount, chunkBucketSeconds } = get();
+    const { chunkCount, chunkBucketSeconds, mode } = get();
     const bucketMs = chunkBucketSeconds * 1000;
     const now = Date.now();
-    // Fetch a generous tail so we can detect activity that just happened.
-    // The render side will pick where to anchor the visible window.
     const fetchStart = now - chunkCount * bucketMs * 4;
     set({ eventsLoading: true, eventsError: null });
     try {
-      const resp = await fetchTimelineEvents(
-        chunkBucketSeconds,
-        new Date(fetchStart).toISOString(),
-        new Date(now).toISOString(),
-      );
+      const fromIso = new Date(fetchStart).toISOString();
+      const toIso = new Date(now).toISOString();
 
-      // Left-anchored window: snap the start to the bucket containing the
-      // earliest event we got (so the first bar lands at slot 0). If we have
-      // no events, keep the window pinned at "now - N*bucket" so Live still
-      // sits at the right edge.
+      let events: TimelineEvent[] = [];
+      let activity: TraceActivityBucket[] = [];
+      if (mode === 'topology') {
+        const resp = await fetchTimelineEvents(chunkBucketSeconds, fromIso, toIso);
+        events = resp.events;
+      } else {
+        const resp = await fetchTraceActivity(chunkBucketSeconds, fromIso, toIso);
+        activity = resp.buckets;
+      }
+
       let nextStart: number;
-      if (resp.events.length > 0) {
-        const earliest = Math.min(
-          ...resp.events.map((e) => new Date(e.timestamp).getTime()),
-        );
+      const earliest = pickEarliestMs(events, activity);
+      if (earliest !== null) {
         nextStart = Math.floor(earliest / bucketMs) * bucketMs;
-
-        // If new events arrived past the window, slide forward so they fit.
-        const latest = Math.max(
-          ...resp.events.map((e) => new Date(e.timestamp).getTime()),
-        );
+        const latest = pickLatestMs(events, activity)!;
         const windowEnd = nextStart + chunkCount * bucketMs;
         if (latest >= windowEnd) {
           nextStart = Math.floor((latest - (chunkCount - 1) * bucketMs) / bucketMs) * bucketMs;
@@ -109,7 +140,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
         nextStart = now - chunkCount * bucketMs;
       }
 
-      set({ events: resp.events, eventsLoading: false, windowStart: nextStart });
+      set({ events, activity, eventsLoading: false, windowStart: nextStart });
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load timeline events';
       console.error('[Timeline] fetchEvents error:', msg);
@@ -122,6 +153,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
   setChunkCount: (n) => set({ chunkCount: Math.max(2, Math.min(120, Math.floor(n))) }),
   setChunkBucketSeconds: (s) => set({ chunkBucketSeconds: Math.max(1, Math.min(3600, Math.floor(s))) }),
+  setMode: (m) => set({ mode: m, events: [], activity: [] }),
 
   goLive: () => set({ currentTime: null, isPlaying: false }),
 

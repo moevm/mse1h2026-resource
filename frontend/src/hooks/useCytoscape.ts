@@ -41,6 +41,7 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
   const nodePositions = useGraphUiStore((s) => s.nodePositions);
   const selectNode = useGraphUiStore((s) => s.selectNode);
   const hoverNode = useGraphUiStore((s) => s.hoverNode);
+  const hoverEdge = useGraphUiStore((s) => s.hoverEdge);
   const setNodePositions = useGraphUiStore((s) => s.setNodePositions);
 
   const nodePositionsRef = useRef(nodePositions);
@@ -50,6 +51,7 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
   const hiddenEdgeTypesRef = useRef(hiddenEdgeTypes);
   const selectNodeRef = useRef(selectNode);
   const hoverNodeRef = useRef(hoverNode);
+  const hoverEdgeRef = useRef(hoverEdge);
 
   useEffect(() => {
     nodePositionsRef.current = nodePositions;
@@ -59,6 +61,7 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
     hiddenEdgeTypesRef.current = hiddenEdgeTypes;
     selectNodeRef.current = selectNode;
     hoverNodeRef.current = hoverNode;
+    hoverEdgeRef.current = hoverEdge;
   });
 
   const savePositions = useCallback(() => {
@@ -111,6 +114,8 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
     });
     cy.on('mouseover', 'node', (e: EventObject) => hoverNodeRef.current(e.target.id() as string));
     cy.on('mouseout', 'node', () => hoverNodeRef.current(null));
+    cy.on('mouseover', 'edge', (e: EventObject) => hoverEdgeRef.current(e.target.id() as string));
+    cy.on('mouseout', 'edge', () => hoverEdgeRef.current(null));
 
     cyRef.current = cy;
     setCyGen((g) => g + 1);
@@ -194,22 +199,33 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
     const cy = cyRef.current;
     if (!isAlive(cy)) return;
 
+    const pickCalls = (e: cytoscape.EdgeSingular): number => {
+      const w = e.data('call_count_window');
+      return Number(w !== undefined && w !== null ? w : (e.data('call_count') ?? 0));
+    };
+    const pickErrors = (e: cytoscape.EdgeSingular): number => {
+      const w = e.data('error_count_window');
+      return Number(w !== undefined && w !== null ? w : (e.data('error_count') ?? 0));
+    };
+
     let maxCalls = 0;
     cy.edges().forEach((e) => {
-      const c = Number(e.data('call_count') ?? 0);
+      const c = pickCalls(e);
       if (c > maxCalls) maxCalls = c;
     });
 
     cy.batch(() => {
       cy.edges().forEach((e) => {
-        const calls = Number(e.data('call_count') ?? 0);
-        const errs = Number(e.data('error_count') ?? 0);
+        const calls = pickCalls(e);
+        const errs = pickErrors(e);
         if (calls > 0) {
           e.data('load_norm', maxCalls > 0 ? calls / maxCalls : 0);
           e.data('error_rate', calls > 0 ? errs / calls : 0);
+          e.data('call_count_display', calls);
         } else {
           e.removeData('load_norm');
           e.removeData('error_rate');
+          e.removeData('call_count_display');
         }
       });
     });

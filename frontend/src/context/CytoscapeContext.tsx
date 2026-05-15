@@ -1,10 +1,12 @@
 /* eslint-disable react-refresh/only-export-components */
 import { type ReactNode, type RefObject, createContext, useContext, useRef } from 'react';
+import type { Core } from 'cytoscape';
 
 import { useCytoscape } from '../hooks/useCytoscape';
 
 interface CyContextValue {
   containerRef: RefObject<HTMLDivElement | null>;
+  cyRef: RefObject<Core | null>;
   fitGraph: () => void;
   runLayout: (name?: string) => void;
   zoomIn: () => void;

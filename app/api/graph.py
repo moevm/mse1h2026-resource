@@ -31,6 +31,8 @@ async def full_graph(
     exclude_edge_types: Optional[str] = Query(None, description="Comma-separated edge types to exclude"),
     filter_mode: str = Query("ghost", description="Filter mode: ghost or exclude"),
     as_of: Optional[str] = Query(None, description="ISO datetime — show graph state at this time"),
+    window_start: Optional[str] = Query(None, description="ISO datetime — start of activity window for per-edge metrics"),
+    window_end: Optional[str] = Query(None, description="ISO datetime — end of activity window for per-edge metrics"),
 ):
     ex_nodes = exclude_node_types.split(",") if exclude_node_types else None
     ex_edges = exclude_edge_types.split(",") if exclude_edge_types else None
@@ -42,6 +44,8 @@ async def full_graph(
         exclude_edge_types=ex_edges,
         filter_mode=filter_mode,
         as_of=as_of,
+        window_start=window_start,
+        window_end=window_end,
     )
 
 

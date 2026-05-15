@@ -93,3 +93,15 @@ class SnapshotStatsResponse(BaseModel):
     total_edges: int = 0
     nodes_by_type: Dict[str, int] = Field(default_factory=dict)
     edges_by_type: Dict[str, int] = Field(default_factory=dict)
+
+
+class TraceActivityBucket(BaseModel):
+    bucket_ts: int
+    timestamp: str
+    span_count: int = 0
+    error_count: int = 0
+
+
+class TraceActivityResponse(BaseModel):
+    buckets: List[TraceActivityBucket]
+    bucket_seconds: int

@@ -35,6 +35,8 @@ interface Slot {
   count: number;
   nodesAdded: number;
   edgesAdded: number;
+  spanCount: number;
+  errorCount: number;
   topType: string | null;
   events: { timestamp: string; nodes: number; edges: number }[];
 }
@@ -57,6 +59,9 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   const { fitGraph } = useCyContext();
 
   const events = useTimelineStore((s) => s.events);
+  const activity = useTimelineStore((s) => s.activity);
+  const mode = useTimelineStore((s) => s.mode);
+  const setMode = useTimelineStore((s) => s.setMode);
   const currentTime = useTimelineStore((s) => s.currentTime);
   const isPlaying = useTimelineStore((s) => s.isPlaying);
   const playbackSpeed = useTimelineStore((s) => s.playbackSpeed);
@@ -92,7 +97,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
     void fetchEvents();
     const id = setInterval(() => void fetchEvents(), REFRESH_EVENTS_MS);
     return () => clearInterval(id);
-  }, [fetchEvents, chunkCount, chunkBucketSeconds]);
+  }, [fetchEvents, chunkCount, chunkBucketSeconds, mode]);
 
   // Track strip width for cursor positioning.
   useEffect(() => {
@@ -121,30 +126,49 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
       count: 0,
       nodesAdded: 0,
       edgesAdded: 0,
+      spanCount: 0,
+      errorCount: 0,
       topType: null,
       events: [],
     }));
 
-    for (const ev of events) {
-      const ts = new Date(ev.timestamp).getTime();
-      if (ts < windowStart || ts >= windowEnd) continue;
-      const idx = Math.min(chunkCount - 1, Math.floor((ts - windowStart) / bucketMs));
-      const slot = out[idx];
-      slot.count += ev.nodes_added + ev.edges_added;
-      slot.nodesAdded += ev.nodes_added;
-      slot.edgesAdded += ev.edges_added;
-      slot.events.push({
-        timestamp: ev.timestamp,
-        nodes: ev.nodes_added,
-        edges: ev.edges_added,
-      });
-      if (!slot.topType) {
-        const topEntry = Object.entries(ev.node_types).sort((a, b) => b[1] - a[1])[0];
-        if (topEntry) slot.topType = topEntry[0];
+    if (mode === 'topology') {
+      for (const ev of events) {
+        const ts = new Date(ev.timestamp).getTime();
+        if (ts < windowStart || ts >= windowEnd) continue;
+        const idx = Math.min(chunkCount - 1, Math.floor((ts - windowStart) / bucketMs));
+        const slot = out[idx];
+        slot.count += ev.nodes_added + ev.edges_added;
+        slot.nodesAdded += ev.nodes_added;
+        slot.edgesAdded += ev.edges_added;
+        slot.events.push({
+          timestamp: ev.timestamp,
+          nodes: ev.nodes_added,
+          edges: ev.edges_added,
+        });
+        if (!slot.topType) {
+          const topEntry = Object.entries(ev.node_types).sort((a, b) => b[1] - a[1])[0];
+          if (topEntry) slot.topType = topEntry[0];
+        }
+      }
+    } else {
+      for (const b of activity) {
+        const ts = b.bucket_ts;
+        if (ts < windowStart || ts >= windowEnd) continue;
+        const idx = Math.min(chunkCount - 1, Math.floor((ts - windowStart) / bucketMs));
+        const slot = out[idx];
+        slot.spanCount += b.span_count;
+        slot.errorCount += b.error_count;
+        slot.count += b.span_count;
+        slot.events.push({
+          timestamp: b.timestamp,
+          nodes: 0,
+          edges: 0,
+        });
       }
     }
     return out;
-  }, [events, chunkCount, bucketMs, windowStart, windowEnd]);
+  }, [events, activity, mode, chunkCount, bucketMs, windowStart, windowEnd]);
 
   const maxSlotCount = useMemo(
     () => Math.max(1, ...slots.map((s) => s.count)),
@@ -179,14 +203,15 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   // --- Graph loading ---
   const loadAtSlotStart = useCallback(
     (slot: Slot) => {
-      // Use slot's start as the "as_of" so the graph reflects state at that
-      // chunk's beginning. Pick the first event timestamp inside the slot if
-      // one exists, else the slot start itself.
       const iso = slot.events.length > 0
         ? slot.events[0].timestamp
         : new Date(slot.startMs).toISOString();
       useTimelineStore.setState({ currentTime: iso });
-      void loadFullGraph(limit, selectedAppId ?? undefined, iso).then(() => {
+      const win = {
+        start: new Date(slot.startMs).toISOString(),
+        end: new Date(slot.endMs).toISOString(),
+      };
+      void loadFullGraph(limit, selectedAppId ?? undefined, iso, win).then(() => {
         try { fitGraph(); } catch { /* cy not ready */ }
       }).catch(() => {});
     },
@@ -238,10 +263,14 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   const handleGoLive = useCallback(() => {
     stopPlayback();
     goLive();
-    void loadFullGraph(limit, selectedAppId ?? undefined).then(() => {
+    const win = {
+      start: new Date(windowStart).toISOString(),
+      end: new Date(windowEnd).toISOString(),
+    };
+    void loadFullGraph(limit, selectedAppId ?? undefined, undefined, win).then(() => {
       try { fitGraph(); } catch { /* cy not ready */ }
     }).catch(() => {});
-  }, [stopPlayback, goLive, limit, selectedAppId, loadFullGraph, fitGraph]);
+  }, [stopPlayback, goLive, limit, selectedAppId, loadFullGraph, fitGraph, windowStart, windowEnd]);
 
   const handleStep = useCallback(
     (dir: 1 | -1) => {
@@ -375,7 +404,9 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         <Sep />
         <span className="text-slate-500">
           Window: <span className="font-mono text-slate-300">{chunkCount}×{chunkBucketSeconds}s</span>
-          <span className="ml-1 text-slate-600">({windowTotal} events)</span>
+          <span className="ml-1 text-slate-600">
+            ({windowTotal} {mode === 'activity' ? 'spans' : 'events'})
+          </span>
         </span>
         {eventsLoading && (
           <span className="text-[10px] text-slate-500">Loading...</span>
@@ -395,7 +426,6 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         ) : null}
       </div>
 
-      {/* Controls row */}
       <div className="flex items-center gap-1.5 px-4 pb-1">
         <CtrlBtn onClick={() => handleStep(-1)} disabled={nonEmptySlots.length === 0} title="Step back (←)">
           <SvgIcon d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z M8 6v12h-2V6z" />
@@ -430,7 +460,31 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
 
         <Sep />
 
-        {/* Config inputs */}
+        <div className="flex items-center gap-0.5 rounded-md bg-slate-900/80 p-0.5">
+          <button
+            onClick={() => setMode('activity')}
+            className={[
+              'rounded px-2 py-0.5 text-[10px] font-semibold transition-colors',
+              mode === 'activity' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300',
+            ].join(' ')}
+            title="Trace activity: spans per bucket"
+          >
+            Activity
+          </button>
+          <button
+            onClick={() => setMode('topology')}
+            className={[
+              'rounded px-2 py-0.5 text-[10px] font-semibold transition-colors',
+              mode === 'topology' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300',
+            ].join(' ')}
+            title="Topology births: when nodes/edges first appeared"
+          >
+            Topology
+          </button>
+        </div>
+
+        <Sep />
+
         <label className="flex items-center gap-1 text-[10px] text-slate-500">
           chunks
           <input
@@ -492,18 +546,24 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
               />
             ))}
 
-            {/* Slot bars */}
             {slots.map((slot) => {
               const x = slot.index * slotWidth;
               const barW = Math.max(2, slotWidth - 3);
               const barMaxH = 36;
               const h = slot.count > 0 ? Math.max(3, (slot.count / maxSlotCount) * barMaxH) : 0;
-              const color = slot.topType ? (NODE_TYPE_COLORS[slot.topType] ?? '#3b82f6') : '#475569';
+              let color: string;
+              if (mode === 'activity') {
+                const errRate = slot.spanCount > 0 ? slot.errorCount / slot.spanCount : 0;
+                if (errRate > 0.05) color = '#ef4444';
+                else if (errRate > 0.01) color = '#f59e0b';
+                else color = '#3b82f6';
+              } else {
+                color = slot.topType ? (NODE_TYPE_COLORS[slot.topType] ?? '#3b82f6') : '#475569';
+              }
               const isActive = slot.index === currentSlotIdx;
               const hasData = slot.count > 0;
               return (
                 <g key={slot.index}>
-                  {/* Hover/click hit area covering the full slot column */}
                   <rect
                     x={x}
                     y={0}
@@ -519,7 +579,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
                       height={h}
                       rx={1.5}
                       fill={color}
-                      opacity={isActive ? 1 : 0.7}
+                      opacity={isActive ? 1 : 0.75}
                       stroke={isActive ? '#60a5fa' : 'none'}
                       strokeWidth={isActive ? 1.5 : 0}
                     />
@@ -555,22 +615,43 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           </div>
         </div>
 
-        {/* Hover info row */}
         {currentSlotIdx >= 0 && slots[currentSlotIdx] && (
           <div className="mt-1 flex items-center gap-3 text-[10px] text-slate-500">
             <span className="font-mono text-slate-400">
               {formatTimeShort(slots[currentSlotIdx].startMs)} – {formatTimeShort(slots[currentSlotIdx].endMs)}
             </span>
-            <span>+{slots[currentSlotIdx].nodesAdded} nodes</span>
-            <span>+{slots[currentSlotIdx].edgesAdded} edges</span>
-            {slots[currentSlotIdx].topType && (
-              <span className="flex items-center gap-1">
+            {mode === 'activity' ? (
+              <>
+                <span>{slots[currentSlotIdx].spanCount} spans</span>
                 <span
-                  className="inline-block h-1.5 w-1.5 rounded-full"
-                  style={{ backgroundColor: NODE_TYPE_COLORS[slots[currentSlotIdx].topType!] ?? '#3b82f6' }}
-                />
-                {slots[currentSlotIdx].topType}
-              </span>
+                  className={
+                    slots[currentSlotIdx].errorCount > 0
+                      ? 'text-red-400'
+                      : 'text-slate-500'
+                  }
+                >
+                  {slots[currentSlotIdx].errorCount} errors
+                </span>
+                {slots[currentSlotIdx].spanCount > 0 && (
+                  <span>
+                    err rate {((slots[currentSlotIdx].errorCount / slots[currentSlotIdx].spanCount) * 100).toFixed(1)}%
+                  </span>
+                )}
+              </>
+            ) : (
+              <>
+                <span>+{slots[currentSlotIdx].nodesAdded} nodes</span>
+                <span>+{slots[currentSlotIdx].edgesAdded} edges</span>
+                {slots[currentSlotIdx].topType && (
+                  <span className="flex items-center gap-1">
+                    <span
+                      className="inline-block h-1.5 w-1.5 rounded-full"
+                      style={{ backgroundColor: NODE_TYPE_COLORS[slots[currentSlotIdx].topType!] ?? '#3b82f6' }}
+                    />
+                    {slots[currentSlotIdx].topType}
+                  </span>
+                )}
+              </>
             )}
           </div>
         )}

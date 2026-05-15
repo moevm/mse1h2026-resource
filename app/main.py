@@ -19,7 +19,7 @@ from app.api.edge_presets import router as edge_presets_router
 from app.api.mocker import router as mocker_router
 from app.api.timeline import router as timeline_router
 from app.repositories.neo4j_connection import neo4j_driver
-from app.repositories import agent_repo, application_repo, user_repo
+from app.repositories import agent_repo, application_repo, neo4j_repo, user_repo
 from app.repositories.mapping_repo import mapping_repo
 from app.services.startup_seed_service import seed_admin_demo_data_on_startup
 
@@ -33,9 +33,27 @@ async def lifespan(application: FastAPI):
     mapping_repo.ensure_indexes()
     user_repo.ensure_user_indexes()
     user_repo.ensure_default_admin()
+    neo4j_repo.ensure_activity_indexes()
     asyncio.create_task(seed_admin_demo_data_on_startup())
+    asyncio.create_task(_activity_cleanup_loop())
     yield
     neo4j_driver.close()
+
+
+async def _activity_cleanup_loop() -> None:
+    import logging
+    import os
+    log = logging.getLogger("activity-cleanup")
+    ttl_hours = int(os.environ.get("ACTIVITY_TTL_HOURS", "24"))
+    interval_seconds = int(os.environ.get("ACTIVITY_CLEANUP_INTERVAL_SECONDS", "3600"))
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            cutoff_ms = int((__import__("time").time() - ttl_hours * 3600) * 1000)
+            res = neo4j_repo.cleanup_activity_older_than(cutoff_ms)
+            log.info("activity cleanup ttl=%dh: %s", ttl_hours, res)
+        except Exception as e:
+            log.warning("activity cleanup failed: %s", e)
 
 
 app = FastAPI(

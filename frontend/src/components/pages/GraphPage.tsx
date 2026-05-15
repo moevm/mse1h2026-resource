@@ -10,6 +10,7 @@ import { Button } from '../common/Button';
 import { Input } from '../common/Input';
 import { GraphCanvas } from '../graph/GraphCanvas';
 import { GraphControls } from '../graph/GraphControls';
+import { HotEdgesPanel } from '../graph/HotEdgesPanel';
 import { TimelineBar } from '../graph/TimelineBar';
 import { NodeDetail } from '../graph/NodeDetail';
 import { IconPanel, IconRefresh, IconSearch, IconX } from '../icons';
@@ -19,9 +20,10 @@ import { FilterPanel } from '../panels/FilterPanel';
 import GraphInsightsPanel from '../panels/GraphInsightsPanel';
 import { LogPanel } from '../panels/LogPanel';
 import { QueryPanel } from '../panels/QueryPanel';
+import { TracesPanel } from '../panels/TracesPanel';
 import TraversalPanel from '../panels/TraversalPanel';
 
-type RightPanel = 'detail' | 'filter' | 'query' | 'insights' | 'export' | 'traversal' | 'log';
+type RightPanel = 'detail' | 'filter' | 'query' | 'insights' | 'export' | 'traversal' | 'traces' | 'log';
 
 const PANEL_CONFIG: Array<{ id: RightPanel; label: string; shortLabel: string }> = [
   { id: 'detail', label: 'Node Detail', shortLabel: 'Detail' },
@@ -29,6 +31,7 @@ const PANEL_CONFIG: Array<{ id: RightPanel; label: string; shortLabel: string }>
   { id: 'query', label: 'Query', shortLabel: 'Query' },
   { id: 'insights', label: 'Insights', shortLabel: 'Insights' },
   { id: 'traversal', label: 'Traversal', shortLabel: 'Traverse' },
+  { id: 'traces', label: 'Traces', shortLabel: 'Traces' },
   { id: 'export', label: 'Export', shortLabel: 'Export' },
   { id: 'log', label: 'Activity Log', shortLabel: 'Log' },
 ];
@@ -107,11 +110,17 @@ export function GraphPage() {
           size="sm"
           icon={<IconRefresh className="h-3.5 w-3.5" />}
           onClick={() => {
-            // Respect the current timeline scrub position: if the user is on
-            // a past moment, reload at that moment, not Live. Otherwise null
-            // → no as_of → Live.
-            const currentTime = useTimelineStore.getState().currentTime;
-            void loadFullGraph(limitInput, selectedAppId ?? undefined, currentTime ?? undefined);
+            const st = useTimelineStore.getState();
+            const win = {
+              start: new Date(st.windowStart).toISOString(),
+              end: new Date(st.windowStart + st.chunkCount * st.chunkBucketSeconds * 1000).toISOString(),
+            };
+            void loadFullGraph(
+              limitInput,
+              selectedAppId ?? undefined,
+              st.currentTime ?? undefined,
+              win,
+            );
           }}
         >
           Reload
@@ -139,6 +148,7 @@ export function GraphPage() {
               )}
               <GraphCanvas />
               <GraphControls />
+              <HotEdgesPanel />
 
               <button
                 onClick={() => setShowRightPanel(true)}
@@ -213,6 +223,7 @@ export function GraphPage() {
                   onReset={() => void loadFullGraph(limitInput, selectedAppId ?? undefined)}
                 />
               )}
+              {rightPanel === 'traces' && <TracesPanel />}
               {rightPanel === 'log' && <LogPanel />}
             </div>
           </aside>

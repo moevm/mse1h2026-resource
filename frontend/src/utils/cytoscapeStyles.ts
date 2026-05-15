@@ -117,7 +117,6 @@ export function buildCytoscapeStyles(
         width: 3,
         opacity: 1,
         'z-index': 999,
-        label: 'data(type)',
         'font-size': '10px',
         color: '#f1f5f9',
       },
@@ -138,6 +137,25 @@ export function buildCytoscapeStyles(
         'line-color': '#fbbf24',
         'target-arrow-color': '#fbbf24',
       },
+    },
+
+    {
+      selector: 'edge.trace-replay',
+      style: {
+        width: 6,
+        opacity: 1,
+        'line-color': '#22d3ee',
+        'target-arrow-color': '#22d3ee',
+        'arrow-scale': 1.2,
+        'z-index': 998,
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'edge.trace-replay.trace-error',
+      style: {
+        'line-color': '#ef4444',
+        'target-arrow-color': '#ef4444',
+      } as unknown as Record<string, string | number>,
     },
 
     {
@@ -271,9 +289,9 @@ function buildEdgeLoadStyles(): Stylesheet[] {
       } as unknown as Record<string, string | number>,
     },
     {
-      selector: 'edge[call_count]',
+      selector: 'edge[call_count_display]',
       style: {
-        label: 'data(call_count)',
+        label: 'data(call_count_display)',
         'font-size': '10px',
         color: '#cbd5e1',
       } as unknown as Record<string, string | number>,

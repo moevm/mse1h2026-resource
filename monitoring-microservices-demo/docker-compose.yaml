@@ -6,6 +6,9 @@ services:
     volumes:
       - ./etc/tempo/tempo.yaml:/etc/tempo.yaml
       - tempo-data:/var/tempo
+    networks:
+      - default
+      - resource-edge-net
     # ports:
       # - "3200:3200"     # tempo
       # - "9095:9095"     # tempo grpc

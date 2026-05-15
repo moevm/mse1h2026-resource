@@ -24,14 +24,30 @@ interface ExportFormatApiItem {
 
 const BASE = '/graph';
 
-export async function fetchFullGraph(limit = 500, appId?: string, asOf?: string): Promise<GraphResponse> {
+export interface GraphFetchOptions {
+  appId?: string;
+  asOf?: string;
+  windowStart?: string;
+  windowEnd?: string;
+}
+
+export async function fetchFullGraph(
+  limit = 500,
+  appIdOrOpts?: string | GraphFetchOptions,
+  asOf?: string,
+): Promise<GraphResponse> {
+  let opts: GraphFetchOptions;
+  if (typeof appIdOrOpts === 'object' && appIdOrOpts !== null) {
+    opts = appIdOrOpts;
+  } else {
+    opts = { appId: appIdOrOpts, asOf };
+  }
+
   const params: Record<string, unknown> = { limit };
-  if (appId) {
-    params.app_id = appId;
-  }
-  if (asOf) {
-    params.as_of = asOf;
-  }
+  if (opts.appId) params.app_id = opts.appId;
+  if (opts.asOf) params.as_of = opts.asOf;
+  if (opts.windowStart) params.window_start = opts.windowStart;
+  if (opts.windowEnd) params.window_end = opts.windowEnd;
   const { data } = await client.get<GraphResponse>(`${BASE}/full`, { params });
   return data;
 }

@@ -5,6 +5,7 @@ export type EdgeDisplayMode = 'topology' | 'load';
 interface GraphUiState {
   selectedNodeId: string | null;
   hoveredNodeId: string | null;
+  hoveredEdgeId: string | null;
   highlightedNodeIds: Set<string>;
   highlightedEdgeIds: Set<string>;
   focusedNodeIds: Set<string>;
@@ -18,6 +19,7 @@ interface GraphUiState {
 
   selectNode: (id: string | null) => void;
   hoverNode: (id: string | null) => void;
+  hoverEdge: (id: string | null) => void;
   setHighlightedNodes: (ids: Set<string>) => void;
   setHighlightedEdges: (ids: Set<string>) => void;
   setFocusedNodes: (ids: Set<string>) => void;
@@ -34,6 +36,7 @@ interface GraphUiState {
 const initialState = {
   selectedNodeId: null as string | null,
   hoveredNodeId: null as string | null,
+  hoveredEdgeId: null as string | null,
   highlightedNodeIds: new Set<string>(),
   highlightedEdgeIds: new Set<string>(),
   focusedNodeIds: new Set<string>(),
@@ -49,6 +52,7 @@ export const useGraphUiStore = create<GraphUiState>((set) => ({
   ...initialState,
   selectNode: (id) => set({ selectedNodeId: id }),
   hoverNode: (id) => set({ hoveredNodeId: id }),
+  hoverEdge: (id) => set({ hoveredEdgeId: id }),
   setHighlightedNodes: (ids) => set({ highlightedNodeIds: ids }),
   setHighlightedEdges: (ids) => set({ highlightedEdgeIds: ids }),
   setFocusedNodes: (ids) => set({ focusedNodeIds: ids }),

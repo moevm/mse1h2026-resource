@@ -51,6 +51,8 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PORT: ${REDIS_PORT}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+      TEMPO_URL: ${TEMPO_URL:-}
+      ACTIVITY_TTL_HOURS: ${ACTIVITY_TTL_HOURS:-24}
     depends_on:
       neo4j:
         condition: service_healthy
