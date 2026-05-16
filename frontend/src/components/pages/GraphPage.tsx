@@ -106,6 +106,28 @@ export function GraphPage() {
 
       <div className="flex shrink-0 items-center gap-2">
         <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            const st = useTimelineStore.getState();
+            const win = {
+              start: new Date(st.windowStart).toISOString(),
+              end: new Date(st.windowStart + st.chunkCount * st.chunkBucketSeconds * 1000).toISOString(),
+            };
+            st.goLive();
+            void loadFullGraph(
+              limitInput,
+              selectedAppId ?? undefined,
+              undefined,
+              win,
+            );
+          }}
+          title="Show all known nodes/edges, ignoring time snapshot"
+          className="font-medium hover:bg-slate-800"
+        >
+          Full topology
+        </Button>
+        <Button
           variant="primary"
           size="sm"
           icon={<IconRefresh className="h-3.5 w-3.5" />}

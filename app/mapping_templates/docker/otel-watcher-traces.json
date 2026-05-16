@@ -167,16 +167,18 @@
     {
       "id": "service-cpu-seconds",
       "source_path": "metrics.process_cpu_seconds_total",
-      "target_field": "cpu_allocated_cores",
-      "target_node_type": "Service"
-    },
-    {
-      "id": "service-memory-bytes",
-      "source_path": "metrics.process_resident_memory_bytes",
-      "target_field": "memory_allocated_mb",
+      "target_field": "cpu_seconds_total",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "int(float(value) / 1048576)" }
+      "transform_config": { "expression": "round(float(value), 2)" }
+    },
+    {
+      "id": "service-memory-mb",
+      "source_path": "metrics.process_resident_memory_bytes",
+      "target_field": "memory_mb",
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "round(float(value) / 1048576, 1)" }
     },
     {
       "id": "service-http-requests",

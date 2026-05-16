@@ -23,91 +23,90 @@ PHASES = [
         "start": 0,
         "end": 30,
         "targets": [
-            ("GET", f"{FASTAPI_URL}/users"),
-            ("GET", f"{FASTAPI_URL}/"),
+            ("GET", f"{FASTAPI_URL}/users", 1),
+            ("GET", f"{FASTAPI_URL}/", 1),
         ],
-        "rate": (1, 3),
+        "delay": (3.0, 6.0),
     },
     {
         "name": "Phase 2: Flask gateway joins",
         "start": 30,
         "end": 60,
         "targets": [
-            ("GET", f"{FLASK_URL}/api/v1/users"),
-            ("GET", f"{FLASK_URL}/api/v1/users/testuser"),
-            ("GET", f"{FASTAPI_URL}/users"),
+            ("GET", f"{FLASK_URL}/api/v1/users", 2),
+            ("GET", f"{FLASK_URL}/api/v1/users/testuser", 2),
+            ("GET", f"{FASTAPI_URL}/users", 1),
         ],
-        "rate": (2, 4),
+        "delay": (2.0, 4.0),
     },
     {
         "name": "Phase 3: Golang products",
         "start": 60,
         "end": 90,
         "targets": [
-            ("GET", f"{FLASK_URL}/api/v1/products"),
-            ("GET", f"{FLASK_URL}/api/v1/products/1"),
-            ("GET", f"{GOLANG_URL}/albums"),
-            ("GET", f"{GOLANG_URL}/categories"),
-            ("GET", f"{FLASK_URL}/api/v1/users"),
+            ("GET", f"{FLASK_URL}/api/v1/products", 3),
+            ("GET", f"{FLASK_URL}/api/v1/products/1", 2),
+            ("GET", f"{GOLANG_URL}/albums", 1),
+            ("GET", f"{GOLANG_URL}/categories", 1),
+            ("GET", f"{FLASK_URL}/api/v1/users", 2),
         ],
-        "rate": (3, 6),
+        "delay": (1.5, 3.0),
     },
     {
         "name": "Phase 4: External APIs + payments",
         "start": 90,
         "end": 120,
         "targets": [
-            ("GET", f"{FLASK_URL}/api/v1/analytics"),
-            ("POST", f"{FLASK_URL}/api/v1/payments"),
-            ("GET", f"{FLASK_URL}/api/v1/payments/health"),
-            ("GET", f"{FLASK_URL}/api/v1/products"),
-            ("GET", f"{FLASK_URL}/api/v1/users"),
+            ("GET", f"{FLASK_URL}/api/v1/analytics", 3),
+            ("POST", f"{FLASK_URL}/api/v1/payments", 3),
+            ("GET", f"{FLASK_URL}/api/v1/payments/health", 1),
+            ("GET", f"{FLASK_URL}/api/v1/products", 2),
+            ("GET", f"{FLASK_URL}/api/v1/users", 2),
         ],
-        "rate": (4, 7),
+        "delay": (1.0, 2.5),
     },
     {
         "name": "Phase 5: Orders + notifications (queues)",
         "start": 120,
         "end": 150,
         "targets": [
-            ("POST", f"{FLASK_URL}/api/v1/orders"),
-            ("POST", f"{FLASK_URL}/api/v1/notifications"),
-            ("GET", f"{FLASK_URL}/api/v1/analytics"),
-            ("GET", f"{FLASK_URL}/api/v1/users"),
-            ("GET", f"{FLASK_URL}/api/v1/products"),
+            ("POST", f"{FLASK_URL}/api/v1/orders", 5),
+            ("POST", f"{FLASK_URL}/api/v1/notifications", 3),
+            ("GET", f"{FLASK_URL}/api/v1/analytics", 2),
+            ("GET", f"{FLASK_URL}/api/v1/users", 1),
+            ("GET", f"{FLASK_URL}/api/v1/products", 1),
         ],
-        "rate": (4, 8),
+        "delay": (0.8, 2.0),
     },
     {
         "name": "Phase 6: Full traffic with recommendations",
         "start": 150,
         "end": None,
         "targets": [
-            ("GET", f"{FLASK_URL}/api/v1/users"),
-            ("GET", f"{FLASK_URL}/api/v1/users/testuser"),
-            ("POST", f"{FLASK_URL}/api/v1/users"),
-            ("GET", f"{FLASK_URL}/api/v1/products"),
-            ("GET", f"{FLASK_URL}/api/v1/products/1"),
-            ("POST", f"{FLASK_URL}/api/v1/orders"),
-            ("GET", f"{FLASK_URL}/api/v1/analytics"),
-            ("GET", f"{FLASK_URL}/api/v1/recommendations"),
-            ("POST", f"{FLASK_URL}/api/v1/notifications"),
-            ("POST", f"{FLASK_URL}/api/v1/payments"),
-            ("GET", f"{FLASK_URL}/api/v1/payments/health"),
-            ("GET", f"{FLASK_URL}/health"),
-            ("GET", f"{FASTAPI_URL}/"),
-            ("GET", f"{FASTAPI_URL}/users"),
-            ("GET", f"{GOLANG_URL}/albums"),
-            ("GET", f"{GOLANG_URL}/categories"),
-            ("GET", f"{GOLANG_URL}/stats"),
+            ("POST", f"{FLASK_URL}/api/v1/orders", 5),
+            ("GET", f"{FLASK_URL}/api/v1/recommendations", 4),
+            ("POST", f"{FLASK_URL}/api/v1/payments", 3),
+            ("POST", f"{FLASK_URL}/api/v1/notifications", 3),
+            ("GET", f"{FLASK_URL}/api/v1/analytics", 3),
+            ("GET", f"{FLASK_URL}/api/v1/users", 2),
+            ("GET", f"{FLASK_URL}/api/v1/users/testuser", 2),
+            ("POST", f"{FLASK_URL}/api/v1/users", 1),
+            ("GET", f"{FLASK_URL}/api/v1/products", 2),
+            ("GET", f"{FLASK_URL}/api/v1/products/1", 2),
+            ("GET", f"{FLASK_URL}/api/v1/payments/health", 1),
+            ("GET", f"{FLASK_URL}/health", 1),
+            ("GET", f"{FASTAPI_URL}/", 1),
+            ("GET", f"{FASTAPI_URL}/users", 1),
+            ("GET", f"{GOLANG_URL}/albums", 1),
+            ("GET", f"{GOLANG_URL}/categories", 1),
+            ("GET", f"{GOLANG_URL}/stats", 1),
         ],
-        "rate": (5, 12),
+        "delay": (0.5, 1.5),
     },
 ]
 
 
 def get_active_phase(elapsed: float) -> list:
-    """Return list of (method, url) targets active at given elapsed time."""
     active = []
     for phase in PHASES:
         start = phase["start"]
@@ -119,12 +118,16 @@ def get_active_phase(elapsed: float) -> list:
     return active
 
 
-def get_current_rate(elapsed: float) -> tuple:
-    """Return (min_delay, max_delay) for current phase."""
+def get_current_delay(elapsed: float) -> tuple:
     for phase in reversed(PHASES):
         if elapsed >= phase["start"]:
-            return phase["rate"]
-    return (3, 8)
+            return phase["delay"]
+    return (3.0, 6.0)
+
+
+def weighted_choice(targets: list) -> tuple:
+    weights = [w for _, _, w in targets]
+    return random.choices([(m, u) for m, u, _ in targets], weights=weights, k=1)[0]
 
 
 def wait_for_service(url: str, timeout: int = 120):
@@ -161,10 +164,10 @@ def main():
             time.sleep(1)
             continue
 
-        min_delay, max_delay = get_current_rate(elapsed)
+        min_delay, max_delay = get_current_delay(elapsed)
         delay = random.uniform(min_delay, max_delay)
 
-        method, url = random.choice(targets)
+        method, url = weighted_choice(targets)
         try:
             if method == "POST":
                 resp = requests.post(url, json={}, timeout=5)

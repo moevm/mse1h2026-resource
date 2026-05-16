@@ -412,9 +412,9 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           <span className="text-[10px] text-slate-500">Loading...</span>
         )}
         {isLive ? (
-          <span className="ml-auto flex items-center gap-1.5 text-[10px] text-emerald-400">
-            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-            Live
+          <span className="ml-auto flex items-center gap-1.5 text-[10px] text-slate-400" title="Showing all known nodes/edges, ignoring time snapshot">
+            <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-500" />
+            Full topology
           </span>
         ) : currentTime ? (
           <span className="ml-auto font-mono text-[10px] text-slate-400">
@@ -512,15 +512,6 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           />
         </label>
 
-        {!isLive && (
-          <button
-            onClick={handleGoLive}
-            className="ml-auto flex items-center gap-1 rounded-md bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-400 transition-colors hover:bg-emerald-500/20"
-          >
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-400" />
-            Live
-          </button>
-        )}
       </div>
 
       {/* Strip: fixed slot grid */}
@@ -589,11 +580,10 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
             })}
           </svg>
 
-          {/* Live indicator at right edge */}
           {isLive && (
             <div
-              className="pointer-events-none absolute top-0 h-full w-0.5 bg-emerald-400"
-              style={{ left: stripWidth - 1, boxShadow: '0 0 6px rgba(52,211,153,0.5)' }}
+              className="pointer-events-none absolute top-0 h-full w-0.5 bg-slate-500/60"
+              style={{ left: stripWidth - 1 }}
             />
           )}
 

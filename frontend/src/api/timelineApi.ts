@@ -64,6 +64,7 @@ export async function fetchTraceActivity(
 export interface TraceReplayHop {
   caller_service: string;
   callee_service: string;
+  callee_kind?: string;
   span_name: string;
   start_offset_ms: number;
   duration_ms: number;

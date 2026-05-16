@@ -121,11 +121,14 @@ function TypeSpecificMetrics({ node }: Readonly<{ node: GraphNode }>) {
           {p.framework && <InfoRow label="Framework" value={s(p.framework)} />}
           {p.version && <InfoRow label="Version" value={s(p.version)} />}
           {p.tier != null && <InfoRow label="Tier" value={`T${s(p.tier)}`} />}
-          {p.memory_allocated_mb != null && (
-            <MetricBar label="Memory" value={n(p.memory_allocated_mb)} max={2048} unit="MB" />
+          {(p as Record<string, unknown>).memory_mb != null && (
+            <MetricBar label="Memory" value={n((p as Record<string, unknown>).memory_mb)} max={2048} unit="MB" decimals={1} />
           )}
-          {p.cpu_allocated_cores != null && (
-            <MetricBar label="CPU" value={n(p.cpu_allocated_cores)} max={4} unit="cores" decimals={2} />
+          {(p as Record<string, unknown>).cpu_seconds_total != null && (
+            <InfoRow
+              label="CPU time"
+              value={`${n((p as Record<string, unknown>).cpu_seconds_total).toFixed(2)} s (cumulative)`}
+            />
           )}
         </Section>
       );
@@ -315,8 +318,32 @@ function TypeSpecificMetrics({ node }: Readonly<{ node: GraphNode }>) {
   }
 }
 
+function expandProperties(raw: Record<string, unknown>): Array<[string, unknown]> {
+  const merged: Record<string, unknown> = { ...raw };
+  const nested = merged.properties;
+  if (typeof nested === 'string') {
+    try {
+      const parsed = JSON.parse(nested);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+          if (!(k in merged)) merged[k] = v;
+        }
+        delete merged.properties;
+      }
+    } catch {
+      /* leave as string */
+    }
+  } else if (nested && typeof nested === 'object' && !Array.isArray(nested)) {
+    for (const [k, v] of Object.entries(nested as Record<string, unknown>)) {
+      if (!(k in merged)) merged[k] = v;
+    }
+    delete merged.properties;
+  }
+  return Object.entries(merged).filter(([, v]) => v !== null && v !== undefined && v !== '');
+}
+
 function PropertiesSection({ properties }: Readonly<{ properties: Record<string, unknown> }>) {
-  const entries = Object.entries(properties).filter(([, v]) => v !== null && v !== undefined && v !== '');
+  const entries = expandProperties(properties);
   if (entries.length === 0) return null;
 
   return (

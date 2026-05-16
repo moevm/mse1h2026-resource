@@ -76,33 +76,83 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
                     "start": start,
                     "end": end,
                     "is_error": is_error,
+                    "attrs": attrs,
                 }
 
     hops: List[Dict[str, Any]] = []
     base = None
+    seen_keys: set = set()
+
+    def _add_hop(
+        caller: str,
+        callee: str,
+        callee_kind: str,
+        span_name: str,
+        start_ns: int,
+        end_ns: int,
+        is_error: bool,
+    ) -> None:
+        nonlocal base
+        if not caller or not callee or caller == callee:
+            return
+        key = (caller, callee, callee_kind, start_ns, span_name)
+        if key in seen_keys:
+            return
+        seen_keys.add(key)
+        if base is None or start_ns < base:
+            base = start_ns
+        hops.append({
+            "caller_service": caller,
+            "callee_service": callee,
+            "callee_kind": callee_kind,
+            "span_name": span_name,
+            "start_offset_ms": start_ns // 1_000_000,
+            "duration_ms": (end_ns - start_ns) // 1_000_000 if end_ns > start_ns else 0,
+            "is_error": is_error,
+        })
+
     for s in spans.values():
         psid = s["parent_span_id"]
-        seen: set = set()
+        seen_chain: set = set()
         caller_service = None
-        while psid and psid in spans and psid not in seen:
-            seen.add(psid)
+        while psid and psid in spans and psid not in seen_chain:
+            seen_chain.add(psid)
             p = spans[psid]
             if p["service_name"] and p["service_name"] != s["service_name"]:
                 caller_service = p["service_name"]
                 break
             psid = p["parent_span_id"]
-        if not caller_service:
+        if caller_service:
+            _add_hop(
+                caller_service, s["service_name"], "Service",
+                s["span_name"], s["start"], s["end"], s["is_error"],
+            )
+
+        attrs = s["attrs"]
+        svc = s["service_name"]
+        if not svc:
             continue
-        if base is None or s["start"] < base:
-            base = s["start"]
-        hops.append({
-            "caller_service": caller_service,
-            "callee_service": s["service_name"],
-            "span_name": s["span_name"],
-            "start_offset_ms": s["start"] // 1_000_000,
-            "duration_ms": (s["end"] - s["start"]) // 1_000_000 if s["end"] > s["start"] else 0,
-            "is_error": s["is_error"],
-        })
+
+        db_system = _extract_attr(attrs, "db.system")
+        if db_system:
+            db_name = _extract_attr(attrs, "db.name") or _extract_attr(attrs, "peer.service") or _extract_attr(attrs, "net.peer.name")
+            if db_name:
+                _add_hop(svc, db_name, "Database", s["span_name"], s["start"], s["end"], s["is_error"])
+            db_table = _extract_attr(attrs, "db.table")
+            if db_table:
+                _add_hop(svc, db_table, "Table", s["span_name"], s["start"], s["end"], s["is_error"])
+
+        cache_name = _extract_attr(attrs, "cache.name")
+        if cache_name:
+            _add_hop(svc, cache_name, "Cache", s["span_name"], s["start"], s["end"], s["is_error"])
+
+        msg_dest = _extract_attr(attrs, "messaging.destination")
+        if msg_dest:
+            _add_hop(svc, msg_dest, "QueueTopic", s["span_name"], s["start"], s["end"], s["is_error"])
+
+        external_api = _extract_attr(attrs, "external_api")
+        if external_api:
+            _add_hop(svc, external_api, "ExternalAPI", s["span_name"], s["start"], s["end"], s["is_error"])
 
     if base is not None:
         for h in hops:

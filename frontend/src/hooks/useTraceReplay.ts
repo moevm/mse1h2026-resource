@@ -65,12 +65,30 @@ export function useTraceReplay() {
 
     cy.edges().removeClass('trace-replay').removeClass('trace-error');
 
-    const matchEdge = (caller: string, callee: string) => {
+    const calleePrefix: Record<string, string> = {
+      Service: 'urn:service:',
+      Database: 'urn:database:',
+      Table: 'urn:table:',
+      Cache: 'urn:cache:',
+      QueueTopic: 'urn:queuetopic:',
+      ExternalAPI: 'urn:externalapi:',
+    };
+
+    const matchEdge = (caller: string, callee: string, calleeKind: string | undefined) => {
       const sourceId = `urn:service:${caller}`;
-      const targetId = `urn:service:${callee}`;
-      return cy.edges().filter((e) =>
+      const prefix = calleePrefix[calleeKind ?? 'Service'] ?? 'urn:service:';
+      const targetId = `${prefix}${callee}`;
+      const direct = cy.edges().filter((e) =>
         e.data('source') === sourceId && e.data('target') === targetId,
       );
+      if (direct.length > 0) return direct;
+      // Fallback: same source, any edge to a target node whose `name` matches
+      // (covers cases like Database id derived from name).
+      return cy.edges().filter((e) => {
+        if (e.data('source') !== sourceId) return false;
+        const tgt = cy.getElementById(String(e.data('target')));
+        return tgt.length > 0 && tgt.data('label') === callee;
+      });
     };
 
     let prevStart = 0;
@@ -84,7 +102,7 @@ export function useTraceReplay() {
       timersRef.current.push(
         setTimeout(() => {
           if (cancelRef.current) return;
-          const edges = matchEdge(hop.caller_service, hop.callee_service);
+          const edges = matchEdge(hop.caller_service, hop.callee_service, hop.callee_kind);
           if (edges.length === 0) return;
           edges.addClass('trace-replay');
           if (hop.is_error) edges.addClass('trace-error');
