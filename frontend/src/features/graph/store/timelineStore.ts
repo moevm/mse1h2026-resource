@@ -108,7 +108,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   },
 
   fetchEvents: async () => {
-    const { chunkCount, chunkBucketSeconds, mode } = get();
+    const { chunkCount, chunkBucketSeconds } = get();
     const bucketMs = chunkBucketSeconds * 1000;
     const now = Date.now();
     const fetchStart = now - chunkCount * bucketMs * 4;
@@ -117,15 +117,12 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const fromIso = new Date(fetchStart).toISOString();
       const toIso = new Date(now).toISOString();
 
-      let events: TimelineEvent[] = [];
-      let activity: TraceActivityBucket[] = [];
-      if (mode === 'topology') {
-        const resp = await fetchTimelineEvents(chunkBucketSeconds, fromIso, toIso);
-        events = resp.events;
-      } else {
-        const resp = await fetchTraceActivity(chunkBucketSeconds, fromIso, toIso);
-        activity = resp.buckets;
-      }
+      const [actResp, evResp] = await Promise.all([
+        fetchTraceActivity(chunkBucketSeconds, fromIso, toIso),
+        fetchTimelineEvents(chunkBucketSeconds, fromIso, toIso),
+      ]);
+      const activity = actResp.buckets;
+      const events = evResp.events;
 
       let nextStart: number;
       const earliest = pickEarliestMs(events, activity);

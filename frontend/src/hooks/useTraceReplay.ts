@@ -6,8 +6,9 @@ import { useLogStore } from '../store/logStore';
 
 const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
-const MIN_HOP_DURATION_MS = 350;
-const HOP_GAP_MS = 200;
+const STEP_MS = 700;
+const HOLD_AFTER_END_MS = 1500;
+const PULSE_FADE_MS = 600;
 
 export function useTraceReplay() {
   const { cyRef } = useCyContext();
@@ -24,7 +25,13 @@ export function useTraceReplay() {
     timersRef.current = [];
     const cy = cyRef.current;
     if (cy && !cy.destroyed()) {
-      cy.edges().removeClass('trace-replay').removeClass('trace-error');
+      cy.edges()
+        .removeClass('trace-replay')
+        .removeClass('trace-replay-head')
+        .removeClass('trace-error');
+      cy.nodes()
+        .removeClass('trace-replay-node')
+        .removeClass('trace-replay-head-node');
     }
     setIsPlaying(false);
   }, [cyRef]);
@@ -55,7 +62,6 @@ export function useTraceReplay() {
       return;
     }
     setLastTraceId(traceId);
-    addLog('success', 'replay', `Replaying trace ${traceId.slice(0, 12)}... (${hops.length} hops)`);
 
     const cy = cyRef.current;
     if (!cy || cy.destroyed()) {
@@ -63,7 +69,13 @@ export function useTraceReplay() {
       return;
     }
 
-    cy.edges().removeClass('trace-replay').removeClass('trace-error');
+    cy.edges()
+      .removeClass('trace-replay')
+      .removeClass('trace-replay-head')
+      .removeClass('trace-error');
+    cy.nodes()
+      .removeClass('trace-replay-node')
+      .removeClass('trace-replay-head-node');
 
     const calleePrefix: Record<string, string> = {
       Service: 'urn:service:',
@@ -82,8 +94,6 @@ export function useTraceReplay() {
         e.data('source') === sourceId && e.data('target') === targetId,
       );
       if (direct.length > 0) return direct;
-      // Fallback: same source, any edge to a target node whose `name` matches
-      // (covers cases like Database id derived from name).
       return cy.edges().filter((e) => {
         if (e.data('source') !== sourceId) return false;
         const tgt = cy.getElementById(String(e.data('target')));
@@ -91,41 +101,67 @@ export function useTraceReplay() {
       });
     };
 
-    let prevStart = 0;
-    for (let i = 0; i < hops.length; i++) {
-      const hop = hops[i];
-      const delay = i === 0 ? 0 : Math.max(HOP_GAP_MS, hop.start_offset_ms - prevStart);
-      prevStart = hop.start_offset_ms;
-      const holdMs = Math.max(MIN_HOP_DURATION_MS, hop.duration_ms);
+    const ordered = [...hops].sort((a, b) => {
+      const d = a.start_offset_ms - b.start_offset_ms;
+      if (d !== 0) return d;
+      const aDb = a.callee_kind && a.callee_kind !== 'Service' ? 1 : 0;
+      const bDb = b.callee_kind && b.callee_kind !== 'Service' ? 1 : 0;
+      return aDb - bDb;
+    });
 
-      const fireAt = i === 0 ? 0 : delay;
+    addLog('success', 'replay', `Replaying trace ${traceId.slice(0, 12)}... (${ordered.length} hops)`);
+
+    let prevHeadEdges: cytoscape.EdgeCollection | null = null;
+    let prevHeadNodes: cytoscape.NodeCollection | null = null;
+
+    ordered.forEach((hop, i) => {
       timersRef.current.push(
         setTimeout(() => {
           if (cancelRef.current) return;
           const edges = matchEdge(hop.caller_service, hop.callee_service, hop.callee_kind);
           if (edges.length === 0) return;
+          if (prevHeadEdges) prevHeadEdges.removeClass('trace-replay-head');
+          if (prevHeadNodes) prevHeadNodes.removeClass('trace-replay-head-node');
           edges.addClass('trace-replay');
+          edges.addClass('trace-replay-head');
           if (hop.is_error) edges.addClass('trace-error');
-          timersRef.current.push(
-            setTimeout(() => {
-              if (cancelRef.current) return;
-              edges.removeClass('trace-replay').removeClass('trace-error');
-            }, holdMs),
-          );
-        }, fireAt + i * HOP_GAP_MS),
+          const endpoints = edges.connectedNodes();
+          endpoints.addClass('trace-replay-node');
+          endpoints.addClass('trace-replay-head-node');
+          prevHeadEdges = edges;
+          prevHeadNodes = endpoints;
+        }, i * STEP_MS),
       );
-    }
+    });
 
-    const totalDuration =
-      hops.reduce((acc, h, i) => {
-        const gap = i === 0 ? 0 : Math.max(HOP_GAP_MS, h.start_offset_ms - hops[i - 1].start_offset_ms);
-        return acc + gap + HOP_GAP_MS;
-      }, 0) + MIN_HOP_DURATION_MS * 2;
+    const totalShowMs = ordered.length * STEP_MS + HOLD_AFTER_END_MS;
 
     timersRef.current.push(
       setTimeout(() => {
-        if (!cancelRef.current) setIsPlaying(false);
-      }, totalDuration),
+        if (cancelRef.current) return;
+        const c = cyRef.current;
+        if (c && !c.destroyed()) {
+          c.edges().removeClass('trace-replay-head');
+          c.nodes().removeClass('trace-replay-head-node');
+        }
+      }, totalShowMs - PULSE_FADE_MS),
+    );
+
+    timersRef.current.push(
+      setTimeout(() => {
+        if (cancelRef.current) return;
+        const c = cyRef.current;
+        if (c && !c.destroyed()) {
+          c.edges()
+            .removeClass('trace-replay')
+            .removeClass('trace-replay-head')
+            .removeClass('trace-error');
+          c.nodes()
+            .removeClass('trace-replay-node')
+            .removeClass('trace-replay-head-node');
+        }
+        setIsPlaying(false);
+      }, totalShowMs),
     );
   }, [isPlaying, cyRef, addLog]);
 

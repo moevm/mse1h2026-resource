@@ -114,6 +114,7 @@ export async function fetchTracesList(opts: {
   windowEnd?: string;
   limit?: number;
   services?: string[];
+  visibleNodes?: string[];
   multiHop?: boolean;
 }): Promise<TracesListResponse> {
   const params: Record<string, unknown> = {};
@@ -121,6 +122,7 @@ export async function fetchTracesList(opts: {
   if (opts.windowEnd) params.window_end = opts.windowEnd;
   if (opts.limit !== undefined) params.limit = opts.limit;
   if (opts.services && opts.services.length > 0) params.services = opts.services.join(',');
+  if (opts.visibleNodes && opts.visibleNodes.length > 0) params.visible_nodes = opts.visibleNodes.join(',');
   if (opts.multiHop !== undefined) params.multi_hop = opts.multiHop;
   const { data } = await client.get<TracesListResponse>(`${BASE}/traces`, { params });
   return data;

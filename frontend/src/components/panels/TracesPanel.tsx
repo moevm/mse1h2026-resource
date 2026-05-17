@@ -38,6 +38,11 @@ export function TracesPanel() {
     }
     return [...set].sort();
   }, [nodes]);
+  const visibleAllNodes = useMemo(() => {
+    const set = new Set<string>();
+    for (const n of nodes) set.add(n.name);
+    return [...set].sort();
+  }, [nodes]);
 
   const [traces, setTraces] = useState<TraceSummary[]>([]);
   const [loading, setLoading] = useState(false);
@@ -58,6 +63,7 @@ export function TracesPanel() {
         limit: 100,
         multiHop,
         services: restrictToGraph ? visibleServices : undefined,
+        visibleNodes: restrictToGraph ? visibleAllNodes : undefined,
       });
       setTraces(resp.traces);
     } catch (e) {
@@ -65,7 +71,7 @@ export function TracesPanel() {
     } finally {
       setLoading(false);
     }
-  }, [windowStart, windowEnd, multiHop, restrictToGraph, visibleServices]);
+  }, [windowStart, windowEnd, multiHop, restrictToGraph, visibleServices, visibleAllNodes]);
 
   useEffect(() => {
     void load();

@@ -142,16 +142,53 @@ export function buildCytoscapeStyles(
     {
       selector: 'edge.trace-replay',
       style: {
-        width: 6,
-        opacity: 1,
-        'line-color': '#22d3ee',
-        'target-arrow-color': '#22d3ee',
-        'arrow-scale': 1.2,
+        width: 4,
+        opacity: 0.85,
+        'line-color': '#0891b2',
+        'target-arrow-color': '#0891b2',
+        'arrow-scale': 1.0,
+        'transition-property': 'width, line-color, opacity',
+        'transition-duration': 400,
         'z-index': 998,
       } as unknown as Record<string, string | number>,
     },
     {
+      selector: 'node.trace-replay-node',
+      style: {
+        'border-color': '#22d3ee',
+        'border-width': 3,
+        'z-index': 997,
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'node.trace-replay-head-node',
+      style: {
+        'border-color': '#22d3ee',
+        'border-width': 4,
+        'border-opacity': 1,
+        'z-index': 999,
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'edge.trace-replay-head',
+      style: {
+        width: 8,
+        opacity: 1,
+        'line-color': '#22d3ee',
+        'target-arrow-color': '#22d3ee',
+        'arrow-scale': 1.5,
+        'z-index': 999,
+      } as unknown as Record<string, string | number>,
+    },
+    {
       selector: 'edge.trace-replay.trace-error',
+      style: {
+        'line-color': '#b91c1c',
+        'target-arrow-color': '#b91c1c',
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'edge.trace-replay-head.trace-error',
       style: {
         'line-color': '#ef4444',
         'target-arrow-color': '#ef4444',

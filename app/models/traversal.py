@@ -143,24 +143,4 @@ PRESET_RULES: list[dict] = [
         ],
         "limit": 100,
     },
-    {
-        "name": "Full Dependency Tree",
-        "description": "Recursive downstream dependency tree from a service, including all resource types",
-        "steps": [
-            {
-                "edge_types": [
-                    "calls",
-                    "dependson",
-                    "reads",
-                    "writes",
-                    "publishesto",
-                    "consumesfrom",
-                ],
-                "direction": "outgoing",
-                "min_depth": 1,
-                "max_depth": 5,
-            },
-        ],
-        "limit": 500,
-    },
 ]

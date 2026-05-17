@@ -205,14 +205,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_field="name",
         edge_type="dependson",
     ),
-    AutoEdgeRule(
-        id="service-depends-library",
-        source_type="Service",
-        source_field="libraries",
-        target_type="Library",
-        target_field="name",
-        edge_type="dependson",
-    ),
 
     AutoEdgeRule(
         id="service-auth-secret",
@@ -269,14 +261,6 @@ BUILTIN_EDGE_RULES: List[AutoEdgeRule] = [
         target_type="Cache",
         target_field="name",
         edge_type="writes",
-    ),
-    AutoEdgeRule(
-        id="deployment-depends-library",
-        source_type="Deployment",
-        source_field="libraries",
-        target_type="Library",
-        target_field="name",
-        edge_type="dependson",
     ),
     AutoEdgeRule(
         id="deployment-ratelimit-secret",

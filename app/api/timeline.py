@@ -221,6 +221,7 @@ async def list_traces(
     lookback_seconds: Annotated[int, Query(ge=10, le=86400)] = 600,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     services: Optional[str] = Query(None, description="Comma-separated allow-list of service names; only traces whose hops stay inside this set are returned"),
+    visible_nodes: Optional[str] = Query(None, description="Comma-separated allow-list of any visible node names (Service, Database, Cache, etc.). A trace is kept only if every hop's callee is in this set."),
     multi_hop: bool = Query(True, description="If true, drop traces with no cross-service hops"),
 ):
     if not TEMPO_URL:
@@ -265,6 +266,10 @@ async def list_traces(
         allowed_services = {s.strip() for s in services.split(",") if s.strip()}
         candidates = [c for c in candidates if c.get("rootServiceName") in allowed_services]
 
+    allowed_nodes: Optional[set] = None
+    if visible_nodes:
+        allowed_nodes = {s.strip() for s in visible_nodes.split(",") if s.strip()}
+
     def _fetch_and_hops(c: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         tid = c["traceID"]
         try:
@@ -275,14 +280,19 @@ async def list_traces(
             return None
         hops = _build_hops_from_trace(trace).get("hops", [])
         services_involved: set = set()
+        callees_by_kind: Dict[str, set] = {}
         for h in hops:
             services_involved.add(h["caller_service"])
             services_involved.add(h["callee_service"])
+            callees_by_kind.setdefault(h.get("callee_kind") or "Service", set()).add(h["callee_service"])
         if multi_hop and not hops:
             return None
-        if allowed_services is not None and not services_involved.issubset(allowed_services):
-            if services_involved:
-                return None
+        only_services = callees_by_kind.get("Service", set())
+        only_services |= {h["caller_service"] for h in hops}
+        if allowed_services is not None and only_services and not only_services.issubset(allowed_services):
+            return None
+        if allowed_nodes is not None and services_involved and not services_involved.issubset(allowed_nodes):
+            return None
         has_errors = any(h.get("is_error") for h in hops)
         try:
             start_ns = int(c.get("startTimeUnixNano") or 0)
