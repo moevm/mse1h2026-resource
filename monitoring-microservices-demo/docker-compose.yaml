@@ -266,13 +266,10 @@ services:
       - RESOURCE_API_URL=http://resource-backend:8000
       - TEMPO_URL=http://tempo:3200
       - AGENT_NAME=tempo-watcher
-      - ADMIN_EMAIL=admin1@example.com
-      - ADMIN_PASSWORD=admin
       - APP_NAME=monitoring-demo
       - POLL_INTERVAL=15
       - LAG_SECONDS=15
       - MAX_TRACES=200
-      - AGENT_TOKEN_FILE=/data/agent.token
       - LAST_END_FILE=/data/last_end
     volumes:
       - tempo-watcher-data:/data
@@ -289,12 +286,9 @@ services:
     environment:
       - RESOURCE_API_URL=http://resource-backend:8000
       - AGENT_NAME=otel-watcher
-      - ADMIN_EMAIL=admin1@example.com
-      - ADMIN_PASSWORD=admin
       - APP_NAME=monitoring-demo
       - SCRAPE_TARGETS=fastapi-app:8000,flask-app:9464,otel-collector:8889,golang-app:8002,beyla:8999
       - SCRAPE_INTERVAL=30
-      - AGENT_TOKEN_FILE=/data/agent.token
     volumes:
       - otel-watcher-data:/data
     extra_hosts:
@@ -316,8 +310,6 @@ services:
     environment:
       - RESOURCE_API_URL=http://host.docker.internal:8000
       - AGENT_NAME=k8s-watcher
-      - ADMIN_EMAIL=admin1@example.com
-      - ADMIN_PASSWORD=admin
       - APP_NAME=monitoring-demo
       - WATCH_NAMESPACE=monitoring-demo
       - WATCH_INTERVAL=30
