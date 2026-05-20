@@ -79,6 +79,7 @@ export function useTraceReplay() {
 
     const calleePrefix: Record<string, string> = {
       Service: 'urn:service:',
+      Endpoint: 'urn:endpoint:',
       Database: 'urn:database:',
       Table: 'urn:table:',
       Cache: 'urn:cache:',
@@ -86,19 +87,29 @@ export function useTraceReplay() {
       ExternalAPI: 'urn:externalapi:',
     };
 
-    const matchEdge = (caller: string, callee: string, calleeKind: string | undefined) => {
+    const matchEdgeAndNodes = (caller: string, callee: string, calleeKind: string | undefined) => {
       const sourceId = `urn:service:${caller}`;
       const prefix = calleePrefix[calleeKind ?? 'Service'] ?? 'urn:service:';
       const targetId = `${prefix}${callee}`;
+
       const direct = cy.edges().filter((e) =>
         e.data('source') === sourceId && e.data('target') === targetId,
       );
-      if (direct.length > 0) return direct;
-      return cy.edges().filter((e) => {
-        if (e.data('source') !== sourceId) return false;
-        const tgt = cy.getElementById(String(e.data('target')));
-        return tgt.length > 0 && tgt.data('label') === callee;
-      });
+      if (direct.length > 0) {
+        return { edges: direct, nodes: direct.connectedNodes() };
+      }
+      const reverse = cy.edges().filter((e) =>
+        e.data('source') === targetId && e.data('target') === sourceId,
+      );
+      if (reverse.length > 0) {
+        return { edges: reverse, nodes: reverse.connectedNodes() };
+      }
+      const targetNode = cy.getElementById(targetId);
+      if (targetNode.length > 0) {
+        return { edges: cy.collection(), nodes: targetNode };
+      }
+      const byLabel = cy.nodes().filter((n) => n.data('label') === callee);
+      return { edges: cy.collection(), nodes: byLabel };
     };
 
     const ordered = [...hops].sort((a, b) => {
@@ -118,18 +129,23 @@ export function useTraceReplay() {
       timersRef.current.push(
         setTimeout(() => {
           if (cancelRef.current) return;
-          const edges = matchEdge(hop.caller_service, hop.callee_service, hop.callee_kind);
-          if (edges.length === 0) return;
+          const { edges, nodes } = matchEdgeAndNodes(
+            hop.caller_service, hop.callee_service, hop.callee_kind,
+          );
+          if (edges.length === 0 && nodes.length === 0) return;
           if (prevHeadEdges) prevHeadEdges.removeClass('trace-replay-head');
           if (prevHeadNodes) prevHeadNodes.removeClass('trace-replay-head-node');
-          edges.addClass('trace-replay');
-          edges.addClass('trace-replay-head');
-          if (hop.is_error) edges.addClass('trace-error');
-          const endpoints = edges.connectedNodes();
-          endpoints.addClass('trace-replay-node');
-          endpoints.addClass('trace-replay-head-node');
+          if (edges.length > 0) {
+            edges.addClass('trace-replay');
+            edges.addClass('trace-replay-head');
+            if (hop.is_error) edges.addClass('trace-error');
+          }
+          if (nodes.length > 0) {
+            nodes.addClass('trace-replay-node');
+            nodes.addClass('trace-replay-head-node');
+          }
           prevHeadEdges = edges;
-          prevHeadNodes = endpoints;
+          prevHeadNodes = nodes;
         }, i * STEP_MS),
       );
     });

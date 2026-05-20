@@ -17,6 +17,13 @@ from app.services.transform_service import transform_service
 log = logging.getLogger(__name__)
 
 
+def _looks_like_ip(value: str) -> bool:
+    if not value:
+        return False
+    stripped = value.replace(".", "").replace(":", "")
+    return value[0].isdigit() and stripped.isdigit()
+
+
 class MapperService:
     def map_chunk(
         self,
@@ -321,6 +328,8 @@ class MapperService:
                         })
                     elif rule.target_type in materializable_types:
                         target_name = str(value).strip()
+                        if _looks_like_ip(target_name):
+                            continue
                         target_node = {
                             "id": f"urn:{rule.target_type.lower()}:{target_name}",
                             "type": rule.target_type,

@@ -13,8 +13,8 @@
       "source_path": "service_name",
       "target_field": "id",
       "target_node_type": "Service",
-      "transform_type": "template",
-      "transform_config": { "template": "urn:service:{value}" }
+      "transform_type": "expression",
+      "transform_config": { "expression": "None if (str(value)[:1].isdigit() and str(value).replace('.','').replace(':','').isdigit()) else ('urn:service:' + str(value))" }
     },
     {
       "id": "service-name",

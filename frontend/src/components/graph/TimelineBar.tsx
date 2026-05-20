@@ -170,14 +170,6 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
     () => slots.reduce((a, s) => a + s.count, 0),
     [slots],
   );
-  const windowNewNodes = useMemo(
-    () => slots.reduce((a, s) => a + s.nodesAdded, 0),
-    [slots],
-  );
-  const windowNewEdges = useMemo(
-    () => slots.reduce((a, s) => a + s.edgesAdded, 0),
-    [slots],
-  );
   const isLive = currentTime === null;
 
   // --- Graph loading ---
@@ -269,13 +261,11 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         if (curIdx >= 0 && curIdx < nonEmptySlots.length - 1) {
           loadAtSlotStart(nonEmptySlots[curIdx + 1]);
         } else if (curIdx === -1) {
-          // ctMs precedes everything → first slot.
+          // ctMs precedes everything → first non-empty slot.
           const first = nonEmptySlots.find((s) => s.startMs > ctMs);
           if (first) loadAtSlotStart(first);
-          else handleGoLive();
-        } else {
-          handleGoLive();
         }
+        // curIdx === last: already at rightmost, do nothing.
       } else {
         if (curIdx > 0) {
           loadAtSlotStart(nonEmptySlots[curIdx - 1]);
@@ -288,7 +278,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         // curIdx === 0: already at oldest, do nothing.
       }
     },
-    [nonEmptySlots, stopPlayback, loadAtSlotStart, handleGoLive],
+    [nonEmptySlots, stopPlayback, loadAtSlotStart],
   );
 
   // --- Click / drag scrubbing (snaps to slot) ---
@@ -370,9 +360,9 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   };
 
   return (
-    <div className="shrink-0 border-t border-slate-800/70 bg-slate-950/95">
+    <div className="shrink-0 overflow-hidden border-t border-slate-800/70 bg-slate-950/95">
       {/* Top row: stats + window summary */}
-      <div className="flex h-7 items-center gap-3 px-4 text-[11px]">
+      <div className="flex h-6 items-center gap-3 px-4 pt-0.5 text-[11px]">
         <Stat label="Nodes" value={nodes.length} />
         <Sep />
         <Stat label="Edges" value={edges.length} />
@@ -381,18 +371,29 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         <Sep />
         <Stat label="Edge types" value={edgeTypes} />
         <Sep />
-        <span className="text-slate-500">
-          Window: <span className="font-mono text-slate-300">{chunkCount}×{chunkBucketSeconds}s</span>
-          <span className="ml-1 text-slate-600">({windowTotal} spans)</span>
-        </span>
-        {(windowNewNodes > 0 || windowNewEdges > 0) && (
-          <span
-            className="rounded bg-slate-800/70 px-1.5 py-0.5 text-[10px] text-slate-400"
-            title="New nodes/edges that first appeared in this window"
-          >
-            new: <span className="text-slate-200">+{windowNewNodes}n</span>
-            <span className="mx-1 text-slate-600">·</span>
-            <span className="text-slate-200">+{windowNewEdges}e</span>
+        {currentSlotIdx >= 0 && slots[currentSlotIdx] ? (
+          <span className="text-slate-500 flex items-center gap-2">
+            <span className="font-mono text-slate-400">
+              {formatTimeShort(slots[currentSlotIdx].startMs)}–{formatTimeShort(slots[currentSlotIdx].endMs)}
+            </span>
+            <span className="text-slate-300">{slots[currentSlotIdx].spanCount} spans</span>
+            <span
+              className={
+                slots[currentSlotIdx].errorCount > 0 ? 'text-red-400' : 'text-slate-500'
+              }
+            >
+              {slots[currentSlotIdx].errorCount} err
+            </span>
+            {slots[currentSlotIdx].spanCount > 0 && (
+              <span className="text-slate-500">
+                {((slots[currentSlotIdx].errorCount / slots[currentSlotIdx].spanCount) * 100).toFixed(1)}%
+              </span>
+            )}
+          </span>
+        ) : (
+          <span className="text-slate-500">
+            Window: <span className="font-mono text-slate-300">{chunkCount}×{chunkBucketSeconds}s</span>
+            <span className="ml-1 text-slate-600">({windowTotal} spans)</span>
           </span>
         )}
         {eventsLoading && (
@@ -413,7 +414,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         ) : null}
       </div>
 
-      <div className="flex items-center gap-1.5 px-4 pb-1">
+      <div className="flex items-center gap-1.5 px-4 pb-0.5">
         <CtrlBtn onClick={() => handleStep(-1)} disabled={nonEmptySlots.length === 0} title="Step back (←)">
           <SvgIcon d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z M8 6v12h-2V6z" />
         </CtrlBtn>
@@ -477,15 +478,13 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
 
       </div>
 
-      {/* Strip: fixed slot grid */}
-      <div className="px-4 pb-2">
+      <div className="px-4 pb-0.5">
         <div
           ref={stripRef}
-          className="relative h-14 cursor-pointer select-none overflow-hidden rounded-md bg-slate-900/60"
+          className="relative h-9 cursor-pointer select-none overflow-hidden rounded-md bg-slate-900/60"
           onMouseDown={handleStripMouseDown}
-          title="Click or drag a chunk to jump. ← → step, Home first, End live, Space play."
+          title="Click or drag a chunk to jump. ← → step, Home first, Space play."
         >
-          {/* Grid background: subtle vertical dividers */}
           <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
             {Array.from({ length: chunkCount + 1 }).map((_, i) => (
               <line
@@ -493,7 +492,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
                 x1={i * slotWidth}
                 x2={i * slotWidth}
                 y1={0}
-                y2={56}
+                y2={36}
                 stroke="#1e293b"
                 strokeWidth={1}
                 opacity={i % 5 === 0 ? 0.9 : 0.35}
@@ -503,7 +502,8 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
             {slots.map((slot) => {
               const x = slot.index * slotWidth;
               const barW = Math.max(2, slotWidth - 3);
-              const barMaxH = 36;
+              const barMaxH = 22;
+              const barBaseY = 25;
               const h = slot.count > 0 ? Math.max(3, (slot.count / maxSlotCount) * barMaxH) : 0;
               const errRate = slot.spanCount > 0 ? slot.errorCount / slot.spanCount : 0;
               const color =
@@ -516,13 +516,13 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
                     x={x}
                     y={0}
                     width={slotWidth}
-                    height={56}
+                    height={36}
                     fill={isActive ? 'rgba(96,165,250,0.08)' : 'transparent'}
                   />
                   {hasData && (
                     <rect
                       x={x + (slotWidth - barW) / 2}
-                      y={44 - h}
+                      y={barBaseY - h}
                       width={barW}
                       height={h}
                       rx={1.5}
@@ -544,16 +544,22 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
             />
           )}
 
-          {/* Time axis labels (every 5th boundary or at edges) */}
-          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4">
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-3 overflow-hidden">
             {Array.from({ length: chunkCount + 1 }).map((_, i) => {
               if (i !== 0 && i !== chunkCount && i % 5 !== 0) return null;
               const ts = windowStart + i * bucketMs;
+              const isFirst = i === 0;
+              const isLast = i === chunkCount;
+              const transform = isFirst
+                ? 'translateX(0)'
+                : isLast
+                  ? 'translateX(-100%)'
+                  : 'translateX(-50%)';
               return (
                 <span
                   key={i}
-                  className="absolute font-mono text-[8px] text-slate-500"
-                  style={{ left: i * slotWidth, transform: 'translateX(-50%)' }}
+                  className="absolute font-mono text-[8px] leading-3 text-slate-500"
+                  style={{ left: i * slotWidth, transform }}
                 >
                   {formatTimeShort(ts)}
                 </span>
@@ -562,33 +568,6 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           </div>
         </div>
 
-        {currentSlotIdx >= 0 && slots[currentSlotIdx] && (
-          <div className="mt-1 flex items-center gap-3 text-[10px] text-slate-500">
-            <span className="font-mono text-slate-400">
-              {formatTimeShort(slots[currentSlotIdx].startMs)} – {formatTimeShort(slots[currentSlotIdx].endMs)}
-            </span>
-            <span>{slots[currentSlotIdx].spanCount} spans</span>
-            <span
-              className={
-                slots[currentSlotIdx].errorCount > 0
-                  ? 'text-red-400'
-                  : 'text-slate-500'
-              }
-            >
-              {slots[currentSlotIdx].errorCount} errors
-            </span>
-            {slots[currentSlotIdx].spanCount > 0 && (
-              <span>
-                err rate {((slots[currentSlotIdx].errorCount / slots[currentSlotIdx].spanCount) * 100).toFixed(1)}%
-              </span>
-            )}
-            {(slots[currentSlotIdx].nodesAdded > 0 || slots[currentSlotIdx].edgesAdded > 0) && (
-              <span className="text-slate-600">
-                · new <span className="text-slate-300">+{slots[currentSlotIdx].nodesAdded}n / +{slots[currentSlotIdx].edgesAdded}e</span>
-              </span>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

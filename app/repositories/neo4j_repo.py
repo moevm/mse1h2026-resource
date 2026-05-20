@@ -171,6 +171,38 @@ def _record_edge_activity(
     )
 
 
+def cleanup_deprecated_nodes() -> Dict[str, int]:
+    with neo4j_driver.session() as session:
+        return session.execute_write(_cleanup_deprecated_tx)
+
+
+def _cleanup_deprecated_tx(tx: ManagedTransaction) -> Dict[str, int]:
+    lib_rec = tx.run(
+        "MATCH (n:Resource) WHERE n.type = 'Library' "
+        "RETURN count(n) AS cnt"
+    ).single()
+    libs = int(lib_rec["cnt"]) if lib_rec else 0
+    if libs > 0:
+        tx.run("MATCH (n:Resource) WHERE n.type = 'Library' DETACH DELETE n")
+
+    ip_rec = tx.run(
+        "MATCH (n:Resource) "
+        "WHERE n.name =~ '^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}.*' "
+        "  OR n.external_id =~ '^urn:[a-z]+:[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}.*' "
+        "RETURN count(n) AS cnt"
+    ).single()
+    ips = int(ip_rec["cnt"]) if ip_rec else 0
+    if ips > 0:
+        tx.run(
+            "MATCH (n:Resource) "
+            "WHERE n.name =~ '^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}.*' "
+            "  OR n.external_id =~ '^urn:[a-z]+:[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}.*' "
+            "DETACH DELETE n"
+        )
+
+    return {"deleted_libraries": libs, "deleted_ip_nodes": ips}
+
+
 def ensure_activity_indexes() -> None:
     with neo4j_driver.session() as session:
         session.run(

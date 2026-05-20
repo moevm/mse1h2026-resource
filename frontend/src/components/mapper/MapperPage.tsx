@@ -31,7 +31,7 @@ interface Application {
 }
 
 type MobilePanel = 'mappings' | 'data' | 'config';
-type MockerAction = 'run' | 'create' | null;
+type MockerAction = 'create' | null;
 
 export function MapperPage() {
   const {
@@ -82,28 +82,6 @@ export function MapperPage() {
 
     return `${baseName} ${index}`;
   }, [availableMappings, selectedAgent]);
-
-  const loadApplicationsData = useCallback(async () => {
-    try {
-      const data = await fetchApplications();
-      setApplications(data);
-      return data;
-    } catch (error) {
-      console.error('Failed to load applications:', error);
-      return [] as Application[];
-    }
-  }, []);
-
-  const loadAgentsData = useCallback(async () => {
-    try {
-      const data = await fetchAgents();
-      setAgents(data);
-      return data;
-    } catch (error) {
-      console.error('Failed to load agents:', error);
-      return [] as Agent[];
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -422,42 +400,6 @@ export function MapperPage() {
     await loadMappingsForAgent(selectedAgent);
   }, [loadMappingsForAgent, selectedAgent]);
 
-  const handleRunFullMocker = useCallback(async () => {
-    setMockerActionLoading('run');
-    setMockerMessage(null);
-    try {
-      const result = await mapperApi.runMockerFull();
-      setMockerMessage({
-        type: result.success ? 'success' : 'error',
-        text: result.success
-          ? 'Raw data generation completed'
-          : `Raw data generation failed (exit code ${result.exit_code})`,
-      });
-
-      if (result.success) {
-        await loadApplicationsData();
-        const updatedAgents = await loadAgentsData();
-
-        const refreshedSelectedAgent = selectedAgent
-          ? (updatedAgents.find((agent) => agent.agent_id === selectedAgent.agent_id) ?? null)
-          : (updatedAgents[0] ?? null);
-
-        if ((selectedAgent?.agent_id ?? null) !== (refreshedSelectedAgent?.agent_id ?? null)) {
-          setSelectedAgent(refreshedSelectedAgent);
-        }
-
-        await Promise.all([loadChunksForAgent(refreshedSelectedAgent), loadMappingsForAgent(refreshedSelectedAgent)]);
-      }
-    } catch (error) {
-      setMockerMessage({
-        type: 'error',
-        text: error instanceof Error ? error.message : 'Raw data generation failed',
-      });
-    } finally {
-      setMockerActionLoading(null);
-    }
-  }, [loadApplicationsData, loadAgentsData, loadChunksForAgent, loadMappingsForAgent, selectedAgent]);
-
   const handleCreateMappings = useCallback(async () => {
     setMockerActionLoading('create');
     setMockerMessage(null);
@@ -577,15 +519,6 @@ export function MapperPage() {
           )}
 
           <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => {
-                void handleRunFullMocker();
-              }}
-              disabled={mockerActionLoading !== null}
-              className="rounded bg-sky-600 px-2.5 py-1 text-xs text-white hover:bg-sky-700 disabled:bg-slate-700 disabled:text-slate-500"
-            >
-              {mockerActionLoading === 'run' ? 'Generating...' : 'Generate mock data'}
-            </button>
             <button
               onClick={() => {
                 void handleCreateMappings();

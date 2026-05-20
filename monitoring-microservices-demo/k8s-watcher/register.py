@@ -10,7 +10,7 @@ import requests
 log = logging.getLogger("register")
 
 RESOURCE_API_URL = os.environ.get("RESOURCE_API_URL", "http://localhost:8000")
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin1@example.com")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@example.com")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
 APP_NAME = os.environ.get("APP_NAME")
 

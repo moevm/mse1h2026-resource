@@ -62,36 +62,6 @@ const initialState = {
   mode: 'activity' as TimelineMode,
 };
 
-function pickEarliestMs(
-  events: TimelineEvent[],
-  activity: TraceActivityBucket[],
-): number | null {
-  let earliest: number | null = null;
-  for (const e of events) {
-    const t = new Date(e.timestamp).getTime();
-    if (earliest === null || t < earliest) earliest = t;
-  }
-  for (const b of activity) {
-    if (earliest === null || b.bucket_ts < earliest) earliest = b.bucket_ts;
-  }
-  return earliest;
-}
-
-function pickLatestMs(
-  events: TimelineEvent[],
-  activity: TraceActivityBucket[],
-): number | null {
-  let latest: number | null = null;
-  for (const e of events) {
-    const t = new Date(e.timestamp).getTime();
-    if (latest === null || t > latest) latest = t;
-  }
-  for (const b of activity) {
-    if (latest === null || b.bucket_ts > latest) latest = b.bucket_ts;
-  }
-  return latest;
-}
-
 export const useTimelineStore = create<TimelineState>((set, get) => ({
   ...initialState,
 
@@ -124,18 +94,8 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const activity = actResp.buckets;
       const events = evResp.events;
 
-      let nextStart: number;
-      const earliest = pickEarliestMs(events, activity);
-      if (earliest !== null) {
-        nextStart = Math.floor(earliest / bucketMs) * bucketMs;
-        const latest = pickLatestMs(events, activity)!;
-        const windowEnd = nextStart + chunkCount * bucketMs;
-        if (latest >= windowEnd) {
-          nextStart = Math.floor((latest - (chunkCount - 1) * bucketMs) / bucketMs) * bucketMs;
-        }
-      } else {
-        nextStart = now - chunkCount * bucketMs;
-      }
+      const nowBucket = Math.floor(now / bucketMs) * bucketMs;
+      const nextStart = nowBucket - (chunkCount - 1) * bucketMs;
 
       set({ events, activity, eventsLoading: false, windowStart: nextStart });
     } catch (e) {

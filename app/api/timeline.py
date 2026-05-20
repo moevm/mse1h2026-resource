@@ -79,9 +79,8 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
                     "attrs": attrs,
                 }
 
-    hops: List[Dict[str, Any]] = []
+    hop_by_key: Dict[tuple, Dict[str, Any]] = {}
     base = None
-    seen_keys: set = set()
 
     def _add_hop(
         caller: str,
@@ -95,21 +94,23 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
         nonlocal base
         if not caller or not callee or caller == callee:
             return
-        key = (caller, callee, callee_kind, start_ns, span_name)
-        if key in seen_keys:
+        key = (caller, callee, callee_kind)
+        existing = hop_by_key.get(key)
+        if existing is not None and existing["_start_ns"] <= start_ns:
+            if is_error and not existing.get("is_error"):
+                existing["is_error"] = True
             return
-        seen_keys.add(key)
         if base is None or start_ns < base:
             base = start_ns
-        hops.append({
+        hop_by_key[key] = {
             "caller_service": caller,
             "callee_service": callee,
             "callee_kind": callee_kind,
             "span_name": span_name,
-            "start_offset_ms": start_ns // 1_000_000,
+            "_start_ns": start_ns,
             "duration_ms": (end_ns - start_ns) // 1_000_000 if end_ns > start_ns else 0,
             "is_error": is_error,
-        })
+        }
 
     for s in spans.values():
         psid = s["parent_span_id"]
@@ -127,11 +128,21 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
                 caller_service, s["service_name"], "Service",
                 s["span_name"], s["start"], s["end"], s["is_error"],
             )
+            attrs_for_endpoint = s.get("attrs", [])
+            http_route = _extract_attr(attrs_for_endpoint, "http.route")
+            if s["kind"] == "SPAN_KIND_SERVER" and (http_route or s["span_name"]):
+                _add_hop(
+                    caller_service, s["span_name"] or http_route, "Endpoint",
+                    s["span_name"], s["start"], s["end"], s["is_error"],
+                )
 
         attrs = s["attrs"]
         svc = s["service_name"]
         if not svc:
             continue
+
+        is_client = s["kind"] == "SPAN_KIND_CLIENT"
+        tag_ts = s["start"] if is_client else s["end"]
 
         db_system = _extract_attr(attrs, "db.system")
         if db_system:
@@ -144,19 +155,22 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
 
         cache_name = _extract_attr(attrs, "cache.name")
         if cache_name:
-            _add_hop(svc, cache_name, "Cache", s["span_name"], s["start"], s["end"], s["is_error"])
+            _add_hop(svc, cache_name, "Cache", s["span_name"], tag_ts, s["end"], s["is_error"])
 
         msg_dest = _extract_attr(attrs, "messaging.destination")
         if msg_dest:
-            _add_hop(svc, msg_dest, "QueueTopic", s["span_name"], s["start"], s["end"], s["is_error"])
+            _add_hop(svc, msg_dest, "QueueTopic", s["span_name"], tag_ts, s["end"], s["is_error"])
 
         external_api = _extract_attr(attrs, "external_api")
         if external_api:
-            _add_hop(svc, external_api, "ExternalAPI", s["span_name"], s["start"], s["end"], s["is_error"])
+            _add_hop(svc, external_api, "ExternalAPI", s["span_name"], tag_ts, s["end"], s["is_error"])
 
-    if base is not None:
-        for h in hops:
-            h["start_offset_ms"] = max(0, h["start_offset_ms"] - base // 1_000_000)
+    hops: List[Dict[str, Any]] = []
+    base_ms = (base or 0) // 1_000_000
+    for h in hop_by_key.values():
+        start_ms = h.pop("_start_ns") // 1_000_000
+        h["start_offset_ms"] = max(0, start_ms - base_ms)
+        hops.append(h)
 
     hops.sort(key=lambda h: h["start_offset_ms"])
     return {"trace_id": trace_id_hex, "hops": hops}
@@ -285,7 +299,7 @@ async def list_traces(
             services_involved.add(h["caller_service"])
             services_involved.add(h["callee_service"])
             callees_by_kind.setdefault(h.get("callee_kind") or "Service", set()).add(h["callee_service"])
-        if multi_hop and not hops:
+        if multi_hop and len(services_involved) < 3:
             return None
         only_services = callees_by_kind.get("Service", set())
         only_services |= {h["caller_service"] for h in hops}
