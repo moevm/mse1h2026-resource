@@ -92,6 +92,18 @@ export function useTraceReplay() {
       const prefix = calleePrefix[calleeKind ?? 'Service'] ?? 'urn:service:';
       const targetId = `${prefix}${callee}`;
 
+      if (calleeKind === 'Endpoint') {
+        const endpointNode = cy.getElementById(targetId);
+        if (endpointNode.length > 0) {
+          const incident = endpointNode.connectedEdges();
+          if (incident.length > 0) {
+            return { edges: incident, nodes: incident.connectedNodes().union(endpointNode) };
+          }
+          return { edges: cy.collection(), nodes: endpointNode };
+        }
+        return { edges: cy.collection(), nodes: cy.collection() };
+      }
+
       const direct = cy.edges().filter((e) =>
         e.data('source') === sourceId && e.data('target') === targetId,
       );
@@ -104,6 +116,7 @@ export function useTraceReplay() {
       if (reverse.length > 0) {
         return { edges: reverse, nodes: reverse.connectedNodes() };
       }
+
       const targetNode = cy.getElementById(targetId);
       if (targetNode.length > 0) {
         return { edges: cy.collection(), nodes: targetNode };
@@ -112,13 +125,8 @@ export function useTraceReplay() {
       return { edges: cy.collection(), nodes: byLabel };
     };
 
-    const ordered = [...hops].sort((a, b) => {
-      const d = a.start_offset_ms - b.start_offset_ms;
-      if (d !== 0) return d;
-      const aDb = a.callee_kind && a.callee_kind !== 'Service' ? 1 : 0;
-      const bDb = b.callee_kind && b.callee_kind !== 'Service' ? 1 : 0;
-      return aDb - bDb;
-    });
+    // Backend already returns hops in DFS-with-Endpoint-last order — don't re-sort.
+    const ordered = hops;
 
     addLog('success', 'replay', `Replaying trace ${traceId.slice(0, 12)}... (${ordered.length} hops)`);
 
@@ -132,7 +140,10 @@ export function useTraceReplay() {
           const { edges, nodes } = matchEdgeAndNodes(
             hop.caller_service, hop.callee_service, hop.callee_kind,
           );
-          if (edges.length === 0 && nodes.length === 0) return;
+          if (edges.length === 0 && nodes.length === 0) {
+            addLog('warn', 'replay', `Hop not found in graph: ${hop.caller_service} → ${hop.callee_service} (${hop.callee_kind ?? 'Service'})`);
+            return;
+          }
           if (prevHeadEdges) prevHeadEdges.removeClass('trace-replay-head');
           if (prevHeadNodes) prevHeadNodes.removeClass('trace-replay-head-node');
           if (edges.length > 0) {

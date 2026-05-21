@@ -374,27 +374,52 @@ export function MapperPage() {
         return;
       }
 
+      const sourceType = draftMapping?.source_type;
+      let clearedSummary = '';
+      if (sourceType) {
+        const stale = availableMappings.filter(
+          (m) => m.is_active && m.source_type === sourceType && m.id && m.id !== mappingId,
+        );
+        for (const m of stale) {
+          try {
+            const res = await mapperApi.deactivateAndClearMapping(m.id as string);
+            clearedSummary += ` cleared ${res.deleted_nodes}n/${res.deleted_edges}e from "${m.name}";`;
+          } catch (e) {
+            console.warn('deactivate-and-clear failed for', m.id, e);
+          }
+        }
+      }
+
+      try {
+        await mapperApi.activateMapping(mappingId);
+      } catch (e) {
+        console.warn('activate failed (continuing with replay)', e);
+      }
+
       const result = await mapperApi.replayMapping(mappingId, {
         agent_id: selectedAgent?.agent_id,
       });
 
+      const tail = `${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges`;
       if (result.errors.length > 0) {
-        setActionMessage(
-          `Replay: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges, errors: ${result.errors.length}`,
-        );
+        setActionMessage(`Replay: ${tail}, errors: ${result.errors.length}.${clearedSummary}`);
       } else {
-        setActionMessage(
-          `Replay complete: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges`,
-        );
+        setActionMessage(`Replay complete: ${tail}.${clearedSummary}`);
         setLastReplayAt(new Date().toLocaleString());
       }
+
+      await loadMappingsForAgent(selectedAgent);
     } catch (error) {
       console.error('Replay failed:', error);
-      setActionMessage('Replay failed');
+      const detail =
+        (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+        ?? (error as Error).message
+        ?? 'unknown error';
+      setActionMessage(`Replay failed: ${detail}`);
     } finally {
       setReplayLoading(false);
     }
-  }, [ensureDraftMappingId, selectedAgent]);
+  }, [ensureDraftMappingId, selectedAgent, draftMapping, availableMappings, loadMappingsForAgent]);
 
   const refreshMappings = useCallback(async () => {
     await loadMappingsForAgent(selectedAgent);

@@ -312,12 +312,12 @@ def upsert_edges(
             is_err = bool(trace_metrics.get("is_error"))
             dur_ns = int(trace_metrics.get("duration_ns") or 0)
             session.execute_write(_record_trace_bucket, now, is_err)
-            sigs = [
+            sigs = list({
                 _edge_sig(e["source_id"], e["target_id"], e["type"])
                 for e in edges
                 if e.get("source_id") and e.get("target_id") and e.get("type")
                 and e["type"].upper() in CALL_LIKE_EDGE_TYPES
-            ]
+            })
             if sigs:
                 session.execute_write(
                     _record_edge_activity, sigs, now, is_err, dur_ns,

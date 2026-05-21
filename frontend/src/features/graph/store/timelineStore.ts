@@ -109,7 +109,7 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   setPlaying: (playing) => set({ isPlaying: playing }),
   setPlaybackSpeed: (speed) => set({ playbackSpeed: speed }),
   setChunkCount: (n) => set({ chunkCount: Math.max(2, Math.min(120, Math.floor(n))) }),
-  setChunkBucketSeconds: (s) => set({ chunkBucketSeconds: Math.max(1, Math.min(3600, Math.floor(s))) }),
+  setChunkBucketSeconds: (s) => set({ chunkBucketSeconds: Math.max(10, Math.min(3600, Math.floor(s))) }),
   setMode: (m) => set({ mode: m, events: [], activity: [] }),
 
   goLive: () => set({ currentTime: null, isPlaying: false }),

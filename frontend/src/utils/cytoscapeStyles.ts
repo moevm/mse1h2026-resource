@@ -326,7 +326,7 @@ function buildEdgeLoadStyles(): Stylesheet[] {
       } as unknown as Record<string, string | number>,
     },
     {
-      selector: 'edge[call_count_display]',
+      selector: 'edge[call_count_display][load_norm >= 0.1]',
       style: {
         label: 'data(call_count_display)',
         'font-size': '10px',

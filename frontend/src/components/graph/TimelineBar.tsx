@@ -175,12 +175,13 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   // --- Graph loading ---
   const loadAtSlotStart = useCallback(
     (slot: Slot) => {
-      const asOfMs = Math.max(slot.startMs, slot.endMs - 1);
+      const now = Date.now();
+      const asOfMs = Math.min(Math.max(slot.startMs, slot.endMs - 1), now);
       const iso = new Date(asOfMs).toISOString();
       useTimelineStore.setState({ currentTime: iso });
       const win = {
         start: new Date(slot.startMs).toISOString(),
-        end: new Date(slot.endMs).toISOString(),
+        end: new Date(Math.min(slot.endMs, now)).toISOString(),
       };
       void loadFullGraph(limit, selectedAppId ?? undefined, iso, win).then(() => {
         try { fitGraph(); } catch { /* cy not ready */ }
@@ -355,7 +356,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   };
   const commitBucket = () => {
     const n = parseInt(bucketInput, 10);
-    if (Number.isFinite(n) && n >= 1 && n <= 3600) setChunkBucketSeconds(n);
+    if (Number.isFinite(n) && n >= 10 && n <= 3600) setChunkBucketSeconds(n);
     else setBucketInput(String(chunkBucketSeconds));
   };
 
@@ -466,7 +467,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           bucket(s)
           <input
             type="number"
-            min={1}
+            min={10}
             max={3600}
             value={bucketInput}
             onChange={(e) => setBucketInput(e.target.value)}
