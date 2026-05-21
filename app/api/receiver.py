@@ -44,23 +44,22 @@ def _extract_trace_metrics(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return {"is_error": is_error, "duration_ns": duration_ns}
 
 
+def _looks_like_ip(value: str) -> bool:
+    stripped = value.replace(".", "").replace(":", "")
+    return bool(value) and value[0].isdigit() and stripped.isdigit()
+
+
 def _trace_caller_edge(
     payload: Dict[str, Any],
 ) -> Optional[tuple[Dict[str, Any], Dict[str, Any]]]:
-    """If the span chunk has a ``caller_service`` (set by tempo-watcher from
-    the actual trace tree), return ``(caller_node, edge)`` so the receiver can
-    upsert the upstream Service node and the authoritative caller→callee edge.
 
-    Direction matters: the edge goes FROM caller_service TO service_name,
-    which is the opposite of what the peer.service-based mapping rule produces
-    for SERVER spans. Trace-derived edges should be preferred since they come
-    from the real parent chain, not from an attribute that may not be set.
-    """
     if not isinstance(payload, dict):
         return None
     caller = payload.get("caller_service")
     callee = payload.get("service_name")
     if not caller or not callee or caller == callee:
+        return None
+    if _looks_like_ip(str(caller)) or _looks_like_ip(str(callee)):
         return None
 
     caller_node = {

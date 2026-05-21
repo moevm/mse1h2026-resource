@@ -13,8 +13,8 @@
       "source_path": "service_name",
       "target_field": "id",
       "target_node_type": "Service",
-      "transform_type": "template",
-      "transform_config": { "template": "urn:service:{value}" }
+      "transform_type": "expression",
+      "transform_config": { "expression": "None if (str(value)[:1].isdigit() and str(value).replace('.','').replace(':','').isdigit()) else ('urn:service:' + str(value))" }
     },
     {
       "id": "service-name",
@@ -52,7 +52,7 @@
       "target_field": "calls_services",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "None if (source_data.get('db_system') or source_data.get('db_name') or source_data.get('cache_name') or source_data.get('messaging_destination')) else value" }
+      "transform_config": { "expression": "None if (source_data.get('span_kind') != 'SPAN_KIND_CLIENT' or source_data.get('db_system') or source_data.get('db_name') or source_data.get('cache_name') or source_data.get('messaging_destination') or (str(value)[:1].isdigit() and str(value).replace('.','').replace(':','').isdigit())) else value" }
     },
     {
       "id": "service-reads-db",
@@ -60,7 +60,7 @@
       "target_field": "reads_databases",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() == 'select' or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith('select')) else None" }
+      "transform_config": { "expression": "value if (source_data.get('db_operation') or '').lower() == 'select' or (source_data.get('db_operation') is None and (source_data.get('db_statement') or '').strip().lower().startswith('select')) else None" }
     },
     {
       "id": "service-writes-db",
@@ -68,7 +68,7 @@
       "target_field": "writes_databases",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() in ('insert','update','delete','create','alter','drop') or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith(('insert','update','delete','create','alter','drop'))) else None" }
+      "transform_config": { "expression": "value if (source_data.get('db_operation') or '').lower() in ('insert','update','delete','create','alter','drop') or (source_data.get('db_operation') is None and (source_data.get('db_statement') or '').strip().lower().startswith(('insert','update','delete','create','alter','drop'))) else None" }
     },
     {
       "id": "service-reads-table",
@@ -76,7 +76,7 @@
       "target_field": "reads_tables",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() == 'select' or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith('select')) else None" }
+      "transform_config": { "expression": "value if (source_data.get('db_operation') or '').lower() == 'select' or (source_data.get('db_operation') is None and (source_data.get('db_statement') or '').strip().lower().startswith('select')) else None" }
     },
     {
       "id": "service-writes-table",
@@ -84,13 +84,7 @@
       "target_field": "writes_tables",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "value if source_data.get('db_operation','').lower() in ('insert','update','delete','create','alter','drop') or (source_data.get('db_operation') is None and source_data.get('db_statement','').strip().lower().startswith(('insert','update','delete','create','alter','drop'))) else None" }
-    },
-    {
-      "id": "service-libraries",
-      "source_path": "sdk_name",
-      "target_field": "libraries",
-      "target_node_type": "Service"
+      "transform_config": { "expression": "value if (source_data.get('db_operation') or '').lower() in ('insert','update','delete','create','alter','drop') or (source_data.get('db_operation') is None and (source_data.get('db_statement') or '').strip().lower().startswith(('insert','update','delete','create','alter','drop'))) else None" }
     },
     {
       "id": "service-external-apis",
@@ -266,7 +260,7 @@
       "target_field": "calls_endpoints",
       "target_node_type": "Endpoint",
       "transform_type": "expression",
-      "transform_config": { "expression": "None if (source_data.get('db_system') or source_data.get('db_name') or source_data.get('cache_name') or source_data.get('messaging_destination')) else value" }
+      "transform_config": { "expression": "None if (source_data.get('span_kind') != 'SPAN_KIND_CLIENT' or source_data.get('db_system') or source_data.get('db_name') or source_data.get('cache_name') or source_data.get('messaging_destination')) else value" }
     },
     {
       "id": "database-id",
@@ -381,27 +375,6 @@
       "target_node_type": "QueueTopic"
     },
     {
-      "id": "library-id",
-      "source_path": "sdk_name",
-      "target_field": "id",
-      "target_node_type": "Library",
-      "transform_type": "template",
-      "transform_config": { "template": "urn:library:{value}" }
-    },
-    {
-      "id": "library-name",
-      "source_path": "sdk_name",
-      "target_field": "name",
-      "target_node_type": "Library"
-    },
-    {
-      "id": "library-language",
-      "source_path": "sdk_language",
-      "target_field": "language",
-      "target_node_type": "Library",
-      "default_value": "unknown"
-    },
-    {
       "id": "team-id",
       "source_path": "team",
       "target_field": "id",
@@ -470,12 +443,6 @@
       "condition": "team != `null`",
       "target_node_type": "TeamOwner",
       "priority": 55
-    },
-    {
-      "id": "cr-otel-library",
-      "condition": "sdk_name != `null`",
-      "target_node_type": "Library",
-      "priority": 50
     },
     {
       "id": "cr-otel-service",

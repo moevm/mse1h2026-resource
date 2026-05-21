@@ -31,6 +31,10 @@ interface Application {
 }
 
 type MobilePanel = 'mappings' | 'data' | 'config';
+<<<<<<< HEAD
+=======
+type MockerAction = 'create' | null;
+>>>>>>> f81199920d6f71cd1754b6eaad7dfc55c74955f8
 
 export function MapperPage() {
   const {
@@ -371,32 +375,104 @@ export function MapperPage() {
         return;
       }
 
+      const sourceType = draftMapping?.source_type;
+      let clearedSummary = '';
+      if (sourceType) {
+        const stale = availableMappings.filter(
+          (m) => m.is_active && m.source_type === sourceType && m.id && m.id !== mappingId,
+        );
+        for (const m of stale) {
+          try {
+            const res = await mapperApi.deactivateAndClearMapping(m.id as string);
+            clearedSummary += ` cleared ${res.deleted_nodes}n/${res.deleted_edges}e from "${m.name}";`;
+          } catch (e) {
+            console.warn('deactivate-and-clear failed for', m.id, e);
+          }
+        }
+      }
+
+      try {
+        await mapperApi.activateMapping(mappingId);
+      } catch (e) {
+        console.warn('activate failed (continuing with replay)', e);
+      }
+
       const result = await mapperApi.replayMapping(mappingId, {
         agent_id: selectedAgent?.agent_id,
       });
 
+      const tail = `${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges`;
       if (result.errors.length > 0) {
-        setActionMessage(
-          `Replay: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges, errors: ${result.errors.length}`,
-        );
+        setActionMessage(`Replay: ${tail}, errors: ${result.errors.length}.${clearedSummary}`);
       } else {
-        setActionMessage(
-          `Replay complete: ${result.chunks_processed} chunks, ${result.nodes_created} nodes, ${result.edges_created} edges`,
-        );
+        setActionMessage(`Replay complete: ${tail}.${clearedSummary}`);
         setLastReplayAt(new Date().toLocaleString());
       }
+
+      await loadMappingsForAgent(selectedAgent);
     } catch (error) {
       console.error('Replay failed:', error);
-      setActionMessage('Replay failed');
+      const detail =
+        (error as { response?: { data?: { detail?: string } } }).response?.data?.detail
+        ?? (error as Error).message
+        ?? 'unknown error';
+      setActionMessage(`Replay failed: ${detail}`);
     } finally {
       setReplayLoading(false);
     }
-  }, [ensureDraftMappingId, selectedAgent]);
+  }, [ensureDraftMappingId, selectedAgent, draftMapping, availableMappings, loadMappingsForAgent]);
 
   const refreshMappings = useCallback(async () => {
     await loadMappingsForAgent(selectedAgent);
   }, [loadMappingsForAgent, selectedAgent]);
 
+<<<<<<< HEAD
+=======
+  const handleCreateMappings = useCallback(async () => {
+    setMockerActionLoading('create');
+    setMockerMessage(null);
+    try {
+      const templates = await mapperApi.listMappingTemplates();
+      let createdCount = 0;
+
+      for (const template of templates.templates) {
+        try {
+          await mapperApi.instantiateMappingTemplate(template.id, {
+            sample_chunk_id: selectedChunk?.id ?? null,
+            activate: true,
+          });
+          createdCount += 1;
+        } catch (error) {
+          const detail =
+            typeof error === 'object' && error !== null && 'response' in error
+              ? (error as { response?: { status?: number } }).response?.status
+              : undefined;
+
+          if (detail !== 409) {
+            throw error;
+          }
+        }
+      }
+
+      setMockerMessage({
+        type: 'success',
+        text:
+          createdCount > 0
+            ? `Installed ${createdCount} built-in mapping templates`
+            : 'Built-in mapping templates already installed',
+      });
+      await Promise.all([refreshMappings(), loadChunksForAgent(selectedAgent)]);
+    } catch (error) {
+      setMockerMessage({
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Built-in mapping installation failed',
+      });
+    } finally {
+      setMockerActionLoading(null);
+    }
+  }, [refreshMappings, loadChunksForAgent, selectedAgent]);
+
+>>>>>>> f81199920d6f71cd1754b6eaad7dfc55c74955f8
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="flex h-full min-h-0 flex-col bg-slate-900">
@@ -471,6 +547,20 @@ export function MapperPage() {
             </div>
           )}
 
+<<<<<<< HEAD
+=======
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              onClick={() => {
+                void handleCreateMappings();
+              }}
+              disabled={mockerActionLoading !== null}
+              className="rounded bg-indigo-600 px-2.5 py-1 text-xs text-white hover:bg-indigo-700 disabled:bg-slate-700 disabled:text-slate-500"
+            >
+              {mockerActionLoading === 'create' ? 'Installing...' : 'Install built-in mappings'}
+            </button>
+          </div>
+>>>>>>> f81199920d6f71cd1754b6eaad7dfc55c74955f8
         </div>
 
         <div className="flex shrink-0 border-b border-slate-700/50 bg-slate-800/30 lg:hidden">

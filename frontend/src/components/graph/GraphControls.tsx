@@ -32,9 +32,10 @@ export function GraphControls() {
         <Button variant="ghost" size="sm" onClick={() => { if (selectedNodeId) centerOn(selectedNodeId); }} title="Center selected node" disabled={!selectedNodeId} className="font-medium hover:bg-slate-800">Center</Button>
         <Button variant="ghost" size="sm" onClick={clearVisualFocus} title="Clear highlights" className="font-medium hover:bg-slate-800">Clear</Button>
         <div className="mx-1 h-5 w-px bg-slate-700/60" />
-        <div className="flex items-center gap-0.5 rounded-md bg-slate-800/60 p-0.5" title="Edge display mode">
+        <div className="flex items-center gap-0.5 rounded-md bg-slate-800/60 p-0.5">
           <button
             onClick={() => setEdgeDisplayMode('topology')}
+            title="Topology: edge style reflects relationship type only"
             className={[
               'rounded px-2 py-1 text-[11px] font-medium transition-colors',
               edgeDisplayMode === 'topology'
@@ -46,6 +47,7 @@ export function GraphControls() {
           </button>
           <button
             onClick={() => setEdgeDisplayMode('load')}
+            title="Load: thickness = call volume vs busiest edge, color = error rate"
             className={[
               'rounded px-2 py-1 text-[11px] font-medium transition-colors',
               edgeDisplayMode === 'load'

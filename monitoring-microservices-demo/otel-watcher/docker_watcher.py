@@ -446,7 +446,6 @@ def trigger_initial_traces():
 
 
 def push_infra_topology():
-    """Push full infrastructure topology via /api/v1/ingest/topology on startup."""
     time.sleep(5)
     if not AGENT_TOKEN:
         return
@@ -454,6 +453,26 @@ def push_infra_topology():
     topology = {
         "source": "otel-watcher",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+        "nodes": [
+            {"id": "urn:service:otel-collector", "type": "Service", "name": "otel-collector",
+             "status": "active", "properties": {"role": "telemetry-pipeline"}},
+            {"id": "urn:service:tempo", "type": "Service", "name": "tempo",
+             "status": "active", "properties": {"role": "trace-backend"}},
+            {"id": "urn:service:beyla", "type": "Service", "name": "beyla",
+             "status": "active", "properties": {"role": "ebpf-instrumentation"}},
+        ],
+        "edges": [
+            {"source_id": "urn:service:fastapi-app", "target_id": "urn:service:otel-collector",
+             "type": "calls", "properties": {"protocol": "grpc", "purpose": "telemetry"}},
+            {"source_id": "urn:service:flask-app", "target_id": "urn:service:otel-collector",
+             "type": "calls", "properties": {"protocol": "grpc", "purpose": "telemetry"}},
+            {"source_id": "urn:service:golang-app", "target_id": "urn:service:beyla",
+             "type": "dependson", "properties": {"instrumentation": "ebpf"}},
+            {"source_id": "urn:service:beyla", "target_id": "urn:service:otel-collector",
+             "type": "calls", "properties": {"protocol": "grpc", "purpose": "traces"}},
+            {"source_id": "urn:service:otel-collector", "target_id": "urn:service:tempo",
+             "type": "calls", "properties": {"protocol": "grpc", "purpose": "traces"}},
+        ],
     }
 
     try:

@@ -110,6 +110,14 @@ def _upsert_nodes_tx(tx: ManagedTransaction, nodes: List[Dict], source: str, now
 
 TRACE_BUCKET_SECONDS = 10
 
+CALL_LIKE_EDGE_TYPES = {
+    "CALLS",
+    "READS",
+    "WRITES",
+    "PUBLISHESTO",
+    "CONSUMESFROM",
+}
+
 
 def _record_trace_bucket(tx: ManagedTransaction, when_iso: str, is_error: bool) -> None:
     from datetime import datetime as _dt
@@ -163,6 +171,38 @@ def _record_edge_activity(
     )
 
 
+def cleanup_deprecated_nodes() -> Dict[str, int]:
+    with neo4j_driver.session() as session:
+        return session.execute_write(_cleanup_deprecated_tx)
+
+
+def _cleanup_deprecated_tx(tx: ManagedTransaction) -> Dict[str, int]:
+    lib_rec = tx.run(
+        "MATCH (n:Resource) WHERE n.type = 'Library' "
+        "RETURN count(n) AS cnt"
+    ).single()
+    libs = int(lib_rec["cnt"]) if lib_rec else 0
+    if libs > 0:
+        tx.run("MATCH (n:Resource) WHERE n.type = 'Library' DETACH DELETE n")
+
+    ip_rec = tx.run(
+        "MATCH (n:Resource) "
+        "WHERE n.name =~ '^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}.*' "
+        "  OR n.external_id =~ '^urn:[a-z]+:[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}.*' "
+        "RETURN count(n) AS cnt"
+    ).single()
+    ips = int(ip_rec["cnt"]) if ip_rec else 0
+    if ips > 0:
+        tx.run(
+            "MATCH (n:Resource) "
+            "WHERE n.name =~ '^[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}.*' "
+            "  OR n.external_id =~ '^urn:[a-z]+:[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}\\\\.[0-9]{1,3}.*' "
+            "DETACH DELETE n"
+        )
+
+    return {"deleted_libraries": libs, "deleted_ip_nodes": ips}
+
+
 def ensure_activity_indexes() -> None:
     with neo4j_driver.session() as session:
         session.run(
@@ -173,6 +213,71 @@ def ensure_activity_indexes() -> None:
             "CREATE INDEX trace_bucket_ts IF NOT EXISTS "
             "FOR (b:TraceBucket) ON (b.bucket_ts)"
         )
+
+
+def prune_unproduced(
+    sources: List[str],
+    produced_node_ids: List[str],
+    produced_edge_keys: List[str],
+) -> Dict[str, int]:
+    if not sources:
+        return {"deleted_nodes": 0, "deleted_edges": 0}
+    with neo4j_driver.session() as session:
+        return session.execute_write(
+            _prune_unproduced_tx, sources, produced_node_ids, produced_edge_keys,
+        )
+
+
+def _prune_unproduced_tx(
+    tx: ManagedTransaction,
+    sources: List[str],
+    produced_node_ids: List[str],
+    produced_edge_keys: List[str],
+) -> Dict[str, int]:
+    produced_node_set = list(set(produced_node_ids))
+    produced_edge_set = list(set(produced_edge_keys))
+
+    edge_count_rec = tx.run(
+        "MATCH (a:Resource)-[rel]->(b:Resource) "
+        "WHERE rel.source IN $sources "
+        "  AND NOT (a.external_id + '|' + b.external_id + '|' + type(rel)) IN $produced "
+        "RETURN count(rel) AS cnt",
+        sources=sources,
+        produced=produced_edge_set,
+    ).single()
+    deleted_edges = int(edge_count_rec["cnt"]) if edge_count_rec else 0
+
+    if deleted_edges > 0:
+        tx.run(
+            "MATCH (a:Resource)-[rel]->(b:Resource) "
+            "WHERE rel.source IN $sources "
+            "  AND NOT (a.external_id + '|' + b.external_id + '|' + type(rel)) IN $produced "
+            "DELETE rel",
+            sources=sources,
+            produced=produced_edge_set,
+        )
+
+    node_count_rec = tx.run(
+        "MATCH (n:Resource) "
+        "WHERE n.source IN $sources "
+        "  AND NOT n.external_id IN $produced "
+        "RETURN count(n) AS cnt",
+        sources=sources,
+        produced=produced_node_set,
+    ).single()
+    deleted_nodes = int(node_count_rec["cnt"]) if node_count_rec else 0
+
+    if deleted_nodes > 0:
+        tx.run(
+            "MATCH (n:Resource) "
+            "WHERE n.source IN $sources "
+            "  AND NOT n.external_id IN $produced "
+            "DETACH DELETE n",
+            sources=sources,
+            produced=produced_node_set,
+        )
+
+    return {"deleted_nodes": deleted_nodes, "deleted_edges": deleted_edges}
 
 
 def cleanup_activity_older_than(cutoff_ms: int) -> Dict[str, int]:
@@ -207,11 +312,12 @@ def upsert_edges(
             is_err = bool(trace_metrics.get("is_error"))
             dur_ns = int(trace_metrics.get("duration_ns") or 0)
             session.execute_write(_record_trace_bucket, now, is_err)
-            sigs = [
+            sigs = list({
                 _edge_sig(e["source_id"], e["target_id"], e["type"])
                 for e in edges
                 if e.get("source_id") and e.get("target_id") and e.get("type")
-            ]
+                and e["type"].upper() in CALL_LIKE_EDGE_TYPES
+            })
             if sigs:
                 session.execute_write(
                     _record_edge_activity, sigs, now, is_err, dur_ns,
@@ -367,7 +473,7 @@ def _upsert_edges_tx(
         })
 
         trace_clause = ""
-        if has_trace:
+        if has_trace and edge_type in CALL_LIKE_EDGE_TYPES:
             trace_clause = (
                 ", rel.call_count = coalesce(rel.call_count, 0) + 1"
                 ", rel.error_count = coalesce(rel.error_count, 0) + $err_inc"

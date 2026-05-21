@@ -79,8 +79,6 @@ class DeactivateAndClearResponse(BaseModel):
 
 
 async def replay_mapping_background(mapping_id: str) -> None:
-    """Background task to replay mapping on all historical data."""
-
     log.info(f"Starting background replay for mapping {mapping_id}")
 
     mapping = mapping_repo.get(mapping_id)
@@ -89,6 +87,8 @@ async def replay_mapping_background(mapping_id: str) -> None:
         return
 
     try:
+        from app.repositories import neo4j_repo
+
         chunks_response = await raw_data_repo.list_chunks(
             limit=10000,
         )
@@ -99,20 +99,31 @@ async def replay_mapping_background(mapping_id: str) -> None:
         total_edges = 0
 
         all_created_nodes: List[Dict[str, Any]] = []
+        produced_node_ids: set = set()
+        produced_edge_keys: set = set()
+        affected_sources: set = set()
 
         for chunk in chunks:
             try:
                 nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
                 agent_name = chunk.metadata.get("agent_name", "replay") if chunk.metadata else "replay"
+                affected_sources.add(agent_name)
 
                 if nodes:
                     upsert_nodes(nodes, source=agent_name)
                     total_nodes += len(nodes)
                     all_created_nodes.extend(nodes)
+                    for n in nodes:
+                        if n.get("id"):
+                            produced_node_ids.add(n["id"])
 
                 if edges:
                     upsert_edges(edges, source=agent_name)
                     total_edges += len(edges)
+                    for e in edges:
+                        src, tgt, t = e.get("source_id"), e.get("target_id"), e.get("type")
+                        if src and tgt and t:
+                            produced_edge_keys.add(f"{src}|{tgt}|{t.upper()}")
 
                 total_processed += 1
 
@@ -128,13 +139,26 @@ async def replay_mapping_background(mapping_id: str) -> None:
                 agent_name = chunks[0].metadata.get("agent_name", "replay") if chunks and chunks[0].metadata else "replay"
                 upsert_edges(new_edges, source=agent_name)
                 total_edges += len(new_edges)
+                for e in new_edges:
+                    src, tgt, t = e.get("source_id"), e.get("target_id"), e.get("type")
+                    if src and tgt and t:
+                        produced_edge_keys.add(f"{src}|{tgt}|{t.upper()}")
                 log.info(f"Created {len(new_edges)} additional edges after all nodes were inserted")
             if new_unresolved:
                 log.info(f"Still unresolved: {len(new_unresolved)} references")
 
+        pruned = {"deleted_nodes": 0, "deleted_edges": 0}
+        if affected_sources and produced_node_ids:
+            pruned = neo4j_repo.prune_unproduced(
+                sources=list(affected_sources),
+                produced_node_ids=list(produced_node_ids),
+                produced_edge_keys=list(produced_edge_keys),
+            )
+
         log.info(
             f"Background replay complete for {mapping_id}: "
-            f"{total_processed} chunks, {total_nodes} nodes, {total_edges} edges"
+            f"{total_processed} chunks, {total_nodes} nodes, {total_edges} edges; "
+            f"pruned: {pruned['deleted_nodes']} nodes, {pruned['deleted_edges']} edges"
         )
 
     except Exception as e:

@@ -10,24 +10,6 @@ const REFRESH_EVENTS_MS = 15_000;
 
 const SPEED_OPTIONS: PlaybackSpeed[] = [1, 2, 5, 10];
 
-const NODE_TYPE_COLORS: Record<string, string> = {
-  Service: '#3b82f6',
-  Database: '#8b5cf6',
-  Cache: '#f59e0b',
-  ExternalAPI: '#ef4444',
-  QueueTopic: '#10b981',
-  Endpoint: '#06b6d4',
-  Table: '#a78bfa',
-  Library: '#f472b6',
-  Deployment: '#6366f1',
-  Pod: '#14b8a6',
-  TeamOwner: '#f97316',
-  SecretConfig: '#ec4899',
-  SLASLO: '#22d3ee',
-  RegionCluster: '#84cc16',
-  Node: '#fbbf24',
-};
-
 interface Slot {
   index: number;
   startMs: number;
@@ -60,7 +42,6 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
 
   const events = useTimelineStore((s) => s.events);
   const activity = useTimelineStore((s) => s.activity);
-  const mode = useTimelineStore((s) => s.mode);
   const setMode = useTimelineStore((s) => s.setMode);
   const currentTime = useTimelineStore((s) => s.currentTime);
   const isPlaying = useTimelineStore((s) => s.isPlaying);
@@ -94,10 +75,14 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   }, [fetchRange]);
 
   useEffect(() => {
+    setMode('activity');
+  }, [setMode]);
+
+  useEffect(() => {
     void fetchEvents();
     const id = setInterval(() => void fetchEvents(), REFRESH_EVENTS_MS);
     return () => clearInterval(id);
-  }, [fetchEvents, chunkCount, chunkBucketSeconds, mode]);
+  }, [fetchEvents, chunkCount, chunkBucketSeconds]);
 
   // Track strip width for cursor positioning.
   useEffect(() => {
@@ -132,43 +117,30 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
       events: [],
     }));
 
-    if (mode === 'topology') {
-      for (const ev of events) {
-        const ts = new Date(ev.timestamp).getTime();
-        if (ts < windowStart || ts >= windowEnd) continue;
-        const idx = Math.min(chunkCount - 1, Math.floor((ts - windowStart) / bucketMs));
-        const slot = out[idx];
-        slot.count += ev.nodes_added + ev.edges_added;
-        slot.nodesAdded += ev.nodes_added;
-        slot.edgesAdded += ev.edges_added;
-        slot.events.push({
-          timestamp: ev.timestamp,
-          nodes: ev.nodes_added,
-          edges: ev.edges_added,
-        });
-        if (!slot.topType) {
-          const topEntry = Object.entries(ev.node_types).sort((a, b) => b[1] - a[1])[0];
-          if (topEntry) slot.topType = topEntry[0];
-        }
-      }
-    } else {
-      for (const b of activity) {
-        const ts = b.bucket_ts;
-        if (ts < windowStart || ts >= windowEnd) continue;
-        const idx = Math.min(chunkCount - 1, Math.floor((ts - windowStart) / bucketMs));
-        const slot = out[idx];
-        slot.spanCount += b.span_count;
-        slot.errorCount += b.error_count;
-        slot.count += b.span_count;
-        slot.events.push({
-          timestamp: b.timestamp,
-          nodes: 0,
-          edges: 0,
-        });
-      }
+    for (const b of activity) {
+      const ts = b.bucket_ts;
+      if (ts < windowStart || ts >= windowEnd) continue;
+      const idx = Math.min(chunkCount - 1, Math.floor((ts - windowStart) / bucketMs));
+      const slot = out[idx];
+      slot.spanCount += b.span_count;
+      slot.errorCount += b.error_count;
+      slot.count += b.span_count;
+      slot.events.push({
+        timestamp: b.timestamp,
+        nodes: 0,
+        edges: 0,
+      });
+    }
+    for (const ev of events) {
+      const ts = new Date(ev.timestamp).getTime();
+      if (ts < windowStart || ts >= windowEnd) continue;
+      const idx = Math.min(chunkCount - 1, Math.floor((ts - windowStart) / bucketMs));
+      const slot = out[idx];
+      slot.nodesAdded += ev.nodes_added;
+      slot.edgesAdded += ev.edges_added;
     }
     return out;
-  }, [events, activity, mode, chunkCount, bucketMs, windowStart, windowEnd]);
+  }, [events, activity, chunkCount, bucketMs, windowStart, windowEnd]);
 
   const maxSlotCount = useMemo(
     () => Math.max(1, ...slots.map((s) => s.count)),
@@ -203,13 +175,13 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   // --- Graph loading ---
   const loadAtSlotStart = useCallback(
     (slot: Slot) => {
-      const iso = slot.events.length > 0
-        ? slot.events[0].timestamp
-        : new Date(slot.startMs).toISOString();
+      const now = Date.now();
+      const asOfMs = Math.min(Math.max(slot.startMs, slot.endMs - 1), now);
+      const iso = new Date(asOfMs).toISOString();
       useTimelineStore.setState({ currentTime: iso });
       const win = {
         start: new Date(slot.startMs).toISOString(),
-        end: new Date(slot.endMs).toISOString(),
+        end: new Date(Math.min(slot.endMs, now)).toISOString(),
       };
       void loadFullGraph(limit, selectedAppId ?? undefined, iso, win).then(() => {
         try { fitGraph(); } catch { /* cy not ready */ }
@@ -290,13 +262,11 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         if (curIdx >= 0 && curIdx < nonEmptySlots.length - 1) {
           loadAtSlotStart(nonEmptySlots[curIdx + 1]);
         } else if (curIdx === -1) {
-          // ctMs precedes everything → first slot.
+          // ctMs precedes everything → first non-empty slot.
           const first = nonEmptySlots.find((s) => s.startMs > ctMs);
           if (first) loadAtSlotStart(first);
-          else handleGoLive();
-        } else {
-          handleGoLive();
         }
+        // curIdx === last: already at rightmost, do nothing.
       } else {
         if (curIdx > 0) {
           loadAtSlotStart(nonEmptySlots[curIdx - 1]);
@@ -309,7 +279,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         // curIdx === 0: already at oldest, do nothing.
       }
     },
-    [nonEmptySlots, stopPlayback, loadAtSlotStart, handleGoLive],
+    [nonEmptySlots, stopPlayback, loadAtSlotStart],
   );
 
   // --- Click / drag scrubbing (snaps to slot) ---
@@ -386,14 +356,14 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   };
   const commitBucket = () => {
     const n = parseInt(bucketInput, 10);
-    if (Number.isFinite(n) && n >= 1 && n <= 3600) setChunkBucketSeconds(n);
+    if (Number.isFinite(n) && n >= 10 && n <= 3600) setChunkBucketSeconds(n);
     else setBucketInput(String(chunkBucketSeconds));
   };
 
   return (
-    <div className="shrink-0 border-t border-slate-800/70 bg-slate-950/95">
+    <div className="shrink-0 overflow-hidden border-t border-slate-800/70 bg-slate-950/95">
       {/* Top row: stats + window summary */}
-      <div className="flex h-7 items-center gap-3 px-4 text-[11px]">
+      <div className="flex h-6 items-center gap-3 px-4 pt-0.5 text-[11px]">
         <Stat label="Nodes" value={nodes.length} />
         <Sep />
         <Stat label="Edges" value={edges.length} />
@@ -402,12 +372,31 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         <Sep />
         <Stat label="Edge types" value={edgeTypes} />
         <Sep />
-        <span className="text-slate-500">
-          Window: <span className="font-mono text-slate-300">{chunkCount}×{chunkBucketSeconds}s</span>
-          <span className="ml-1 text-slate-600">
-            ({windowTotal} {mode === 'activity' ? 'spans' : 'events'})
+        {currentSlotIdx >= 0 && slots[currentSlotIdx] ? (
+          <span className="text-slate-500 flex items-center gap-2">
+            <span className="font-mono text-slate-400">
+              {formatTimeShort(slots[currentSlotIdx].startMs)}–{formatTimeShort(slots[currentSlotIdx].endMs)}
+            </span>
+            <span className="text-slate-300">{slots[currentSlotIdx].spanCount} spans</span>
+            <span
+              className={
+                slots[currentSlotIdx].errorCount > 0 ? 'text-red-400' : 'text-slate-500'
+              }
+            >
+              {slots[currentSlotIdx].errorCount} err
+            </span>
+            {slots[currentSlotIdx].spanCount > 0 && (
+              <span className="text-slate-500">
+                {((slots[currentSlotIdx].errorCount / slots[currentSlotIdx].spanCount) * 100).toFixed(1)}%
+              </span>
+            )}
           </span>
-        </span>
+        ) : (
+          <span className="text-slate-500">
+            Window: <span className="font-mono text-slate-300">{chunkCount}×{chunkBucketSeconds}s</span>
+            <span className="ml-1 text-slate-600">({windowTotal} spans)</span>
+          </span>
+        )}
         {eventsLoading && (
           <span className="text-[10px] text-slate-500">Loading...</span>
         )}
@@ -426,7 +415,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         ) : null}
       </div>
 
-      <div className="flex items-center gap-1.5 px-4 pb-1">
+      <div className="flex items-center gap-1.5 px-4 pb-0.5">
         <CtrlBtn onClick={() => handleStep(-1)} disabled={nonEmptySlots.length === 0} title="Step back (←)">
           <SvgIcon d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z M8 6v12h-2V6z" />
         </CtrlBtn>
@@ -458,30 +447,6 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           ))}
         </div>
 
-        <Sep />
-
-        <div className="flex items-center gap-0.5 rounded-md bg-slate-900/80 p-0.5">
-          <button
-            onClick={() => setMode('activity')}
-            className={[
-              'rounded px-2 py-0.5 text-[10px] font-semibold transition-colors',
-              mode === 'activity' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300',
-            ].join(' ')}
-            title="Trace activity: spans per bucket"
-          >
-            Activity
-          </button>
-          <button
-            onClick={() => setMode('topology')}
-            className={[
-              'rounded px-2 py-0.5 text-[10px] font-semibold transition-colors',
-              mode === 'topology' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:text-slate-300',
-            ].join(' ')}
-            title="Topology births: when nodes/edges first appeared"
-          >
-            Topology
-          </button>
-        </div>
 
         <Sep />
 
@@ -502,7 +467,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           seconds in bucket
           <input
             type="number"
-            min={1}
+            min={10}
             max={3600}
             value={bucketInput}
             onChange={(e) => setBucketInput(e.target.value)}
@@ -514,15 +479,13 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
 
       </div>
 
-      {/* Strip: fixed slot grid */}
-      <div className="px-4 pb-2">
+      <div className="px-4 pb-0.5">
         <div
           ref={stripRef}
-          className="relative h-14 cursor-pointer select-none overflow-hidden rounded-md bg-slate-900/60"
+          className="relative h-9 cursor-pointer select-none overflow-hidden rounded-md bg-slate-900/60"
           onMouseDown={handleStripMouseDown}
-          title="Click or drag a chunk to jump. ← → step, Home first, End live, Space play."
+          title="Click or drag a chunk to jump. ← → step, Home first, Space play."
         >
-          {/* Grid background: subtle vertical dividers */}
           <svg className="absolute inset-0 h-full w-full" preserveAspectRatio="none">
             {Array.from({ length: chunkCount + 1 }).map((_, i) => (
               <line
@@ -530,7 +493,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
                 x1={i * slotWidth}
                 x2={i * slotWidth}
                 y1={0}
-                y2={56}
+                y2={36}
                 stroke="#1e293b"
                 strokeWidth={1}
                 opacity={i % 5 === 0 ? 0.9 : 0.35}
@@ -540,17 +503,12 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
             {slots.map((slot) => {
               const x = slot.index * slotWidth;
               const barW = Math.max(2, slotWidth - 3);
-              const barMaxH = 36;
+              const barMaxH = 22;
+              const barBaseY = 25;
               const h = slot.count > 0 ? Math.max(3, (slot.count / maxSlotCount) * barMaxH) : 0;
-              let color: string;
-              if (mode === 'activity') {
-                const errRate = slot.spanCount > 0 ? slot.errorCount / slot.spanCount : 0;
-                if (errRate > 0.05) color = '#ef4444';
-                else if (errRate > 0.01) color = '#f59e0b';
-                else color = '#3b82f6';
-              } else {
-                color = slot.topType ? (NODE_TYPE_COLORS[slot.topType] ?? '#3b82f6') : '#475569';
-              }
+              const errRate = slot.spanCount > 0 ? slot.errorCount / slot.spanCount : 0;
+              const color =
+                errRate > 0.05 ? '#ef4444' : errRate > 0.01 ? '#f59e0b' : '#3b82f6';
               const isActive = slot.index === currentSlotIdx;
               const hasData = slot.count > 0;
               return (
@@ -559,13 +517,13 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
                     x={x}
                     y={0}
                     width={slotWidth}
-                    height={56}
+                    height={36}
                     fill={isActive ? 'rgba(96,165,250,0.08)' : 'transparent'}
                   />
                   {hasData && (
                     <rect
                       x={x + (slotWidth - barW) / 2}
-                      y={44 - h}
+                      y={barBaseY - h}
                       width={barW}
                       height={h}
                       rx={1.5}
@@ -587,16 +545,22 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
             />
           )}
 
-          {/* Time axis labels (every 5th boundary or at edges) */}
-          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-4">
+          <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-3 overflow-hidden">
             {Array.from({ length: chunkCount + 1 }).map((_, i) => {
               if (i !== 0 && i !== chunkCount && i % 5 !== 0) return null;
               const ts = windowStart + i * bucketMs;
+              const isFirst = i === 0;
+              const isLast = i === chunkCount;
+              const transform = isFirst
+                ? 'translateX(0)'
+                : isLast
+                  ? 'translateX(-100%)'
+                  : 'translateX(-50%)';
               return (
                 <span
                   key={i}
-                  className="absolute font-mono text-[8px] text-slate-500"
-                  style={{ left: i * slotWidth, transform: 'translateX(-50%)' }}
+                  className="absolute font-mono text-[8px] leading-3 text-slate-500"
+                  style={{ left: i * slotWidth, transform }}
                 >
                   {formatTimeShort(ts)}
                 </span>
@@ -605,46 +569,6 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           </div>
         </div>
 
-        {currentSlotIdx >= 0 && slots[currentSlotIdx] && (
-          <div className="mt-1 flex items-center gap-3 text-[10px] text-slate-500">
-            <span className="font-mono text-slate-400">
-              {formatTimeShort(slots[currentSlotIdx].startMs)} – {formatTimeShort(slots[currentSlotIdx].endMs)}
-            </span>
-            {mode === 'activity' ? (
-              <>
-                <span>{slots[currentSlotIdx].spanCount} spans</span>
-                <span
-                  className={
-                    slots[currentSlotIdx].errorCount > 0
-                      ? 'text-red-400'
-                      : 'text-slate-500'
-                  }
-                >
-                  {slots[currentSlotIdx].errorCount} errors
-                </span>
-                {slots[currentSlotIdx].spanCount > 0 && (
-                  <span>
-                    err rate {((slots[currentSlotIdx].errorCount / slots[currentSlotIdx].spanCount) * 100).toFixed(1)}%
-                  </span>
-                )}
-              </>
-            ) : (
-              <>
-                <span>+{slots[currentSlotIdx].nodesAdded} nodes</span>
-                <span>+{slots[currentSlotIdx].edgesAdded} edges</span>
-                {slots[currentSlotIdx].topType && (
-                  <span className="flex items-center gap-1">
-                    <span
-                      className="inline-block h-1.5 w-1.5 rounded-full"
-                      style={{ backgroundColor: NODE_TYPE_COLORS[slots[currentSlotIdx].topType!] ?? '#3b82f6' }}
-                    />
-                    {slots[currentSlotIdx].topType}
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-        )}
       </div>
     </div>
   );

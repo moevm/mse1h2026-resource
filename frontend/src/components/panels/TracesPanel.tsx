@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { fetchTracesList, type TraceSummary } from '../../api/timelineApi';
-import { useGraphDataStore, useTimelineStore } from '../../features/graph/store';
+import { useTimelineStore } from '../../features/graph/store';
 import { useTraceReplay } from '../../hooks/useTraceReplay';
 import { Button } from '../common/Button';
 import { Spinner } from '../common/Spinner';
+
+type SortOrder = 'newest' | 'oldest';
 
 function ageString(iso: string | null): string {
   if (!iso) return '—';
@@ -28,23 +30,24 @@ export function TracesPanel() {
   const windowStart = useTimelineStore((s) => s.windowStart);
   const chunkCount = useTimelineStore((s) => s.chunkCount);
   const chunkBucketSeconds = useTimelineStore((s) => s.chunkBucketSeconds);
-  const windowEnd = windowStart + chunkCount * chunkBucketSeconds * 1000;
+  const currentTime = useTimelineStore((s) => s.currentTime);
 
-  const nodes = useGraphDataStore((s) => s.nodes);
-  const visibleServices = useMemo(() => {
-    const set = new Set<string>();
-    for (const n of nodes) {
-      if (n.type === 'Service') set.add(n.name);
+  const bucketMs = chunkBucketSeconds * 1000;
+  const { effStart, effEnd } = useMemo(() => {
+    if (currentTime) {
+      const ctMs = new Date(currentTime).getTime();
+      const slotStart = windowStart + Math.floor((ctMs - windowStart) / bucketMs) * bucketMs;
+      return { effStart: slotStart, effEnd: slotStart + bucketMs };
     }
-    return [...set].sort();
-  }, [nodes]);
+    return { effStart: windowStart, effEnd: windowStart + chunkCount * bucketMs };
+  }, [currentTime, windowStart, bucketMs, chunkCount]);
 
   const [traces, setTraces] = useState<TraceSummary[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTraceId, setActiveTraceId] = useState<string | null>(null);
   const [multiHop, setMultiHop] = useState(true);
-  const [restrictToGraph, setRestrictToGraph] = useState(true);
+  const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
 
   const { play, stop, isPlaying } = useTraceReplay();
 
@@ -53,11 +56,10 @@ export function TracesPanel() {
     setError(null);
     try {
       const resp = await fetchTracesList({
-        windowStart: new Date(windowStart).toISOString(),
-        windowEnd: new Date(windowEnd).toISOString(),
+        windowStart: new Date(effStart).toISOString(),
+        windowEnd: new Date(effEnd).toISOString(),
         limit: 100,
         multiHop,
-        services: restrictToGraph ? visibleServices : undefined,
       });
       setTraces(resp.traces);
     } catch (e) {
@@ -65,11 +67,18 @@ export function TracesPanel() {
     } finally {
       setLoading(false);
     }
-  }, [windowStart, windowEnd, multiHop, restrictToGraph, visibleServices]);
+  }, [effStart, effEnd, multiHop]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  const sortedTraces = useMemo(() => {
+    const ts = (t: TraceSummary) => (t.start_time ? new Date(t.start_time).getTime() : 0);
+    const arr = [...traces];
+    arr.sort((a, b) => (sortOrder === 'newest' ? ts(b) - ts(a) : ts(a) - ts(b)));
+    return arr;
+  }, [traces, sortOrder]);
 
   const handleReplay = useCallback((id: string) => {
     if (isPlaying && activeTraceId === id) {
@@ -87,11 +96,13 @@ export function TracesPanel() {
       <div className="shrink-0 border-b border-slate-800/70 px-3 py-2">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="text-xs font-semibold text-slate-200">Traces in window</h3>
+            <h3 className="text-xs font-semibold text-slate-200">
+              Traces {currentTime ? 'in selected slot' : 'in window'}
+            </h3>
             <p className="mt-0.5 text-[10px] text-slate-500 tabular-nums">
-              {new Date(windowStart).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {new Date(effStart).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               {' – '}
-              {new Date(windowEnd).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              {new Date(effEnd).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               {' · '}
               {traces.length} matching
             </p>
@@ -105,22 +116,19 @@ export function TracesPanel() {
           <label className="flex cursor-pointer items-center gap-1.5">
             <input
               type="checkbox"
-              checked={restrictToGraph}
-              onChange={(e) => setRestrictToGraph(e.target.checked)}
-              className="h-3 w-3 accent-blue-500"
-            />
-            Only visible services
-            <span className="text-slate-600">({visibleServices.length})</span>
-          </label>
-          <label className="flex cursor-pointer items-center gap-1.5">
-            <input
-              type="checkbox"
               checked={multiHop}
               onChange={(e) => setMultiHop(e.target.checked)}
               className="h-3 w-3 accent-blue-500"
             />
             Multi-service only
           </label>
+          <button
+            onClick={() => setSortOrder((o) => (o === 'newest' ? 'oldest' : 'newest'))}
+            className="ml-auto flex items-center gap-1 rounded bg-slate-800/70 px-1.5 py-0.5 text-[10px] text-slate-300 hover:bg-slate-700/70"
+            title={`Click to sort ${sortOrder === 'newest' ? 'oldest → newest' : 'newest → oldest'}`}
+          >
+            {sortOrder === 'newest' ? 'Newest first ↓' : 'Oldest first ↑'}
+          </button>
         </div>
       </div>
 
@@ -146,7 +154,7 @@ export function TracesPanel() {
       )}
 
       <div className="scrollbar-thin flex-1 overflow-y-auto">
-        {traces.map((t) => {
+        {sortedTraces.map((t) => {
           const isActive = activeTraceId === t.trace_id;
           const playing = isActive && isPlaying;
           return (

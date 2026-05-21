@@ -79,86 +79,86 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
                     "attrs": attrs,
                 }
 
-    hops: List[Dict[str, Any]] = []
-    base = None
-    seen_keys: set = set()
+    if not spans:
+        return {"trace_id": trace_id_hex, "hops": []}
 
-    def _add_hop(
-        caller: str,
-        callee: str,
-        callee_kind: str,
-        span_name: str,
-        start_ns: int,
-        end_ns: int,
-        is_error: bool,
-    ) -> None:
-        nonlocal base
+    children: Dict[str, List[str]] = {}
+    roots: List[str] = []
+    for sid, sp in spans.items():
+        pid = sp["parent_span_id"]
+        if pid and pid in spans:
+            children.setdefault(pid, []).append(sid)
+        else:
+            roots.append(sid)
+    for pid in children:
+        children[pid].sort(key=lambda s: spans[s]["start"])
+    roots.sort(key=lambda s: spans[s]["start"])
+
+    base = min(sp["start"] for sp in spans.values() if sp["start"] > 0) if any(sp["start"] > 0 for sp in spans.values()) else 0
+    hops: List[Dict[str, Any]] = []
+
+    def _emit(caller: str, callee: str, kind: str, ts_ns: int, sp: Dict[str, Any]) -> None:
         if not caller or not callee or caller == callee:
             return
-        key = (caller, callee, callee_kind, start_ns, span_name)
-        if key in seen_keys:
-            return
-        seen_keys.add(key)
-        if base is None or start_ns < base:
-            base = start_ns
+        start_ms = max(0, (ts_ns - base) // 1_000_000)
+        dur = sp["end"] - sp["start"]
         hops.append({
             "caller_service": caller,
             "callee_service": callee,
-            "callee_kind": callee_kind,
-            "span_name": span_name,
-            "start_offset_ms": start_ns // 1_000_000,
-            "duration_ms": (end_ns - start_ns) // 1_000_000 if end_ns > start_ns else 0,
-            "is_error": is_error,
+            "callee_kind": kind,
+            "span_name": sp["span_name"] or "",
+            "start_offset_ms": start_ms,
+            "duration_ms": dur // 1_000_000 if dur > 0 else 0,
+            "is_error": sp["is_error"],
         })
 
-    for s in spans.values():
-        psid = s["parent_span_id"]
-        seen_chain: set = set()
-        caller_service = None
-        while psid and psid in spans and psid not in seen_chain:
-            seen_chain.add(psid)
-            p = spans[psid]
-            if p["service_name"] and p["service_name"] != s["service_name"]:
-                caller_service = p["service_name"]
-                break
-            psid = p["parent_span_id"]
-        if caller_service:
-            _add_hop(
-                caller_service, s["service_name"], "Service",
-                s["span_name"], s["start"], s["end"], s["is_error"],
-            )
+    def visit(sid: str, ancestor_service: Optional[str]) -> None:
+        sp = spans[sid]
+        svc = sp["service_name"]
+        attrs = sp["attrs"]
+        has_children = bool(children.get(sid))
 
-        attrs = s["attrs"]
-        svc = s["service_name"]
-        if not svc:
-            continue
+        if svc and ancestor_service and svc != ancestor_service:
+            _emit(ancestor_service, svc, "Service", sp["start"], sp)
 
-        db_system = _extract_attr(attrs, "db.system")
-        if db_system:
-            db_name = _extract_attr(attrs, "db.name") or _extract_attr(attrs, "peer.service") or _extract_attr(attrs, "net.peer.name")
-            if db_name:
-                _add_hop(svc, db_name, "Database", s["span_name"], s["start"], s["end"], s["is_error"])
-            db_table = _extract_attr(attrs, "db.table")
-            if db_table:
-                _add_hop(svc, db_table, "Table", s["span_name"], s["start"], s["end"], s["is_error"])
+        if sp["kind"] == "SPAN_KIND_SERVER" and svc and sp["span_name"]:
+            _emit(svc, sp["span_name"], "Endpoint", sp["end"], sp)
 
-        cache_name = _extract_attr(attrs, "cache.name")
-        if cache_name:
-            _add_hop(svc, cache_name, "Cache", s["span_name"], s["start"], s["end"], s["is_error"])
+        if sp["kind"] == "SPAN_KIND_CLIENT" and not has_children and svc:
+            peer = _extract_attr(attrs, "peer.service")
+            if peer and peer != svc:
+                _emit(svc, peer, "Service", sp["start"], sp)
 
-        msg_dest = _extract_attr(attrs, "messaging.destination")
-        if msg_dest:
-            _add_hop(svc, msg_dest, "QueueTopic", s["span_name"], s["start"], s["end"], s["is_error"])
+        if svc:
+            db_system = _extract_attr(attrs, "db.system")
+            if db_system:
+                db_name = (
+                    _extract_attr(attrs, "db.name")
+                    or _extract_attr(attrs, "peer.service")
+                    or _extract_attr(attrs, "net.peer.name")
+                )
+                if db_name:
+                    _emit(svc, db_name, "Database", sp["start"], sp)
+                db_table = _extract_attr(attrs, "db.table")
+                if db_table:
+                    _emit(svc, db_table, "Table", sp["start"], sp)
+            cache_name = _extract_attr(attrs, "cache.name")
+            if cache_name:
+                _emit(svc, cache_name, "Cache", sp["start"], sp)
+            msg_dest = _extract_attr(attrs, "messaging.destination")
+            if msg_dest:
+                _emit(svc, msg_dest, "QueueTopic", sp["start"], sp)
+            external_api = _extract_attr(attrs, "external_api")
+            if external_api:
+                _emit(svc, external_api, "ExternalAPI", sp["start"], sp)
 
-        external_api = _extract_attr(attrs, "external_api")
-        if external_api:
-            _add_hop(svc, external_api, "ExternalAPI", s["span_name"], s["start"], s["end"], s["is_error"])
+        new_ancestor = svc if svc else ancestor_service
+        for child_id in children.get(sid, []):
+            visit(child_id, new_ancestor)
 
-    if base is not None:
-        for h in hops:
-            h["start_offset_ms"] = max(0, h["start_offset_ms"] - base // 1_000_000)
+    for root_id in roots:
+        visit(root_id, None)
 
-    hops.sort(key=lambda h: h["start_offset_ms"])
     return {"trace_id": trace_id_hex, "hops": hops}
 
 
@@ -221,6 +221,7 @@ async def list_traces(
     lookback_seconds: Annotated[int, Query(ge=10, le=86400)] = 600,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     services: Optional[str] = Query(None, description="Comma-separated allow-list of service names; only traces whose hops stay inside this set are returned"),
+    visible_nodes: Optional[str] = Query(None, description="Comma-separated allow-list of any visible node names (Service, Database, Cache, etc.). A trace is kept only if every hop's callee is in this set."),
     multi_hop: bool = Query(True, description="If true, drop traces with no cross-service hops"),
 ):
     if not TEMPO_URL:
@@ -265,6 +266,10 @@ async def list_traces(
         allowed_services = {s.strip() for s in services.split(",") if s.strip()}
         candidates = [c for c in candidates if c.get("rootServiceName") in allowed_services]
 
+    allowed_nodes: Optional[set] = None
+    if visible_nodes:
+        allowed_nodes = {s.strip() for s in visible_nodes.split(",") if s.strip()}
+
     def _fetch_and_hops(c: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         tid = c["traceID"]
         try:
@@ -275,14 +280,18 @@ async def list_traces(
             return None
         hops = _build_hops_from_trace(trace).get("hops", [])
         services_involved: set = set()
+        all_callees: set = set()
         for h in hops:
             services_involved.add(h["caller_service"])
-            services_involved.add(h["callee_service"])
-        if multi_hop and not hops:
+            if h.get("callee_kind") == "Service":
+                services_involved.add(h["callee_service"])
+            all_callees.add(h["callee_service"])
+        if multi_hop and len(services_involved) < 2:
             return None
-        if allowed_services is not None and not services_involved.issubset(allowed_services):
-            if services_involved:
-                return None
+        if allowed_services is not None and services_involved and not services_involved.issubset(allowed_services):
+            return None
+        if allowed_nodes is not None and all_callees and not all_callees.issubset(allowed_nodes | services_involved):
+            return None
         has_errors = any(h.get("is_error") for h in hops)
         try:
             start_ns = int(c.get("startTimeUnixNano") or 0)
@@ -309,26 +318,6 @@ async def list_traces(
 
     out.sort(key=lambda x: x.get("start_time") or "", reverse=True)
     return {"traces": out, "window_start": start, "window_end": end}
-
-
-@router.get(
-    "/trace-replay/{trace_id}",
-    summary="Replay a specific trace as ordered caller→callee hops",
-)
-async def trace_replay_by_id(user: CurrentUser, trace_id: str):
-    if not TEMPO_URL:
-        raise HTTPException(503, "Tempo backend not configured (TEMPO_URL env)")
-    try:
-        resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}", timeout=15)
-        if resp.status_code == 404:
-            raise HTTPException(404, "Trace not found in Tempo")
-        resp.raise_for_status()
-        trace = resp.json()
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(502, f"Tempo fetch failed: {e}")
-    return _build_hops_from_trace(trace)
 
 
 @router.get(
@@ -364,8 +353,7 @@ async def trace_replay_latest(
     ]
     if not traces:
         return {"trace_id": None, "hops": []}
-    import random
-    random.shuffle(traces)
+    traces.sort(key=lambda x: int(x.get("startTimeUnixNano") or 0), reverse=True)
     for t in traces[:20]:
         tid = t["traceID"]
         try:
@@ -378,6 +366,26 @@ async def trace_replay_latest(
         if result["hops"]:
             return result
     return {"trace_id": None, "hops": []}
+
+
+@router.get(
+    "/trace-replay/{trace_id}",
+    summary="Replay a specific trace as ordered caller→callee hops",
+)
+async def trace_replay_by_id(user: CurrentUser, trace_id: str):
+    if not TEMPO_URL:
+        raise HTTPException(503, "Tempo backend not configured (TEMPO_URL env)")
+    try:
+        resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}", timeout=15)
+        if resp.status_code == 404:
+            raise HTTPException(404, "Trace not found in Tempo")
+        resp.raise_for_status()
+        trace = resp.json()
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Tempo fetch failed: {e}")
+    return _build_hops_from_trace(trace)
 
 
 @router.get(

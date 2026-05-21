@@ -208,8 +208,15 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
       return Number(w !== undefined && w !== null ? w : (e.data('error_count') ?? 0));
     };
 
+    const CALL_LIKE_TYPES = new Set(['calls', 'reads', 'writes', 'publishesto', 'consumesfrom']);
+    const isCallLike = (e: cytoscape.EdgeSingular): boolean => {
+      const t = String(e.data('type') ?? '').toLowerCase();
+      return CALL_LIKE_TYPES.has(t);
+    };
+
     let maxCalls = 0;
     cy.edges().forEach((e) => {
+      if (!isCallLike(e)) return;
       const c = pickCalls(e);
       if (c > maxCalls) maxCalls = c;
     });
@@ -218,9 +225,9 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
       cy.edges().forEach((e) => {
         const calls = pickCalls(e);
         const errs = pickErrors(e);
-        if (calls > 0) {
+        if (calls > 0 && isCallLike(e)) {
           e.data('load_norm', maxCalls > 0 ? calls / maxCalls : 0);
-          e.data('error_rate', calls > 0 ? errs / calls : 0);
+          e.data('error_rate', errs / calls);
           e.data('call_count_display', calls);
         } else {
           e.removeData('load_norm');
