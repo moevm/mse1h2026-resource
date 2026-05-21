@@ -18,6 +18,7 @@ import client from './client';
 export async function listChunks(params?: {
   agent_id?: string;
   source_type?: RawDataSource;
+  chunk_type_id?: number;
   limit?: number;
 }): Promise<RawDataListResponse> {
   const res = await client.get('/receiver/raw', { params });

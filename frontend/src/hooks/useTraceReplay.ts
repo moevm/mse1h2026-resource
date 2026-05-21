@@ -87,10 +87,15 @@ export function useTraceReplay() {
       ExternalAPI: 'urn:externalapi:',
     };
 
-    const matchEdgeAndNodes = (caller: string, callee: string, calleeKind: string | undefined) => {
+    const matchEdgeAndNodes = (
+      caller: string,
+      callee: string,
+      calleeKind: string | undefined,
+      calleeId?: string,
+    ) => {
       const sourceId = `urn:service:${caller}`;
       const prefix = calleePrefix[calleeKind ?? 'Service'] ?? 'urn:service:';
-      const targetId = `${prefix}${callee}`;
+      const targetId = calleeId ?? `${prefix}${callee}`;
 
       if (calleeKind === 'Endpoint') {
         const endpointNode = cy.getElementById(targetId);
@@ -138,7 +143,7 @@ export function useTraceReplay() {
         setTimeout(() => {
           if (cancelRef.current) return;
           const { edges, nodes } = matchEdgeAndNodes(
-            hop.caller_service, hop.callee_service, hop.callee_kind,
+            hop.caller_service, hop.callee_service, hop.callee_kind, hop.callee_id,
           );
           if (edges.length === 0 && nodes.length === 0) {
             addLog('warn', 'replay', `Hop not found in graph: ${hop.caller_service} → ${hop.callee_service} (${hop.callee_kind ?? 'Service'})`);

@@ -11,6 +11,7 @@ from app.models.mapper.raw_data import RawDataListResponse
 from app.repositories.raw_data_repo import raw_data_repo
 from app.repositories.mapping_repo import mapping_repo
 from app.repositories.neo4j_repo import upsert_nodes, upsert_edges
+from app.services.endpoint_identity import build_endpoint_urn
 from app.services.mapper_service import mapper_service
 
 router = APIRouter()
@@ -49,17 +50,28 @@ def _looks_like_ip(value: str) -> bool:
     return bool(value) and value[0].isdigit() and stripped.isdigit()
 
 
-def _trace_caller_edge(
+def _is_server_span(span_kind: Any) -> bool:
+    kind = str(span_kind or "").upper()
+    return kind in {"SPAN_KIND_SERVER", "SERVER", "2"}
+
+
+def _trace_caller_enrichment(
     payload: Dict[str, Any],
-) -> Optional[tuple[Dict[str, Any], Dict[str, Any]]]:
+) -> Optional[tuple[list[Dict[str, Any]], Dict[str, Any]]]:
 
     if not isinstance(payload, dict):
         return None
     caller = payload.get("caller_service")
-    callee = payload.get("service_name")
-    if not caller or not callee or caller == callee:
+    callee_service = payload.get("service_name")
+    callee_endpoint = payload.get("span_name")
+    if not caller or not callee_service or caller == callee_service:
         return None
-    if _looks_like_ip(str(caller)) or _looks_like_ip(str(callee)):
+    if not callee_endpoint or not _is_server_span(payload.get("span_kind")):
+        return None
+    if _looks_like_ip(str(caller)) or _looks_like_ip(str(callee_service)):
+        return None
+    endpoint_id = build_endpoint_urn(str(callee_service), str(callee_endpoint))
+    if not endpoint_id:
         return None
 
     caller_node = {
@@ -68,12 +80,21 @@ def _trace_caller_edge(
         "name": caller,
         "status": "active",
     }
+    endpoint_node = {
+        "id": endpoint_id,
+        "type": "Endpoint",
+        "name": str(callee_endpoint),
+        "service_name": str(callee_service),
+        "path": payload.get("http_route") or payload.get("http_target") or str(callee_endpoint),
+        "method": payload.get("http_method"),
+        "status": "active",
+    }
     edge = {
         "source_id": f"urn:service:{caller}",
-        "target_id": f"urn:service:{callee}",
+        "target_id": endpoint_id,
         "type": "calls",
     }
-    return caller_node, edge
+    return [caller_node, endpoint_node], edge
 
 
 @router.post(
@@ -130,10 +151,10 @@ async def receive_raw_data(
             # its calls→callee edge are produced regardless of what the
             # template's peer.service rules infer. This is the authoritative
             # signal from the real trace tree.
-            caller_extra = _trace_caller_edge(payload)
+            caller_extra = _trace_caller_enrichment(payload)
             if caller_extra:
-                caller_node, caller_edge = caller_extra
-                nodes.append(caller_node)
+                extra_nodes, caller_edge = caller_extra
+                nodes.extend(extra_nodes)
                 edges.append(caller_edge)
 
             if nodes:
@@ -197,10 +218,12 @@ async def receive_raw_data(
 async def list_raw_data(
     user: CurrentUser,
     agent_id: Optional[str] = Query(None, description="Filter by agent ID"),
+    chunk_type_id: Optional[int] = Query(None, ge=1, description="Filter by chunk type ID"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of chunks to return"),
 ):
     return await raw_data_repo.list_chunks(
         agent_id=agent_id,
+        chunk_type_id=chunk_type_id,
         limit=limit,
     )
 

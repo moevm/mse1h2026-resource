@@ -15,6 +15,7 @@ from app.models.topology import (
     TraceActivityResponse,
 )
 from app.repositories import neo4j_repo
+from app.services.endpoint_identity import build_endpoint_urn
 
 router = APIRouter()
 
@@ -39,6 +40,11 @@ def _b64_to_hex(s: Optional[str]) -> str:
         return base64.b64decode(s).hex()
     except Exception:
         return ""
+
+
+def _is_server_span(span_kind: Any) -> bool:
+    kind = str(span_kind or "").upper()
+    return kind in {"SPAN_KIND_SERVER", "SERVER", "2"}
 
 
 def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
@@ -97,12 +103,21 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
     base = min(sp["start"] for sp in spans.values() if sp["start"] > 0) if any(sp["start"] > 0 for sp in spans.values()) else 0
     hops: List[Dict[str, Any]] = []
 
-    def _emit(caller: str, callee: str, kind: str, ts_ns: int, sp: Dict[str, Any]) -> None:
+    def _emit(
+        caller: str,
+        callee: str,
+        kind: str,
+        ts_ns: int,
+        sp: Dict[str, Any],
+        *,
+        callee_id: Optional[str] = None,
+        callee_owner_service: Optional[str] = None,
+    ) -> None:
         if not caller or not callee or caller == callee:
             return
         start_ms = max(0, (ts_ns - base) // 1_000_000)
         dur = sp["end"] - sp["start"]
-        hops.append({
+        hop = {
             "caller_service": caller,
             "callee_service": callee,
             "callee_kind": kind,
@@ -110,7 +125,12 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
             "start_offset_ms": start_ms,
             "duration_ms": dur // 1_000_000 if dur > 0 else 0,
             "is_error": sp["is_error"],
-        })
+        }
+        if callee_id:
+            hop["callee_id"] = callee_id
+        if callee_owner_service:
+            hop["callee_owner_service"] = callee_owner_service
+        hops.append(hop)
 
     def visit(sid: str, ancestor_service: Optional[str]) -> None:
         sp = spans[sid]
@@ -118,11 +138,39 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
         attrs = sp["attrs"]
         has_children = bool(children.get(sid))
 
-        if svc and ancestor_service and svc != ancestor_service:
-            _emit(ancestor_service, svc, "Service", sp["start"], sp)
+        cross_service = bool(svc and ancestor_service and svc != ancestor_service)
+        is_server = _is_server_span(sp["kind"])
 
-        if sp["kind"] == "SPAN_KIND_SERVER" and svc and sp["span_name"]:
-            _emit(svc, sp["span_name"], "Endpoint", sp["end"], sp)
+        if cross_service:
+            if is_server and svc and sp["span_name"]:
+                endpoint_id = build_endpoint_urn(svc, sp["span_name"])
+                if endpoint_id:
+                    _emit(
+                        ancestor_service,
+                        sp["span_name"],
+                        "Endpoint",
+                        sp["start"],
+                        sp,
+                        callee_id=endpoint_id,
+                        callee_owner_service=svc,
+                    )
+                else:
+                    _emit(ancestor_service, svc, "Service", sp["start"], sp)
+            else:
+                _emit(ancestor_service, svc, "Service", sp["start"], sp)
+
+        if is_server and svc and sp["span_name"] and not cross_service:
+            endpoint_id = build_endpoint_urn(svc, sp["span_name"])
+            if endpoint_id:
+                _emit(
+                    svc,
+                    sp["span_name"],
+                    "Endpoint",
+                    sp["end"],
+                    sp,
+                    callee_id=endpoint_id,
+                    callee_owner_service=svc,
+                )
 
         if sp["kind"] == "SPAN_KIND_CLIENT" and not has_children and svc:
             peer = _extract_attr(attrs, "peer.service")
@@ -283,7 +331,9 @@ async def list_traces(
         all_callees: set = set()
         for h in hops:
             services_involved.add(h["caller_service"])
-            if h.get("callee_kind") == "Service":
+            if h.get("callee_owner_service"):
+                services_involved.add(h["callee_owner_service"])
+            elif h.get("callee_kind") == "Service":
                 services_involved.add(h["callee_service"])
             all_callees.add(h["callee_service"])
         if multi_hop and len(services_involved) < 2:

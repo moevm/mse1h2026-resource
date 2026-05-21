@@ -24,6 +24,19 @@ export interface RawDataChunk {
   processed_at: string | null;
   mapping_id: string | null;
   is_pinned: boolean;
+  chunk_type_id: number | null;
+  chunk_type_kind: string | null;
+  chunk_type_label: string | null;
+}
+
+export interface ChunkTypeSummary {
+  id: number;
+  kind: string | null;
+  label: string;
+  paths_count: number;
+  chunks_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
 }
 
 export interface RawDataListResponse {
@@ -31,6 +44,7 @@ export interface RawDataListResponse {
   total: number;
   timeline_min: string | null;
   timeline_max: string | null;
+  chunk_types: ChunkTypeSummary[];
 }
 
 // Mapping Types

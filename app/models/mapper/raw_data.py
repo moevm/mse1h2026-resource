@@ -38,6 +38,19 @@ class RawDataChunk(BaseModel):
     processed_at: Optional[datetime] = Field(default=None, description="When this chunk was processed")
     mapping_id: Optional[str] = Field(default=None, description="ID of the mapping used to process")
     is_pinned: bool = Field(default=False, description="Whether this chunk is pinned (won't expire)")
+    chunk_type_id: Optional[int] = Field(default=None, description="Stable chunk type identifier scoped to agent")
+    chunk_type_kind: Optional[str] = Field(default=None, description="High-level chunk kind, e.g. span/log/metric")
+    chunk_type_label: Optional[str] = Field(default=None, description="Human-readable chunk type label")
+
+
+class ChunkTypeSummary(BaseModel):
+    id: int
+    kind: Optional[str] = None
+    label: str
+    paths_count: int
+    chunks_count: int
+    first_seen_at: datetime
+    last_seen_at: datetime
 
 
 class RawDataListResponse(BaseModel):
@@ -45,3 +58,4 @@ class RawDataListResponse(BaseModel):
     total: int
     timeline_min: Optional[datetime] = None
     timeline_max: Optional[datetime] = None
+    chunk_types: List[ChunkTypeSummary] = Field(default_factory=list)

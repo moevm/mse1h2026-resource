@@ -2,7 +2,7 @@
   "id": "watcher-otel-traces-v1",
   "name": "Watcher: OpenTelemetry Traces",
   "source_type": "watcher-otel-traces",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Maps normalized OTLP telemetry (spans, logs, metrics) from otel-watcher into topology nodes and edges. Covers Docker monitoring stack: FastAPI+PostgreSQL, Flask, Golang.",
   "is_active": false,
   "created_by": "builtin",
@@ -50,7 +50,9 @@
       "id": "service-calls-peer",
       "source_path": "peer_target",
       "target_field": "calls_services",
-      "target_node_type": "Service"
+      "target_node_type": "Service",
+      "transform_type": "expression",
+      "transform_config": { "expression": "None" }
     },
     {
       "id": "service-reads-db",
@@ -209,8 +211,8 @@
       "source_path": "span_name",
       "target_field": "id",
       "target_node_type": "Endpoint",
-      "transform_type": "template",
-      "transform_config": { "template": "urn:endpoint:{value}" }
+      "transform_type": "expression",
+      "transform_config": { "expression": "None if (not source_data.get('service_name') or not value) else ('urn:endpoint:' + str(source_data.get('service_name')) + ':' + str(value))" }
     },
     {
       "id": "endpoint-name",

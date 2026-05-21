@@ -9,6 +9,7 @@ interface TimelineSliderProps {
   onUnpinChunk?: (chunkId: string) => Promise<void>;
   loading: boolean;
   sampleChunkId?: string | null;
+  showPinning?: boolean;
 }
 
 export function TimelineSlider({
@@ -19,6 +20,7 @@ export function TimelineSlider({
   onUnpinChunk,
   loading,
   sampleChunkId,
+  showPinning = false,
 }: TimelineSliderProps) {
   if (loading) {
     return (
@@ -81,17 +83,17 @@ export function TimelineSlider({
                           ? 'bg-blue-600 text-white'
                           : isSample
                             ? 'border border-purple-500/50 bg-purple-500/30 text-purple-300 hover:bg-purple-500/40'
-                            : chunk.is_pinned
+                            : showPinning && chunk.is_pinned
                               ? 'border border-amber-500/40 bg-amber-500/20 text-amber-300 hover:bg-amber-500/30'
                               : chunk.is_processed
                                 ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
                                 : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
                       }`}
-                      title={`${formatTime(chunk.timestamp)} - ${chunk.size_bytes} bytes${isSample ? ' (sample chunk)' : ''}${chunk.is_pinned ? ' (pinned)' : ''}`}
+                      title={`${formatTime(chunk.timestamp)} - ${chunk.size_bytes} bytes${isSample ? ' (sample chunk)' : ''}${showPinning && chunk.is_pinned ? ' (pinned)' : ''}`}
                     >
                       {formatTime(chunk.timestamp)}
                       {isSample && ' ★'}
-                      {chunk.is_pinned && ' 📌'}
+                      {showPinning && chunk.is_pinned && ' 📌'}
                       {chunk.is_processed && ' ✓'}
                     </button>
                   );
@@ -105,8 +107,11 @@ export function TimelineSlider({
           <div className="flex shrink-0 items-center gap-3 text-xs text-slate-500">
             <span>{(selectedChunk.size_bytes / 1024).toFixed(1)} KB</span>
             <span className="text-slate-600">{selectedChunk.agent_id.slice(0, 8)}</span>
+            {selectedChunk.chunk_type_label && (
+              <span className="text-slate-500">{selectedChunk.chunk_type_label}</span>
+            )}
             {selectedChunk.is_processed && <span className="text-emerald-400">Processed</span>}
-            {selectedChunk.is_pinned ? (
+            {showPinning && selectedChunk.is_pinned ? (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -117,7 +122,7 @@ export function TimelineSlider({
               >
                 📌 Pinned
               </button>
-            ) : (
+            ) : showPinning ? (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -128,7 +133,7 @@ export function TimelineSlider({
               >
                 Pin
               </button>
-            )}
+            ) : null}
           </div>
         )}
       </div>

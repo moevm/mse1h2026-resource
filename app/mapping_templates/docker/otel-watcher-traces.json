@@ -2,7 +2,7 @@
   "id": "watcher-otel-traces-v1",
   "name": "Watcher: OpenTelemetry Traces",
   "source_type": "watcher-otel-traces",
-  "version": "3.0.0",
+  "version": "3.1.0",
   "description": "Maps normalized OTLP telemetry (spans, logs, metrics) from otel-watcher into topology nodes and edges. Covers Docker monitoring stack: FastAPI+PostgreSQL, Flask, Golang.",
   "is_active": false,
   "created_by": "builtin",
@@ -52,7 +52,7 @@
       "target_field": "calls_services",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "None if (source_data.get('span_kind') != 'SPAN_KIND_CLIENT' or source_data.get('db_system') or source_data.get('db_name') or source_data.get('cache_name') or source_data.get('messaging_destination') or (str(value)[:1].isdigit() and str(value).replace('.','').replace(':','').isdigit())) else value" }
+      "transform_config": { "expression": "None" }
     },
     {
       "id": "service-reads-db",
@@ -213,8 +213,8 @@
       "source_path": "span_name",
       "target_field": "id",
       "target_node_type": "Endpoint",
-      "transform_type": "template",
-      "transform_config": { "template": "urn:endpoint:{value}" }
+      "transform_type": "expression",
+      "transform_config": { "expression": "None if (not source_data.get('service_name') or not value) else ('urn:endpoint:' + str(source_data.get('service_name')) + ':' + str(value))" }
     },
     {
       "id": "endpoint-name",
@@ -453,14 +453,6 @@
   ],
   "auto_edge_rules": [
     {
-      "id": "service-calls-service",
-      "source_type": "Service",
-      "source_field": "calls_services",
-      "target_type": "Service",
-      "target_field": "name",
-      "edge_type": "calls"
-    },
-    {
       "id": "service-reads-database",
       "source_type": "Service",
       "source_field": "reads_databases",
@@ -507,14 +499,6 @@
       "target_type": "Service",
       "target_field": "name",
       "edge_type": "ownedby"
-    },
-    {
-      "id": "endpoint-calls-service",
-      "source_type": "Endpoint",
-      "source_field": "calls_endpoints",
-      "target_type": "Service",
-      "target_field": "name",
-      "edge_type": "calls"
     },
     {
       "id": "service-publishes-to-queue",
