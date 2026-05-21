@@ -138,6 +138,12 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
       const slot = out[idx];
       slot.nodesAdded += ev.nodes_added;
       slot.edgesAdded += ev.edges_added;
+      slot.count += ev.nodes_added + ev.edges_added;
+      slot.events.push({
+        timestamp: ev.timestamp,
+        nodes: ev.nodes_added,
+        edges: ev.edges_added,
+      });
     }
     return out;
   }, [events, activity, chunkCount, bucketMs, windowStart, windowEnd]);
@@ -173,10 +179,10 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
   const isLive = currentTime === null;
 
   // --- Graph loading ---
-  const loadAtSlotStart = useCallback(
+  const loadAtSlot = useCallback(
     (slot: Slot) => {
       const now = Date.now();
-      const asOfMs = Math.min(Math.max(slot.startMs, slot.endMs - 1), now);
+      const asOfMs = Math.min(Math.max(slot.endMs - 1, slot.startMs), now);
       const iso = new Date(asOfMs).toISOString();
       useTimelineStore.setState({ currentTime: iso });
       const win = {
@@ -218,10 +224,10 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         stopPlayback();
         return;
       }
-      loadAtSlotStart(nonEmptySlots[cursor]);
+      loadAtSlot(nonEmptySlots[cursor]);
       cursor += 1;
     }, intervals[speed]);
-  }, [stopPlayback, nonEmptySlots, loadAtSlotStart]);
+  }, [stopPlayback, nonEmptySlots, loadAtSlot]);
 
   useEffect(() => () => {
     if (playbackRef.current) clearInterval(playbackRef.current);
@@ -260,26 +266,26 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
 
       if (dir > 0) {
         if (curIdx >= 0 && curIdx < nonEmptySlots.length - 1) {
-          loadAtSlotStart(nonEmptySlots[curIdx + 1]);
+          loadAtSlot(nonEmptySlots[curIdx + 1]);
         } else if (curIdx === -1) {
           // ctMs precedes everything → first non-empty slot.
           const first = nonEmptySlots.find((s) => s.startMs > ctMs);
-          if (first) loadAtSlotStart(first);
+          if (first) loadAtSlot(first);
         }
         // curIdx === last: already at rightmost, do nothing.
       } else {
         if (curIdx > 0) {
-          loadAtSlotStart(nonEmptySlots[curIdx - 1]);
+          loadAtSlot(nonEmptySlots[curIdx - 1]);
         } else if (curIdx === -1) {
           // ctMs is past the last slot (or Live) → jump to the latest one.
           const prev = [...nonEmptySlots].reverse().find((s) => s.endMs <= ctMs);
-          if (prev) loadAtSlotStart(prev);
-          else loadAtSlotStart(nonEmptySlots[nonEmptySlots.length - 1]);
+          if (prev) loadAtSlot(prev);
+          else loadAtSlot(nonEmptySlots[nonEmptySlots.length - 1]);
         }
         // curIdx === 0: already at oldest, do nothing.
       }
     },
-    [nonEmptySlots, stopPlayback, loadAtSlotStart],
+    [nonEmptySlots, stopPlayback, loadAtSlot],
   );
 
   // --- Click / drag scrubbing (snaps to slot) ---
@@ -299,7 +305,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         const slot = slots[idx];
         // Only snap to slots that actually have data; skip empty.
         if (slot.count === 0) return;
-        loadAtSlotStart(slot);
+        loadAtSlot(slot);
       };
       scrubTo(e.clientX);
 
@@ -314,7 +320,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
       window.addEventListener('mousemove', onMove);
       window.addEventListener('mouseup', onUp);
     },
-    [stopPlayback, slots, chunkCount, slotWidth, loadAtSlotStart],
+    [stopPlayback, slots, chunkCount, slotWidth, loadAtSlot],
   );
 
   // --- Keyboard navigation ---
@@ -327,14 +333,14 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
       else if (ev.key === 'Home') {
         ev.preventDefault();
         stopPlayback();
-        if (nonEmptySlots.length > 0) loadAtSlotStart(nonEmptySlots[0]);
+        if (nonEmptySlots.length > 0) loadAtSlot(nonEmptySlots[0]);
       }
       else if (ev.key === 'End') { ev.preventDefault(); handleGoLive(); }
       else if (ev.key === ' ') { ev.preventDefault(); handlePlayPause(); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [handleStep, handleGoLive, handlePlayPause, stopPlayback, loadAtSlotStart, nonEmptySlots]);
+  }, [handleStep, handleGoLive, handlePlayPause, stopPlayback, loadAtSlot, nonEmptySlots]);
 
   // --- Cursor position ---
   const currentSlotIdx = useMemo(() => {

@@ -559,7 +559,9 @@ def _read_nodes_by_sources(
         conditions.append("NOT r.type IN $exclude_node_types")
         params["exclude_node_types"] = exclude_node_types
     if as_of:
-        conditions.append("COALESCE(r.created_at, r.updated_at) <= $as_of AND (r.last_seen_at >= $as_of OR r.last_seen_at IS NULL)")
+        # Timeline snapshots are cumulative: once a resource appears, it stays
+        # visible for later buckets unless we model explicit deletions.
+        conditions.append("COALESCE(r.created_at, r.updated_at) <= $as_of")
         params["as_of"] = as_of
     where = " WHERE " + " AND ".join(conditions)
     result = tx.run(f"MATCH (r:Resource){where} RETURN r LIMIT $limit", **params)
@@ -580,7 +582,8 @@ def _read_all_nodes(
         params["exclude_node_types"] = exclude_node_types
 
     if as_of:
-        conditions.append("COALESCE(r.created_at, r.updated_at) <= $as_of AND (r.last_seen_at >= $as_of OR r.last_seen_at IS NULL)")
+        # Keep graph snapshots consistent with /timeline/events running totals.
+        conditions.append("COALESCE(r.created_at, r.updated_at) <= $as_of")
         params["as_of"] = as_of
 
     where = " WHERE " + " AND ".join(conditions) if conditions else ""
@@ -605,7 +608,7 @@ def _read_edges_for_nodes(
         query += "AND NOT type(rel) IN $exclude_edge_types "
         params["exclude_edge_types"] = [t.upper() for t in exclude_edge_types]
     if as_of:
-        query += "AND rel.first_seen <= $as_of AND (rel.last_seen >= $as_of OR rel.last_seen IS NULL) "
+        query += "AND rel.first_seen <= $as_of "
         params["as_of"] = as_of
     query += (
         "RETURN a.external_id AS source_id, "
@@ -1024,7 +1027,6 @@ def _read_snapshot_stats(tx: ManagedTransaction, at_time: str) -> Dict[str, Any]
     node_res = tx.run(
         "MATCH (r:Resource) "
         "WHERE COALESCE(r.created_at, r.updated_at) <= $at_time "
-        "  AND (r.last_seen_at >= $at_time OR r.last_seen_at IS NULL) "
         "RETURN r.type AS type, count(*) AS cnt",
         at_time=at_time,
     )
@@ -1038,7 +1040,6 @@ def _read_snapshot_stats(tx: ManagedTransaction, at_time: str) -> Dict[str, Any]
     edge_res = tx.run(
         "MATCH (:Resource)-[rel]->(:Resource) "
         "WHERE rel.first_seen <= $at_time "
-        "  AND (rel.last_seen >= $at_time OR rel.last_seen IS NULL) "
         "RETURN type(rel) AS type, count(*) AS cnt",
         at_time=at_time,
     )

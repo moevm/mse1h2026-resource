@@ -78,14 +78,15 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
   },
 
   fetchEvents: async () => {
-    const { chunkCount, chunkBucketSeconds } = get();
+    const { chunkCount, chunkBucketSeconds, range } = get();
     const bucketMs = chunkBucketSeconds * 1000;
-    const now = Date.now();
-    const fetchStart = now - chunkCount * bucketMs * 4;
+    const anchorMs = range?.max_time ? new Date(range.max_time).getTime() : Date.now();
+    const minMs = range?.min_time ? new Date(range.min_time).getTime() : null;
+    const fetchStartMs = minMs ?? Math.max(0, anchorMs - chunkCount * bucketMs * 4);
     set({ eventsLoading: true, eventsError: null });
     try {
-      const fromIso = new Date(fetchStart).toISOString();
-      const toIso = new Date(now).toISOString();
+      const fromIso = new Date(fetchStartMs).toISOString();
+      const toIso = new Date(anchorMs).toISOString();
 
       const [actResp, evResp] = await Promise.all([
         fetchTraceActivity(chunkBucketSeconds, fromIso, toIso),
@@ -94,8 +95,11 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
       const activity = actResp.buckets;
       const events = evResp.events;
 
-      const nowBucket = Math.floor(now / bucketMs) * bucketMs;
-      const nextStart = nowBucket - (chunkCount - 1) * bucketMs;
+      const anchorBucket = Math.floor(anchorMs / bucketMs) * bucketMs;
+      const minBucket = minMs !== null
+        ? Math.floor(minMs / bucketMs) * bucketMs
+        : anchorBucket - (chunkCount - 1) * bucketMs;
+      const nextStart = Math.max(minBucket, anchorBucket - (chunkCount - 1) * bucketMs);
 
       set({ events, activity, eventsLoading: false, windowStart: nextStart });
     } catch (e) {
