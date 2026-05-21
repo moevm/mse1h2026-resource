@@ -195,7 +195,7 @@ export function GraphPage() {
           <aside
             className={[
               'flex shrink-0 flex-col overflow-hidden border-l border-slate-800/70 bg-slate-950/95 backdrop-blur-sm',
-              'lg:relative lg:w-96 xl:w-[26rem]',
+              'lg:relative lg:w-96 xl:w-104',
               'fixed top-0 right-0 z-50 h-full w-96 max-w-[90vw] lg:static',
               'transform transition-transform duration-300 ease-out',
               showRightPanel ? 'translate-x-0' : 'translate-x-full lg:translate-x-0',
@@ -241,6 +241,7 @@ export function GraphPage() {
               {rightPanel === 'export' && <ExportPanel />}
               {rightPanel === 'traversal' && (
                 <TraversalPanel
+                  appId={selectedAppId}
                   onResult={handleTraversalResult}
                   onReset={() => void loadFullGraph(limitInput, selectedAppId ?? undefined)}
                 />

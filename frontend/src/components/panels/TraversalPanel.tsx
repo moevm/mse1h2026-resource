@@ -19,11 +19,12 @@ const DIRECTION_LABELS: Record<string, string> = {
 };
 
 interface Props {
+  appId?: string | null;
   onResult?: (data: GraphResponse) => void;
   onReset?: () => void;
 }
 
-export default function TraversalPanel({ onResult, onReset }: Readonly<Props>) {
+export default function TraversalPanel({ appId, onResult, onReset }: Readonly<Props>) {
   const [presets, setPresets] = useState<TraversalPreset[]>([]);
   const [selectedPreset, setSelectedPreset] = useState<string | null>(null);
   const [customMode, setCustomMode] = useState(false);
@@ -52,11 +53,22 @@ export default function TraversalPanel({ onResult, onReset }: Readonly<Props>) {
     let rule: TraversalRule;
 
     if (customMode) {
+      const validSteps = steps.filter((s) => s.edge_types.length > 0);
+      if (!startNodeId && startNodeTypes.length === 0) {
+        setError('Choose a start node ID or at least one start node type');
+        setLoading(false);
+        return;
+      }
+      if (validSteps.length === 0) {
+        setError('Add at least one traversal step with edge types');
+        setLoading(false);
+        return;
+      }
       rule = {
         name: ruleName,
         start_node_id: startNodeId || undefined,
         start_node_types: startNodeTypes.length > 0 ? startNodeTypes : undefined,
-        steps: steps.filter((s) => s.edge_types.length > 0),
+        steps: validSteps,
         limit: ruleLimit,
       };
     } else {
@@ -70,7 +82,7 @@ export default function TraversalPanel({ onResult, onReset }: Readonly<Props>) {
     }
 
     try {
-      const result = await executeTraversal(rule);
+      const result = await executeTraversal(rule, { appId });
       setResultSummary(`Found ${result.node_count} nodes, ${result.edge_count} edges`);
       onResult?.(result);
     } catch (err: unknown) {
@@ -78,7 +90,7 @@ export default function TraversalPanel({ onResult, onReset }: Readonly<Props>) {
     } finally {
       setLoading(false);
     }
-  }, [customMode, selectedPreset, presets, ruleName, startNodeId, startNodeTypes, steps, ruleLimit, onResult]);
+  }, [appId, customMode, selectedPreset, presets, ruleName, startNodeId, startNodeTypes, steps, ruleLimit, onResult]);
 
   const updateStep = (idx: number, patch: Partial<TraversalStep>) => {
     setSteps((prev) => prev.map((s, i) => (i === idx ? { ...s, ...patch } : s)));
@@ -107,6 +119,13 @@ export default function TraversalPanel({ onResult, onReset }: Readonly<Props>) {
     updateStep(idx, { target_node_types: updated.length > 0 ? updated : undefined });
   };
 
+  const toggleStepSourceNodeType = (idx: number, nt: string) => {
+    const step = steps[idx];
+    const types = step.source_node_types ?? [];
+    const updated = types.includes(nt) ? types.filter((t) => t !== nt) : [...types, nt];
+    updateStep(idx, { source_node_types: updated.length > 0 ? updated : undefined });
+  };
+
   const toggleStartNodeType = useCallback((t: string) => {
     setStartNodeTypes((prev) => (prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]));
   }, []);
@@ -133,6 +152,9 @@ export default function TraversalPanel({ onResult, onReset }: Readonly<Props>) {
             Custom
           </button>
         </div>
+        <p className="mt-2 rounded-md bg-slate-900/60 px-2 py-1 text-[10px] text-slate-500">
+          Scope: {appId ? 'selected application' : 'current user graph'}
+        </p>
       </Section>
 
       {showPresets && (
@@ -157,6 +179,21 @@ export default function TraversalPanel({ onResult, onReset }: Readonly<Props>) {
             >
               <div className="text-xs font-medium text-slate-300">{p.name}</div>
               {p.description && <div className="mt-0.5 text-[10px] text-slate-500">{p.description}</div>}
+              <div className="mt-1.5 space-y-1">
+                {p.steps.map((step, idx) => (
+                  <div key={`${p.name}-${idx}`} className="rounded bg-slate-900/50 px-2 py-1 text-[9px] text-slate-500">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate font-medium text-slate-400">{step.label ?? `Step ${idx + 1}`}</span>
+                      <span className="shrink-0 text-slate-600">{DIRECTION_LABELS[step.direction] ?? step.direction}</span>
+                    </div>
+                    <div className="mt-0.5 truncate text-amber-300/80">{step.edge_types.join(', ')}</div>
+                    <div className="mt-0.5 truncate">
+                      {formatTypes(step.source_node_types)} {' -> '} {formatTypes(step.target_node_types)} | {step.min_depth ?? 1}-
+                      {step.max_depth ?? 1} hop
+                    </div>
+                  </div>
+                ))}
+              </div>
             </button>
           ))}
         </div>
@@ -239,6 +276,45 @@ export default function TraversalPanel({ onResult, onReset }: Readonly<Props>) {
                           {DIRECTION_LABELS[d] ?? d}
                         </button>
                       ))}
+                    </div>
+
+                    <div className="mb-1.5">
+                      <div className="mb-0.5 flex items-center justify-between">
+                        <span className="text-[10px] text-slate-500">Source types (optional):</span>
+                        <div className="flex gap-1">
+                          <BulkBtn
+                            label="All"
+                            onClick={() =>
+                              updateStep(idx, {
+                                source_node_types: [...NODE_TYPE_VALUES],
+                              })
+                            }
+                          />
+                          <BulkBtn
+                            label="Reset"
+                            onClick={() =>
+                              updateStep(idx, {
+                                source_node_types: undefined,
+                              })
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-0.5">
+                        {NODE_TYPE_VALUES.map((nt) => (
+                          <button
+                            key={nt}
+                            onClick={() => toggleStepSourceNodeType(idx, nt)}
+                            className={`rounded px-1.5 py-0.5 text-[9px] transition-all ${
+                              step.source_node_types?.includes(nt)
+                                ? 'bg-sky-600/30 text-sky-300 ring-1 ring-sky-500/40'
+                                : 'bg-slate-800/60 text-slate-600'
+                            }`}
+                          >
+                            {nt}
+                          </button>
+                        ))}
+                      </div>
                     </div>
 
                     <div className="mb-1.5">
@@ -370,4 +446,8 @@ function BulkBtn({ label, onClick }: Readonly<{ label: string; onClick: () => vo
       {label}
     </button>
   );
+}
+
+function formatTypes(types?: string[]) {
+  return types && types.length > 0 ? types.join(', ') : 'any';
 }

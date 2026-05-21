@@ -124,8 +124,16 @@ export async function fetchTraversalPresets(): Promise<TraversalPreset[]> {
   return data;
 }
 
-export async function executeTraversal(body: TraversalRule): Promise<GraphResponse> {
-  const { data } = await client.post<GraphResponse>(`${TRAVERSAL_BASE}/execute`, body);
+export interface TraversalExecuteOptions {
+  appId?: string | null;
+}
+
+export async function executeTraversal(
+  body: TraversalRule,
+  options: TraversalExecuteOptions = {},
+): Promise<GraphResponse> {
+  const params = options.appId ? { app_id: options.appId } : undefined;
+  const { data } = await client.post<GraphResponse>(`${TRAVERSAL_BASE}/execute`, body, { params });
   return data;
 }
 

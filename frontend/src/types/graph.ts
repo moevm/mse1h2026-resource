@@ -252,6 +252,8 @@ export interface ExportRequest {
 }
 
 export interface TraversalStep {
+  label?: string;
+  source_node_types?: string[];
   edge_types: string[];
   direction: 'outgoing' | 'incoming' | 'any';
   target_node_types?: string[];
