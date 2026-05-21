@@ -10,39 +10,20 @@ from app.api.auth import CurrentUser
 from app.models.mapper.raw_data import RawDataListResponse
 from app.repositories.raw_data_repo import raw_data_repo
 from app.repositories.mapping_repo import mapping_repo
-from app.repositories.neo4j_repo import upsert_nodes, upsert_edges
 from app.services.endpoint_identity import build_endpoint_urn
+from app.repositories.neo4j_repo import upsert_nodes, upsert_edges, upsert_trace_span
 from app.services.mapper_service import mapper_service
+from app.services.trace_service import normalize_span_payload, trace_metrics_from_span
 
 router = APIRouter()
 log = logging.getLogger(__name__)
 
 
 def _extract_trace_metrics(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-    if not isinstance(payload, dict):
+    span = normalize_span_payload(payload)
+    if not span:
         return None
-    is_span = payload.get("kind") == "span" or payload.get("trace_id") is not None
-    if not is_span:
-        return None
-
-    status_code = payload.get("http_status_code")
-    is_error = False
-    try:
-        if status_code is not None and int(status_code) >= 500:
-            is_error = True
-    except (TypeError, ValueError):
-        pass
-
-    duration_ns = 0
-    start = payload.get("start_time")
-    end = payload.get("end_time")
-    try:
-        if start is not None and end is not None:
-            duration_ns = max(0, int(end) - int(start))
-    except (TypeError, ValueError):
-        duration_ns = 0
-
-    return {"is_error": is_error, "duration_ns": duration_ns}
+    return trace_metrics_from_span(span)
 
 
 def _looks_like_ip(value: str) -> bool:
@@ -123,6 +104,15 @@ async def receive_raw_data(
     edges_created = 0
     mapping_applied = False
     applied_mapping_name = None
+    mapping_errors: list[dict[str, str]] = []
+    trace_span = normalize_span_payload(payload)
+    trace_result: Optional[Dict[str, Any]] = None
+    if trace_span:
+        try:
+            trace_result = upsert_trace_span(trace_span, source=agent_name)
+        except Exception as e:
+            log.exception("Trace span persistence failed for chunk %s", chunk_id[:8])
+            trace_result = {"stored": False, "reason": str(e)}
 
     from app.models.mapper.raw_data import RawDataChunk
     from datetime import datetime, timezone
@@ -160,6 +150,8 @@ async def receive_raw_data(
             if nodes:
                 upsert_nodes(nodes, source=agent_name)
                 nodes_created = len(nodes)
+                if trace_span:
+                    trace_result = upsert_trace_span(trace_span, source=agent_name)
 
             if nodes:
                 new_edges, new_unresolved = mapper_service.recreate_edges_for_nodes(nodes, mapping)
@@ -167,7 +159,7 @@ async def receive_raw_data(
                 unresolved.extend(new_unresolved)
 
             if edges:
-                trace_metrics = _extract_trace_metrics(payload)
+                trace_metrics = trace_metrics_from_span(trace_span) if trace_span else None
                 upsert_edges(edges, source=agent_name, trace_metrics=trace_metrics)
                 edges_created = len(edges)
 
@@ -189,7 +181,8 @@ async def receive_raw_data(
             break
 
         except Exception as e:
-            log.error(f"Error trying mapping '{mapping.name}': {e}")
+            mapping_errors.append({"mapping_name": mapping.name, "error": str(e)})
+            log.exception("Error trying mapping '%s'", mapping.name)
             continue
 
     if not mapping_applied:
@@ -202,6 +195,8 @@ async def receive_raw_data(
         "mapping_name": applied_mapping_name,
         "nodes_created": nodes_created,
         "edges_created": edges_created,
+        "trace": trace_result,
+        "mapping_errors": mapping_errors,
         "message": (
             f"Data stored and mapped with '{applied_mapping_name}'."
             if mapping_applied

@@ -68,14 +68,55 @@ export interface TraceReplayHop {
   callee_id?: string;
   callee_owner_service?: string;
   span_name: string;
+  span_id?: string | null;
   start_offset_ms: number;
   duration_ms: number;
   is_error: boolean;
+  error_kind?: string | null;
+  error_message?: string | null;
+}
+
+export interface TraceErrorInfo {
+  is_error: boolean;
+  kind?: string | null;
+  message?: string | null;
+}
+
+export interface TraceSpan {
+  trace_id: string;
+  span_id: string;
+  parent_span_id?: string | null;
+  service_name?: string | null;
+  span_name: string;
+  operation_name?: string | null;
+  span_kind?: string | null;
+  caller_service?: string | null;
+  start_time_ns: number;
+  end_time_ns: number;
+  duration_ns: number;
+  timestamp?: string | null;
+  http_method?: string | null;
+  http_route?: string | null;
+  http_target?: string | null;
+  http_status_code?: number | null;
+  db_system?: string | null;
+  db_name?: string | null;
+  db_table?: string | null;
+  db_operation?: string | null;
+  messaging_destination?: string | null;
+  messaging_operation?: string | null;
+  rpc_service?: string | null;
+  rpc_method?: string | null;
+  peer_service?: string | null;
+  error: TraceErrorInfo;
+  attributes: Record<string, unknown>;
 }
 
 export interface TraceReplayResponse {
   trace_id: string | null;
   hops: TraceReplayHop[];
+  spans?: TraceSpan[];
+  source?: 'neo4j' | 'tempo';
 }
 
 export async function fetchLatestTraceReplay(
@@ -99,16 +140,27 @@ export interface TraceSummary {
   root_name: string;
   start_time: string | null;
   duration_ms: number;
+  span_count?: number;
+  error_count?: number;
   hop_count: number;
   service_count: number;
   services_involved: string[];
   has_errors: boolean;
 }
 
+export interface TraceDetail extends TraceSummary {
+  span_count: number;
+  error_count: number;
+  spans: TraceSpan[];
+  hops: TraceReplayHop[];
+  source?: 'neo4j' | 'tempo';
+}
+
 export interface TracesListResponse {
   traces: TraceSummary[];
   window_start: number;
   window_end: number;
+  source?: 'neo4j' | 'tempo';
 }
 
 export async function fetchTracesList(opts: {
@@ -118,6 +170,9 @@ export async function fetchTracesList(opts: {
   services?: string[];
   visibleNodes?: string[];
   multiHop?: boolean;
+  hasErrors?: boolean;
+  minDurationMs?: number;
+  maxDurationMs?: number;
 }): Promise<TracesListResponse> {
   const params: Record<string, unknown> = {};
   if (opts.windowStart) params.window_start = opts.windowStart;
@@ -126,7 +181,15 @@ export async function fetchTracesList(opts: {
   if (opts.services && opts.services.length > 0) params.services = opts.services.join(',');
   if (opts.visibleNodes && opts.visibleNodes.length > 0) params.visible_nodes = opts.visibleNodes.join(',');
   if (opts.multiHop !== undefined) params.multi_hop = opts.multiHop;
+  if (opts.hasErrors !== undefined) params.has_errors = opts.hasErrors;
+  if (opts.minDurationMs !== undefined) params.min_duration_ms = opts.minDurationMs;
+  if (opts.maxDurationMs !== undefined) params.max_duration_ms = opts.maxDurationMs;
   const { data } = await client.get<TracesListResponse>(`${BASE}/traces`, { params });
+  return data;
+}
+
+export async function fetchTraceDetail(traceId: string): Promise<TraceDetail> {
+  const { data } = await client.get<TraceDetail>(`${BASE}/traces/${traceId}`);
   return data;
 }
 

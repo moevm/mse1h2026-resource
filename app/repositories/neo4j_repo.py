@@ -119,15 +119,47 @@ CALL_LIKE_EDGE_TYPES = {
 }
 
 
-def _record_trace_bucket(tx: ManagedTransaction, when_iso: str, is_error: bool) -> None:
+def _bucket_ts_from_iso(when_iso: str) -> Optional[int]:
     from datetime import datetime as _dt
     try:
         dt = _dt.fromisoformat(when_iso.replace("Z", "+00:00"))
         ts_ms = int(dt.timestamp() * 1000)
     except Exception:
-        return
+        return None
     bucket_ms = TRACE_BUCKET_SECONDS * 1000
-    bucket_ts = (ts_ms // bucket_ms) * bucket_ms
+    return (ts_ms // bucket_ms) * bucket_ms
+
+
+def _record_trace_bucket(
+    tx: ManagedTransaction,
+    when_iso: str,
+    is_error: bool,
+    trace_id: Optional[str] = None,
+    span_id: Optional[str] = None,
+    now: Optional[str] = None,
+) -> None:
+    bucket_ts = _bucket_ts_from_iso(when_iso)
+    if bucket_ts is None:
+        return
+    if trace_id and span_id:
+        tx.run(
+            "MERGE (m:TraceSpanActivity {trace_id: $trace_id, span_id: $span_id, bucket_ts: $bucket_ts}) "
+            "ON CREATE SET m.counted = false, m.created_at = $now "
+            "WITH m WHERE coalesce(m.counted, false) = false "
+            "SET m.counted = true, m.is_error = $is_error, m.updated_at = $now "
+            "MERGE (b:TraceBucket {bucket_ts: $bucket_ts}) "
+            "ON CREATE SET b.span_count = 0, b.error_count = 0 "
+            "SET b.span_count = b.span_count + 1, "
+            "    b.error_count = b.error_count + $err_inc",
+            trace_id=trace_id,
+            span_id=span_id,
+            bucket_ts=bucket_ts,
+            is_error=is_error,
+            err_inc=1 if is_error else 0,
+            now=now or _now_iso(),
+        )
+        return
+
     tx.run(
         "MERGE (b:TraceBucket {bucket_ts: $bucket_ts}) "
         "ON CREATE SET b.span_count = 0, b.error_count = 0 "
@@ -148,15 +180,39 @@ def _record_edge_activity(
     when_iso: str,
     is_error: bool,
     duration_ns: int,
+    trace_id: Optional[str] = None,
+    span_id: Optional[str] = None,
+    now: Optional[str] = None,
 ) -> None:
-    from datetime import datetime as _dt
-    try:
-        dt = _dt.fromisoformat(when_iso.replace("Z", "+00:00"))
-        ts_ms = int(dt.timestamp() * 1000)
-    except Exception:
+    bucket_ts = _bucket_ts_from_iso(when_iso)
+    if bucket_ts is None:
         return
-    bucket_ms = TRACE_BUCKET_SECONDS * 1000
-    bucket_ts = (ts_ms // bucket_ms) * bucket_ms
+    if trace_id and span_id:
+        tx.run(
+            "UNWIND $sigs AS sig "
+            "MERGE (m:EdgeSpanActivity {edge_sig: sig, bucket_ts: $bucket_ts, trace_id: $trace_id, span_id: $span_id}) "
+            "ON CREATE SET m.counted = false, m.created_at = $now "
+            "WITH m, sig WHERE coalesce(m.counted, false) = false "
+            "SET m.counted = true, "
+            "    m.is_error = $is_error, "
+            "    m.duration_ns = $dur_ns, "
+            "    m.updated_at = $now "
+            "MERGE (a:EdgeActivity {edge_sig: sig, bucket_ts: $bucket_ts}) "
+            "ON CREATE SET a.span_count = 0, a.error_count = 0, a.total_duration_ns = 0 "
+            "SET a.span_count = a.span_count + 1, "
+            "    a.error_count = a.error_count + $err_inc, "
+            "    a.total_duration_ns = a.total_duration_ns + $dur_ns",
+            sigs=edge_sigs,
+            bucket_ts=bucket_ts,
+            trace_id=trace_id,
+            span_id=span_id,
+            is_error=is_error,
+            err_inc=1 if is_error else 0,
+            dur_ns=int(duration_ns),
+            now=now or _now_iso(),
+        )
+        return
+
     tx.run(
         "UNWIND $sigs AS sig "
         "MERGE (a:EdgeActivity {edge_sig: sig, bucket_ts: $bucket_ts}) "
@@ -206,12 +262,36 @@ def _cleanup_deprecated_tx(tx: ManagedTransaction) -> Dict[str, int]:
 def ensure_activity_indexes() -> None:
     with neo4j_driver.session() as session:
         session.run(
+            "CREATE CONSTRAINT trace_id_unique IF NOT EXISTS "
+            "FOR (t:Trace) REQUIRE t.trace_id IS UNIQUE"
+        )
+        session.run(
+            "CREATE CONSTRAINT span_trace_span_unique IF NOT EXISTS "
+            "FOR (s:Span) REQUIRE (s.trace_id, s.span_id) IS UNIQUE"
+        )
+        session.run(
             "CREATE INDEX edge_activity_sig_ts IF NOT EXISTS "
             "FOR (a:EdgeActivity) ON (a.edge_sig, a.bucket_ts)"
         )
         session.run(
             "CREATE INDEX trace_bucket_ts IF NOT EXISTS "
             "FOR (b:TraceBucket) ON (b.bucket_ts)"
+        )
+        session.run(
+            "CREATE INDEX span_trace_start_idx IF NOT EXISTS "
+            "FOR (s:Span) ON (s.trace_id, s.start_time_ns)"
+        )
+        session.run(
+            "CREATE INDEX span_service_start_idx IF NOT EXISTS "
+            "FOR (s:Span) ON (s.service_name, s.start_time_ns)"
+        )
+        session.run(
+            "CREATE INDEX trace_span_activity_ts IF NOT EXISTS "
+            "FOR (m:TraceSpanActivity) ON (m.bucket_ts)"
+        )
+        session.run(
+            "CREATE INDEX edge_span_activity_ts IF NOT EXISTS "
+            "FOR (m:EdgeSpanActivity) ON (m.bucket_ts)"
         )
 
 
@@ -294,10 +374,297 @@ def _cleanup_activity_tx(tx: ManagedTransaction, cutoff_ms: int) -> Dict[str, in
         "MATCH (b:TraceBucket) WHERE b.bucket_ts < $cutoff DETACH DELETE b RETURN count(*) AS c",
         cutoff=cutoff_ms,
     ).single()
+    r3 = tx.run(
+        "MATCH (m:TraceSpanActivity) WHERE m.bucket_ts < $cutoff DETACH DELETE m RETURN count(*) AS c",
+        cutoff=cutoff_ms,
+    ).single()
+    r4 = tx.run(
+        "MATCH (m:EdgeSpanActivity) WHERE m.bucket_ts < $cutoff DETACH DELETE m RETURN count(*) AS c",
+        cutoff=cutoff_ms,
+    ).single()
     return {
         "edge_activity_deleted": int(r1["c"]) if r1 else 0,
         "trace_buckets_deleted": int(r2["c"]) if r2 else 0,
+        "trace_span_activity_deleted": int(r3["c"]) if r3 else 0,
+        "edge_span_activity_deleted": int(r4["c"]) if r4 else 0,
     }
+
+
+def upsert_trace_span(span: Dict[str, Any], source: str) -> Dict[str, Any]:
+    now = _now_iso()
+    with neo4j_driver.session() as session:
+        return session.execute_write(_upsert_trace_span_tx, span, source, now)
+
+
+def _upsert_trace_span_tx(
+    tx: ManagedTransaction,
+    span: Dict[str, Any],
+    source: str,
+    now: str,
+) -> Dict[str, Any]:
+    trace_id = span.get("trace_id")
+    span_id = span.get("span_id")
+    if not trace_id or not span_id:
+        return {"stored": False, "reason": "missing trace_id/span_id"}
+
+    error = span.get("error") or {}
+    attributes = _flatten_values({"attributes": span.get("attributes") or {}})["attributes"]
+    service_name = span.get("service_name")
+    service_id = f"urn:service:{service_name}" if service_name else None
+
+    params = {
+        "trace_id": trace_id,
+        "span_id": span_id,
+        "parent_span_id": span.get("parent_span_id"),
+        "service_name": service_name,
+        "span_name": span.get("span_name") or "",
+        "operation_name": span.get("operation_name") or span.get("span_name") or "",
+        "span_kind": span.get("span_kind"),
+        "caller_service": span.get("caller_service"),
+        "caller_span_kind": span.get("caller_span_kind"),
+        "start_time_ns": int(span.get("start_time_ns") or 0),
+        "end_time_ns": int(span.get("end_time_ns") or 0),
+        "duration_ns": int(span.get("duration_ns") or 0),
+        "timestamp": span.get("timestamp"),
+        "http_method": span.get("http_method"),
+        "http_route": span.get("http_route"),
+        "http_target": span.get("http_target"),
+        "http_status_code": span.get("http_status_code"),
+        "db_system": span.get("db_system"),
+        "db_name": span.get("db_name"),
+        "db_table": span.get("db_table"),
+        "db_operation": span.get("db_operation"),
+        "messaging_destination": span.get("messaging_destination"),
+        "messaging_operation": span.get("messaging_operation"),
+        "rpc_service": span.get("rpc_service"),
+        "rpc_method": span.get("rpc_method"),
+        "peer_service": span.get("peer_service"),
+        "is_error": bool(error.get("is_error")),
+        "error_kind": error.get("kind"),
+        "error_message": error.get("message"),
+        "attributes": attributes,
+        "service_id": service_id,
+        "source": source,
+        "now": now,
+    }
+
+    rec = tx.run(
+        "MERGE (t:Trace {trace_id: $trace_id}) "
+        "ON CREATE SET t.created_at = $now, t.first_seen_at = coalesce($timestamp, $now) "
+        "SET t.updated_at = $now, t.last_seen_at = coalesce($timestamp, $now), t.source = $source "
+        "MERGE (s:Span {trace_id: $trace_id, span_id: $span_id}) "
+        "ON CREATE SET s.created_at = $now "
+        "SET s.parent_span_id = $parent_span_id, "
+        "    s.service_name = $service_name, "
+        "    s.span_name = $span_name, "
+        "    s.operation_name = $operation_name, "
+        "    s.span_kind = $span_kind, "
+        "    s.caller_service = $caller_service, "
+        "    s.caller_span_kind = $caller_span_kind, "
+        "    s.start_time_ns = $start_time_ns, "
+        "    s.end_time_ns = $end_time_ns, "
+        "    s.duration_ns = $duration_ns, "
+        "    s.timestamp = $timestamp, "
+        "    s.http_method = $http_method, "
+        "    s.http_route = $http_route, "
+        "    s.http_target = $http_target, "
+        "    s.http_status_code = $http_status_code, "
+        "    s.db_system = $db_system, "
+        "    s.db_name = $db_name, "
+        "    s.db_table = $db_table, "
+        "    s.db_operation = $db_operation, "
+        "    s.messaging_destination = $messaging_destination, "
+        "    s.messaging_operation = $messaging_operation, "
+        "    s.rpc_service = $rpc_service, "
+        "    s.rpc_method = $rpc_method, "
+        "    s.peer_service = $peer_service, "
+        "    s.is_error = $is_error, "
+        "    s.error_kind = $error_kind, "
+        "    s.error_message = $error_message, "
+        "    s.attributes = $attributes, "
+        "    s.source = $source, "
+        "    s.updated_at = $now "
+        "MERGE (t)-[:TRACE_HAS_SPAN]->(s) "
+        "WITH t, s "
+        "OPTIONAL MATCH (p:Span {trace_id: $trace_id, span_id: $parent_span_id}) "
+        "FOREACH (_ IN CASE WHEN p IS NULL THEN [] ELSE [1] END | MERGE (p)-[:SPAN_PARENT]->(s)) "
+        "WITH t, s "
+        "OPTIONAL MATCH (child:Span {trace_id: $trace_id, parent_span_id: $span_id}) "
+        "FOREACH (_ IN CASE WHEN child IS NULL THEN [] ELSE [1] END | MERGE (s)-[:SPAN_PARENT]->(child)) "
+        "WITH t, s "
+        "OPTIONAL MATCH (svc:Resource {external_id: $service_id}) "
+        "FOREACH (_ IN CASE WHEN svc IS NULL THEN [] ELSE [1] END | MERGE (s)-[:SPAN_OF_SERVICE]->(svc)) "
+        "WITH t "
+        "MATCH (t)-[:TRACE_HAS_SPAN]->(all_spans:Span) "
+        "WITH t, count(all_spans) AS span_count, "
+        "     sum(CASE WHEN coalesce(all_spans.is_error, false) THEN 1 ELSE 0 END) AS error_count, "
+        "     min(all_spans.start_time_ns) AS min_start, "
+        "     max(all_spans.end_time_ns) AS max_end, "
+        "     collect(DISTINCT all_spans.service_name) AS services "
+        "SET t.span_count = span_count, "
+        "    t.error_count = error_count, "
+        "    t.duration_ns = CASE WHEN max_end > min_start THEN max_end - min_start ELSE 0 END, "
+        "    t.services = [svc IN services WHERE svc IS NOT NULL] "
+        "RETURN span_count, error_count",
+        **params,
+    ).single()
+
+    return {
+        "stored": True,
+        "trace_id": trace_id,
+        "span_id": span_id,
+        "trace_span_count": int(rec["span_count"] or 0) if rec else 0,
+        "trace_error_count": int(rec["error_count"] or 0) if rec else 0,
+    }
+
+
+def get_trace_detail(trace_id: str) -> Optional[Dict[str, Any]]:
+    with neo4j_driver.session() as session:
+        return session.execute_read(_read_trace_detail_tx, trace_id)
+
+
+def list_trace_summaries(
+    window_start: Optional[str],
+    window_end: Optional[str],
+    limit: int,
+    services: Optional[List[str]] = None,
+    visible_nodes: Optional[List[str]] = None,
+    multi_hop: bool = True,
+    has_errors: Optional[bool] = None,
+    min_duration_ms: Optional[int] = None,
+    max_duration_ms: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    with neo4j_driver.session() as session:
+        return session.execute_read(
+            _read_trace_summaries_tx,
+            window_start,
+            window_end,
+            limit,
+            services,
+            visible_nodes,
+            multi_hop,
+            has_errors,
+            min_duration_ms,
+            max_duration_ms,
+        )
+
+
+def _read_trace_detail_tx(tx: ManagedTransaction, trace_id: str) -> Optional[Dict[str, Any]]:
+    from app.services.trace_service import build_hops_from_spans, summarize_trace
+
+    result = tx.run(
+        "MATCH (t:Trace {trace_id: $trace_id})-[:TRACE_HAS_SPAN]->(s:Span) "
+        "RETURN t.trace_id AS trace_id, collect(properties(s)) AS spans",
+        trace_id=trace_id,
+    ).single()
+    if not result:
+        return None
+
+    spans = [_span_props_to_dict(props) for props in result["spans"]]
+    spans.sort(key=lambda sp: int(sp.get("start_time_ns") or 0))
+    summary = summarize_trace(result["trace_id"], spans)
+    return {
+        **summary,
+        "spans": spans,
+        "hops": build_hops_from_spans(spans),
+    }
+
+
+def _read_trace_summaries_tx(
+    tx: ManagedTransaction,
+    window_start: Optional[str],
+    window_end: Optional[str],
+    limit: int,
+    services: Optional[List[str]],
+    visible_nodes: Optional[List[str]],
+    multi_hop: bool,
+    has_errors: Optional[bool],
+    min_duration_ms: Optional[int],
+    max_duration_ms: Optional[int],
+) -> List[Dict[str, Any]]:
+    from app.services.trace_service import build_hops_from_spans, summarize_trace
+
+    from_ns = _iso_to_ns(window_start)
+    to_ns = _iso_to_ns(window_end)
+    conditions = ["s.start_time_ns > 0"]
+    params: Dict[str, Any] = {"limit": max(1, min(limit * 8, 1000))}
+    if from_ns is not None:
+        conditions.append("s.start_time_ns >= $from_ns")
+        params["from_ns"] = from_ns
+    if to_ns is not None:
+        conditions.append("s.start_time_ns < $to_ns")
+        params["to_ns"] = to_ns
+
+    where = " WHERE " + " AND ".join(conditions)
+    records = tx.run(
+        "MATCH (t:Trace)-[:TRACE_HAS_SPAN]->(s:Span) "
+        f"{where} "
+        "WITH t, collect(properties(s)) AS spans, max(s.start_time_ns) AS newest_span "
+        "RETURN t.trace_id AS trace_id, spans "
+        "ORDER BY newest_span DESC LIMIT $limit",
+        **params,
+    )
+
+    allowed_services = set(services or []) or None
+    allowed_nodes = set(visible_nodes or []) or None
+    out: List[Dict[str, Any]] = []
+    for record in records:
+        spans = [_span_props_to_dict(props) for props in record["spans"]]
+        spans.sort(key=lambda sp: int(sp.get("start_time_ns") or 0))
+        summary = summarize_trace(record["trace_id"], spans)
+        hops = build_hops_from_spans(spans)
+        services_involved = set(summary.get("services_involved") or [])
+        all_callees = {h.get("callee_service") for h in hops if h.get("callee_service")}
+
+        if multi_hop and summary.get("service_count", 0) < 2:
+            continue
+        if allowed_services is not None and services_involved and not services_involved.issubset(allowed_services):
+            continue
+        if allowed_nodes is not None and all_callees and not all_callees.issubset(allowed_nodes | services_involved):
+            continue
+        if has_errors is not None and bool(summary.get("has_errors")) != has_errors:
+            continue
+        if min_duration_ms is not None and int(summary.get("duration_ms") or 0) < min_duration_ms:
+            continue
+        if max_duration_ms is not None and int(summary.get("duration_ms") or 0) > max_duration_ms:
+            continue
+
+        out.append(summary)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _span_props_to_dict(props: Dict[str, Any]) -> Dict[str, Any]:
+    import json
+
+    out = dict(props)
+    attrs = out.get("attributes")
+    if isinstance(attrs, str):
+        try:
+            out["attributes"] = json.loads(attrs)
+        except json.JSONDecodeError:
+            out["attributes"] = {}
+    elif attrs is None:
+        out["attributes"] = {}
+
+    out["error"] = {
+        "is_error": bool(out.pop("is_error", False)),
+        "kind": out.pop("error_kind", None),
+        "message": out.pop("error_message", None),
+    }
+    return out
+
+
+def _iso_to_ns(value: Optional[str]) -> Optional[int]:
+    from datetime import datetime as _dt
+
+    if not value:
+        return None
+    try:
+        return int(_dt.fromisoformat(value.replace("Z", "+00:00")).timestamp() * 1_000_000_000)
+    except Exception:
+        return None
 
 
 def upsert_edges(
@@ -311,7 +678,12 @@ def upsert_edges(
         if trace_metrics is not None and edges:
             is_err = bool(trace_metrics.get("is_error"))
             dur_ns = int(trace_metrics.get("duration_ns") or 0)
-            session.execute_write(_record_trace_bucket, now, is_err)
+            trace_id = trace_metrics.get("trace_id")
+            span_id = trace_metrics.get("span_id")
+            metric_time = trace_metrics.get("timestamp") or now
+            session.execute_write(
+                _record_trace_bucket, metric_time, is_err, trace_id, span_id, now,
+            )
             sigs = list({
                 _edge_sig(e["source_id"], e["target_id"], e["type"])
                 for e in edges
@@ -320,7 +692,7 @@ def upsert_edges(
             })
             if sigs:
                 session.execute_write(
-                    _record_edge_activity, sigs, now, is_err, dur_ns,
+                    _record_edge_activity, sigs, metric_time, is_err, dur_ns, trace_id, span_id, now,
                 )
     return count
 
