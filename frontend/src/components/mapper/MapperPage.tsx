@@ -31,10 +31,11 @@ interface Application {
 }
 
 type MobilePanel = 'mappings' | 'data' | 'config';
-<<<<<<< HEAD
-=======
 type MockerAction = 'create' | null;
->>>>>>> f81199920d6f71cd1754b6eaad7dfc55c74955f8
+type MockerMessage = {
+  type: 'success' | 'error';
+  text: string;
+} | null;
 
 export function MapperPage() {
   const {
@@ -65,6 +66,8 @@ export function MapperPage() {
   const [replayLoading, setReplayLoading] = useState(false);
   const [lastReplayAt, setLastReplayAt] = useState<string | null>(null);
   const [deactivateClearLoading, setDeactivateClearLoading] = useState(false);
+  const [mockerActionLoading, setMockerActionLoading] = useState<MockerAction>(null);
+  const [mockerMessage, setMockerMessage] = useState<MockerMessage>(null);
 
   const [activePanel, setActivePanel] = useState<MobilePanel>('data');
 
@@ -426,8 +429,6 @@ export function MapperPage() {
     await loadMappingsForAgent(selectedAgent);
   }, [loadMappingsForAgent, selectedAgent]);
 
-<<<<<<< HEAD
-=======
   const handleCreateMappings = useCallback(async () => {
     setMockerActionLoading('create');
     setMockerMessage(null);
@@ -471,8 +472,6 @@ export function MapperPage() {
       setMockerActionLoading(null);
     }
   }, [refreshMappings, loadChunksForAgent, selectedAgent]);
-
->>>>>>> f81199920d6f71cd1754b6eaad7dfc55c74955f8
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="flex h-full min-h-0 flex-col bg-slate-900">
@@ -547,9 +546,12 @@ export function MapperPage() {
             </div>
           )}
 
-<<<<<<< HEAD
-=======
           <div className="ml-auto flex items-center gap-2">
+            {mockerMessage && (
+              <span className={mockerMessage.type === 'error' ? 'text-xs text-rose-400' : 'text-xs text-emerald-400'}>
+                {mockerMessage.text}
+              </span>
+            )}
             <button
               onClick={() => {
                 void handleCreateMappings();
@@ -560,7 +562,6 @@ export function MapperPage() {
               {mockerActionLoading === 'create' ? 'Installing...' : 'Install built-in mappings'}
             </button>
           </div>
->>>>>>> f81199920d6f71cd1754b6eaad7dfc55c74955f8
         </div>
 
         <div className="flex shrink-0 border-b border-slate-700/50 bg-slate-800/30 lg:hidden">
