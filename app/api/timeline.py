@@ -223,13 +223,13 @@ async def list_traces(
     services: Optional[str] = Query(None, description="Comma-separated allow-list of service names; only traces whose hops stay inside this set are returned"),
     visible_nodes: Optional[str] = Query(None, description="Comma-separated allow-list of any visible node names (Service, Database, Cache, etc.). A trace is kept only if every hop's callee is in this set."),
     multi_hop: bool = Query(True, description="If true, drop traces with no cross-service hops"),
+    has_errors: Optional[bool] = Query(None, description="If set, filter traces by strict error status"),
+    min_duration_ms: Optional[int] = Query(None, ge=0, description="Minimum trace duration in milliseconds"),
+    max_duration_ms: Optional[int] = Query(None, ge=0, description="Maximum trace duration in milliseconds"),
 ):
-    if not TEMPO_URL:
-        raise HTTPException(503, "Tempo backend not configured (TEMPO_URL env)")
-
     import concurrent.futures
     import time as _time
-    from datetime import datetime as _dt
+    from datetime import datetime as _dt, timezone as _timezone
 
     def _iso_to_unix(s: Optional[str]) -> Optional[int]:
         if not s:
@@ -242,6 +242,23 @@ async def list_traces(
     now = int(_time.time())
     end = _iso_to_unix(window_end) or now
     start = _iso_to_unix(window_start) or (end - lookback_seconds)
+    allowed_service_list = [s.strip() for s in services.split(",") if s.strip()] if services else None
+    allowed_node_list = [s.strip() for s in visible_nodes.split(",") if s.strip()] if visible_nodes else None
+    has_errors_filter = has_errors
+
+    neo4j_traces = neo4j_repo.list_trace_summaries(
+        window_start or _dt.fromtimestamp(start, tz=_timezone.utc).isoformat(),
+        window_end or _dt.fromtimestamp(end, tz=_timezone.utc).isoformat(),
+        limit,
+        services=allowed_service_list,
+        visible_nodes=allowed_node_list,
+        multi_hop=multi_hop,
+        has_errors=has_errors_filter,
+        min_duration_ms=min_duration_ms,
+        max_duration_ms=max_duration_ms,
+    )
+    if neo4j_traces or not TEMPO_URL:
+        return {"traces": neo4j_traces, "window_start": start, "window_end": end, "source": "neo4j"}
 
     try:
         resp = requests.get(
@@ -262,13 +279,13 @@ async def list_traces(
     ]
 
     allowed_services: Optional[set] = None
-    if services:
-        allowed_services = {s.strip() for s in services.split(",") if s.strip()}
+    if allowed_service_list:
+        allowed_services = set(allowed_service_list)
         candidates = [c for c in candidates if c.get("rootServiceName") in allowed_services]
 
     allowed_nodes: Optional[set] = None
-    if visible_nodes:
-        allowed_nodes = {s.strip() for s in visible_nodes.split(",") if s.strip()}
+    if allowed_node_list:
+        allowed_nodes = set(allowed_node_list)
 
     def _fetch_and_hops(c: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         tid = c["traceID"]
@@ -292,21 +309,30 @@ async def list_traces(
             return None
         if allowed_nodes is not None and all_callees and not all_callees.issubset(allowed_nodes | services_involved):
             return None
-        has_errors = any(h.get("is_error") for h in hops)
+        trace_has_errors = any(h.get("is_error") for h in hops)
+        if has_errors_filter is not None and has_errors_filter != trace_has_errors:
+            return None
         try:
             start_ns = int(c.get("startTimeUnixNano") or 0)
         except (TypeError, ValueError):
             start_ns = 0
+        duration_ms = int(c.get("durationMs") or 0)
+        if min_duration_ms is not None and duration_ms < min_duration_ms:
+            return None
+        if max_duration_ms is not None and duration_ms > max_duration_ms:
+            return None
         return {
             "trace_id": tid,
             "root_service": c.get("rootServiceName") or "",
             "root_name": c.get("rootTraceName") or "",
-            "start_time": _dt.utcfromtimestamp(start_ns / 1_000_000_000).isoformat() + "+00:00" if start_ns > 0 else None,
-            "duration_ms": int(c.get("durationMs") or 0),
+            "start_time": _dt.fromtimestamp(start_ns / 1_000_000_000, tz=_timezone.utc).isoformat() if start_ns > 0 else None,
+            "duration_ms": duration_ms,
+            "span_count": 0,
+            "error_count": 1 if trace_has_errors else 0,
             "hop_count": len(hops),
             "service_count": len(services_involved),
             "services_involved": sorted(services_involved),
-            "has_errors": has_errors,
+            "has_errors": trace_has_errors,
         }
 
     out: List[Dict[str, Any]] = []
@@ -317,7 +343,52 @@ async def list_traces(
                     out.append(res)
 
     out.sort(key=lambda x: x.get("start_time") or "", reverse=True)
-    return {"traces": out, "window_start": start, "window_end": end}
+    return {"traces": out, "window_start": start, "window_end": end, "source": "tempo"}
+
+
+@router.get(
+    "/traces/{trace_id}",
+    summary="Get a full saved trace with spans and replay hops",
+)
+async def trace_detail(user: CurrentUser, trace_id: str):
+    detail = neo4j_repo.get_trace_detail(trace_id)
+    if detail:
+        return {**detail, "source": "neo4j"}
+    if not TEMPO_URL:
+        raise HTTPException(404, "Trace not found")
+    try:
+        resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}", timeout=15)
+        if resp.status_code == 404:
+            raise HTTPException(404, "Trace not found")
+        resp.raise_for_status()
+        result = _build_hops_from_trace(resp.json())
+        hops = result.get("hops", [])
+        services_involved = sorted({
+            service
+            for hop in hops
+            for service in (hop.get("caller_service"), hop.get("callee_service") if hop.get("callee_kind") == "Service" else None)
+            if service
+        })
+        return {
+            "trace_id": result.get("trace_id") or trace_id,
+            "root_service": services_involved[0] if services_involved else "",
+            "root_name": hops[0].get("span_name", "") if hops else "",
+            "start_time": None,
+            "duration_ms": sum(int(hop.get("duration_ms") or 0) for hop in hops),
+            "span_count": 0,
+            "error_count": sum(1 for hop in hops if hop.get("is_error")),
+            "hop_count": len(hops),
+            "service_count": len(services_involved),
+            "services_involved": services_involved,
+            "has_errors": any(hop.get("is_error") for hop in hops),
+            "spans": [],
+            "hops": hops,
+            "source": "tempo",
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(502, f"Tempo fetch failed: {e}")
 
 
 @router.get(
@@ -330,10 +401,26 @@ async def trace_replay_latest(
     lookback_seconds: Annotated[int, Query(ge=10, le=3600)] = 300,
     exclude_trace_id: Optional[str] = Query(None, description="Skip this trace_id"),
 ):
-    if not TEMPO_URL:
-        raise HTTPException(503, "Tempo backend not configured (TEMPO_URL env)")
     import time as _time
+    from datetime import datetime as _dt, timezone as _timezone
+
     now = int(_time.time())
+    saved = neo4j_repo.list_trace_summaries(
+        _dt.fromtimestamp(now - lookback_seconds, tz=_timezone.utc).isoformat(),
+        _dt.fromtimestamp(now, tz=_timezone.utc).isoformat(),
+        30,
+        multi_hop=True,
+    )
+    for trace in saved:
+        if trace.get("trace_id") == exclude_trace_id:
+            continue
+        detail = neo4j_repo.get_trace_detail(trace["trace_id"])
+        if detail and detail.get("hops"):
+            return {"trace_id": detail["trace_id"], "hops": detail["hops"], "source": "neo4j"}
+
+    if not TEMPO_URL:
+        return {"trace_id": None, "hops": []}
+
     try:
         resp = requests.get(
             f"{TEMPO_URL}/api/search",
@@ -373,8 +460,11 @@ async def trace_replay_latest(
     summary="Replay a specific trace as ordered caller→callee hops",
 )
 async def trace_replay_by_id(user: CurrentUser, trace_id: str):
+    detail = neo4j_repo.get_trace_detail(trace_id)
+    if detail:
+        return {"trace_id": detail["trace_id"], "hops": detail.get("hops", []), "spans": detail.get("spans", []), "source": "neo4j"}
     if not TEMPO_URL:
-        raise HTTPException(503, "Tempo backend not configured (TEMPO_URL env)")
+        raise HTTPException(404, "Trace not found")
     try:
         resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}", timeout=15)
         if resp.status_code == 404:
