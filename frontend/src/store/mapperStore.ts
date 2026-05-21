@@ -172,6 +172,7 @@ export const useMapperStore = create<MapperState>((set, get) => ({
           created_by: draft.created_by ?? 'frontend',
           description: draft.description ?? null,
           sample_chunk_id: draft.sample_chunk_id ?? null,
+          sample_chunk_ids_by_type: draft.sample_chunk_ids_by_type ?? {},
           field_mappings: draft.field_mappings ?? [],
           conditional_rules: draft.conditional_rules ?? [],
           auto_edge_rules: draft.auto_edge_rules ?? [],

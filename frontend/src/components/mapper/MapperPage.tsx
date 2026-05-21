@@ -75,6 +75,17 @@ export function MapperPage() {
   const lastAutoSyncedSampleKeyRef = useRef<string | null>(null);
   const [sampleChunkTypeById, setSampleChunkTypeById] = useState<Record<string, number | null>>({});
 
+  const getSampleChunkIdForType = useCallback(
+    (mapping: Partial<MappingConfig> | null | undefined, chunkTypeId: number | null) => {
+      if (!mapping) return null;
+      if (chunkTypeId === null) {
+        return mapping.sample_chunk_id ?? null;
+      }
+      return mapping.sample_chunk_ids_by_type?.[String(chunkTypeId)] ?? null;
+    },
+    [],
+  );
+
   const buildUniqueMappingName = useCallback(() => {
     const baseName = selectedAgent ? `${selectedAgent.name} Mapping` : 'New Mapping';
     const existingNames = new Set(availableMappings.map((mapping) => mapping.name));
@@ -190,7 +201,8 @@ export function MapperPage() {
         });
         setChunkTypes(response.chunk_types ?? []);
 
-        let nextChunks = reorderChunks(response.chunks, draftMapping?.sample_chunk_id, chunkTypeId ?? null);
+        const sampleChunkIdForType = getSampleChunkIdForType(draftMapping, chunkTypeId ?? null);
+        let nextChunks = reorderChunks(response.chunks, sampleChunkIdForType, chunkTypeId ?? null);
         const injectedChunk = options?.injectedChunk;
         if (
           injectedChunk
@@ -198,10 +210,10 @@ export function MapperPage() {
           && (chunkTypeId === null || chunkTypeId === undefined || injectedChunk.chunk_type_id === chunkTypeId)
           && !nextChunks.some((chunk) => chunk.id === injectedChunk.id)
         ) {
-          nextChunks = reorderChunks([injectedChunk, ...nextChunks], draftMapping?.sample_chunk_id, chunkTypeId ?? null);
+          nextChunks = reorderChunks([injectedChunk, ...nextChunks], sampleChunkIdForType, chunkTypeId ?? null);
         }
 
-        const sampleChunkId = draftMapping?.sample_chunk_id;
+        const sampleChunkId = sampleChunkIdForType;
         if (
           sampleChunkId
           && chunkTypeId !== null
@@ -252,7 +264,8 @@ export function MapperPage() {
     },
     [
       currentSelectedChunkId,
-      draftMapping?.sample_chunk_id,
+      draftMapping,
+      getSampleChunkIdForType,
       reorderChunks,
       selectChunk,
       selectedChunkTypeId,
@@ -269,11 +282,21 @@ export function MapperPage() {
         if (selectedChunk?.id === chunkId) {
           selectChunk({ ...selectedChunk, is_pinned: true });
         }
+        if (draftMapping && selectedChunkTypeId !== null) {
+          setDraftMapping({
+            ...draftMapping,
+            sample_chunk_id: draftMapping.sample_chunk_id ?? chunkId,
+            sample_chunk_ids_by_type: {
+              ...(draftMapping.sample_chunk_ids_by_type ?? {}),
+              [String(selectedChunkTypeId)]: chunkId,
+            },
+          });
+        }
       } catch (error) {
         console.error('Failed to pin chunk:', error);
       }
     },
-    [chunks, selectedChunk, setChunks, selectChunk],
+    [chunks, draftMapping, selectedChunk, selectedChunkTypeId, setChunks, selectChunk, setDraftMapping],
   );
 
   const handleUnpinChunk = useCallback(
@@ -328,7 +351,7 @@ export function MapperPage() {
     let cancelled = false;
 
     async function syncSampleChunk() {
-      const sampleChunkId = draftMapping?.sample_chunk_id;
+      const sampleChunkId = getSampleChunkIdForType(draftMapping, selectedChunkTypeId);
       if (!selectedAgent || !sampleChunkId) {
         lastAutoSyncedSampleKeyRef.current = null;
         return;
@@ -386,7 +409,8 @@ export function MapperPage() {
       cancelled = true;
     };
   }, [
-    draftMapping?.sample_chunk_id,
+    draftMapping,
+    getSampleChunkIdForType,
     reorderChunks,
     selectChunk,
     selectedAgent,
@@ -445,6 +469,10 @@ export function MapperPage() {
       conditional_rules: [],
       edge_preset_id: 'default',
       sample_chunk_id: selectedChunk?.id ?? null,
+      sample_chunk_ids_by_type:
+        selectedChunk && selectedChunk.chunk_type_id !== null
+          ? { [String(selectedChunk.chunk_type_id)]: selectedChunk.id }
+          : {},
     });
     clearPreview();
     setActionMessage(null);
@@ -790,13 +818,13 @@ export function MapperPage() {
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                         <span>{m.field_mappings?.length ?? 0} fields</span>
-                        {m.sample_chunk_id
+                        {getSampleChunkIdForType(m, selectedChunkTypeId)
                           && selectedChunkTypeId !== null
-                          && sampleChunkTypeById[m.sample_chunk_id] === selectedChunkTypeId && (
+                          && sampleChunkTypeById[getSampleChunkIdForType(m, selectedChunkTypeId) as string] === selectedChunkTypeId && (
                           <button
                             onClick={(e) => {
                               e.stopPropagation();
-                              const sampleChunkId = m.sample_chunk_id;
+                              const sampleChunkId = getSampleChunkIdForType(m, selectedChunkTypeId);
                               if (!sampleChunkId) return;
                               const chunk = chunks.find((c) => c.id === sampleChunkId);
                               if (chunk) {
@@ -819,9 +847,9 @@ export function MapperPage() {
                               });
                             }}
                             className="inline-flex items-center gap-1 font-mono text-amber-400 hover:text-amber-300 hover:underline"
-                            title={`Jump to sample chunk: ${m.sample_chunk_id}`}
+                            title={`Jump to sample chunk: ${getSampleChunkIdForType(m, selectedChunkTypeId)}`}
                           >
-                            ★ sample: {m.sample_chunk_id.slice(0, 8)}...
+                            ★ sample: {getSampleChunkIdForType(m, selectedChunkTypeId)?.slice(0, 8)}...
                           </button>
                         )}
                       </div>
@@ -847,7 +875,7 @@ export function MapperPage() {
                 onPinChunk={handlePinChunk}
                 onUnpinChunk={handleUnpinChunk}
                 loading={chunksLoading}
-                sampleChunkId={draftMapping?.sample_chunk_id}
+                sampleChunkId={getSampleChunkIdForType(draftMapping, selectedChunkTypeId)}
                 showPinning={selectedChunkTypeId !== null}
               />
 

@@ -109,7 +109,7 @@ export function buildCytoscapeStyles(
 
     ...buildCallsEdgeMetricStyles(),
 
-    ...(edgeDisplayMode === 'load' ? buildEdgeLoadStyles() : []),
+    ...(edgeDisplayMode === 'load' ? [...buildEdgeLoadStyles(), ...buildNodeLoadStyles()] : []),
 
     {
       selector: 'edge:selected',
@@ -331,6 +331,32 @@ function buildEdgeLoadStyles(): Stylesheet[] {
         label: 'data(call_count_display)',
         'font-size': '10px',
         color: '#cbd5e1',
+      } as unknown as Record<string, string | number>,
+    },
+  ];
+}
+
+function buildNodeLoadStyles(): Stylesheet[] {
+  return [
+    {
+      selector: 'node[type="Endpoint"]',
+      style: {
+        opacity: 0.85,
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'node[type="Endpoint"][current_rps > 0]',
+      style: {
+        width: 'mapData(current_rps, 0, 50, 40, 72)',
+        height: 'mapData(current_rps, 0, 50, 40, 72)',
+        'border-width': 'mapData(current_rps, 0, 50, 2, 6)',
+        'border-color': '#38bdf8',
+      } as unknown as Record<string, string | number>,
+    },
+    {
+      selector: 'node[type="Endpoint"][error_count_1h > 0]',
+      style: {
+        'border-color': '#ef4444',
       } as unknown as Record<string, string | number>,
     },
   ];

@@ -99,6 +99,7 @@ export interface MappingConfig {
   created_by: string;
   description: string | null;
   sample_chunk_id: string | null;
+  sample_chunk_ids_by_type?: Record<string, string>;
   field_mappings: FieldMapping[];
   conditional_rules: ConditionalRule[];
   auto_edge_rules: AutoEdgeRule[];

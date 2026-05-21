@@ -113,6 +113,7 @@ def get_full_graph(
 
     if window_start or window_end:
         _enrich_edges_with_window(raw_edges, window_start, window_end)
+        _enrich_endpoints_with_window(raw_nodes, window_start, window_end)
 
     return _build_response(raw_nodes, raw_edges)
 
@@ -157,6 +158,46 @@ def _enrich_edges_with_window(
         e["avg_latency_ms_window"] = (
             (cell["total_duration_ns"] / spans / 1_000_000.0) if spans > 0 else 0.0
         )
+
+
+def _enrich_endpoints_with_window(
+    raw_nodes: List[Dict[str, Any]],
+    window_start: Optional[str],
+    window_end: Optional[str],
+) -> None:
+    endpoint_specs = []
+    for node in raw_nodes:
+        if node.get("type") != "Endpoint":
+            continue
+        endpoint_id = node.get("id")
+        service_name = node.get("service_name")
+        span_name = node.get("name")
+        if not (endpoint_id and service_name and span_name):
+            continue
+        endpoint_specs.append(
+            {
+                "id": endpoint_id,
+                "service_name": str(service_name),
+                "span_name": str(span_name),
+            }
+        )
+
+    if not endpoint_specs:
+        return
+
+    activity = neo4j_repo.get_endpoint_activity_window(endpoint_specs, window_start, window_end)
+    for node in raw_nodes:
+        if node.get("type") != "Endpoint":
+            continue
+        cell = activity.get(str(node.get("id")))
+        if not cell:
+            node["current_rps"] = 0
+            node["error_count_1h"] = 0
+            node["latency_p99_ms"] = 0.0
+            continue
+        node["current_rps"] = cell["call_count"]
+        node["error_count_1h"] = int(cell["error_count"])
+        node["latency_p99_ms"] = cell["latency_p99_ms"]
 
 
 def get_subgraph(

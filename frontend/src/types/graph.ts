@@ -175,6 +175,8 @@ export interface EndpointProperties {
   is_public?: boolean;
   auth_required?: boolean;
   deprecated?: boolean;
+  latency_p99_ms?: number;
+  error_count_1h?: number;
 }
 
 export interface TableProperties {

@@ -390,6 +390,30 @@ def _cleanup_activity_tx(tx: ManagedTransaction, cutoff_ms: int) -> Dict[str, in
     }
 
 
+def delete_edge(source_id: str, target_id: str, edge_type: str) -> int:
+    with neo4j_driver.session() as session:
+        return session.execute_write(_delete_edge_tx, source_id, target_id, edge_type)
+
+
+def _delete_edge_tx(
+    tx: ManagedTransaction,
+    source_id: str,
+    target_id: str,
+    edge_type: str,
+) -> int:
+    rec = tx.run(
+        "MATCH (a:Resource {external_id: $source_id})-[rel]->(b:Resource {external_id: $target_id}) "
+        "WHERE type(rel) = $edge_type "
+        "WITH collect(rel) AS rels "
+        "FOREACH (rel IN rels | DELETE rel) "
+        "RETURN size(rels) AS deleted_count",
+        source_id=source_id,
+        target_id=target_id,
+        edge_type=edge_type.upper(),
+    ).single()
+    return int(rec["deleted_count"] or 0) if rec else 0
+
+
 def upsert_trace_span(span: Dict[str, Any], source: str) -> Dict[str, Any]:
     now = _now_iso()
     with neo4j_driver.session() as session:
@@ -751,6 +775,59 @@ def _read_edge_activity_window(
             "span_count": int(rec["spans"] or 0),
             "error_count": int(rec["errs"] or 0),
             "total_duration_ns": int(rec["dur"] or 0),
+        }
+    return out
+
+
+def get_endpoint_activity_window(
+    endpoints: List[Dict[str, str]],
+    from_time: Optional[str],
+    to_time: Optional[str],
+) -> Dict[str, Dict[str, float]]:
+    if not endpoints:
+        return {}
+    with neo4j_driver.session() as session:
+        return session.execute_read(_read_endpoint_activity_window, endpoints, from_time, to_time)
+
+
+def _read_endpoint_activity_window(
+    tx: ManagedTransaction,
+    endpoints: List[Dict[str, str]],
+    from_time: Optional[str],
+    to_time: Optional[str],
+) -> Dict[str, Dict[str, float]]:
+    from_ns = _iso_to_ns(from_time)
+    to_ns = _iso_to_ns(to_time)
+
+    conditions = ["s.service_name = endpoint.service_name", "s.span_name = endpoint.span_name"]
+    params: Dict[str, Any] = {"endpoints": endpoints}
+    if from_ns is not None:
+        conditions.append("s.start_time_ns >= $from_ns")
+        params["from_ns"] = from_ns
+    if to_ns is not None:
+        conditions.append("s.start_time_ns < $to_ns")
+        params["to_ns"] = to_ns
+
+    server_values = ["SPAN_KIND_SERVER", "SERVER", "2"]
+    where = " AND ".join(conditions)
+    query = (
+        "UNWIND $endpoints AS endpoint "
+        "MATCH (s:Span) "
+        "WHERE coalesce(s.span_kind, '') IN $server_values "
+        f"AND {where} "
+        "RETURN endpoint.id AS endpoint_id, "
+        "       count(s) AS calls, "
+        "       sum(CASE WHEN coalesce(s.is_error, false) THEN 1 ELSE 0 END) AS errors, "
+        "       percentileCont(toFloat(s.duration_ns) / 1000000.0, 0.99) AS p99_ms"
+    )
+    params["server_values"] = server_values
+
+    out: Dict[str, Dict[str, float]] = {}
+    for rec in tx.run(query, **params):
+        out[rec["endpoint_id"]] = {
+            "call_count": float(rec["calls"] or 0),
+            "error_count": float(rec["errors"] or 0),
+            "latency_p99_ms": float(rec["p99_ms"] or 0.0),
         }
     return out
 

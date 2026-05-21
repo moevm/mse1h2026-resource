@@ -5,6 +5,8 @@ import binascii
 from datetime import datetime, timezone
 from typing import Any, Dict, Iterable, List, Optional
 
+from app.services.endpoint_identity import build_endpoint_urn
+
 
 _HEX_CHARS = set("0123456789abcdefABCDEF")
 _ERROR_STATUS_VALUES = {"error", "status_code_error", "2"}
@@ -148,36 +150,74 @@ def build_hops_from_spans(spans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     base = min(starts) if starts else 0
     hops: List[Dict[str, Any]] = []
 
-    def emit(caller: Optional[str], callee: Optional[str], kind: str, sp: Dict[str, Any]) -> None:
+    def is_server_span(span_kind: Optional[str]) -> bool:
+        kind = str(span_kind or "").upper()
+        return kind in {"SPAN_KIND_SERVER", "SERVER", "2"}
+
+    def emit(
+        caller: Optional[str],
+        callee: Optional[str],
+        kind: str,
+        sp: Dict[str, Any],
+        *,
+        callee_id: Optional[str] = None,
+        callee_owner_service: Optional[str] = None,
+    ) -> None:
         if not caller or not callee or caller == callee:
             return
         start_ns = int(sp.get("start_time_ns") or 0)
         duration_ns = int(sp.get("duration_ns") or 0)
         error = sp.get("error") or {}
-        hops.append(
-            {
-                "caller_service": caller,
-                "callee_service": callee,
-                "callee_kind": kind,
-                "span_name": sp.get("span_name") or "",
-                "span_id": sp.get("span_id"),
-                "start_offset_ms": max(0, (start_ns - base) // 1_000_000) if base and start_ns else 0,
-                "duration_ms": duration_ns // 1_000_000 if duration_ns > 0 else 0,
-                "is_error": bool(error.get("is_error")),
-                "error_kind": error.get("kind"),
-                "error_message": error.get("message"),
-            }
-        )
+        hop = {
+            "caller_service": caller,
+            "callee_service": callee,
+            "callee_kind": kind,
+            "span_name": sp.get("span_name") or "",
+            "span_id": sp.get("span_id"),
+            "start_offset_ms": max(0, (start_ns - base) // 1_000_000) if base and start_ns else 0,
+            "duration_ms": duration_ns // 1_000_000 if duration_ns > 0 else 0,
+            "is_error": bool(error.get("is_error")),
+            "error_kind": error.get("kind"),
+            "error_message": error.get("message"),
+        }
+        if callee_id:
+            hop["callee_id"] = callee_id
+        if callee_owner_service:
+            hop["callee_owner_service"] = callee_owner_service
+        hops.append(hop)
 
     def visit(span_id: str, ancestor_service: Optional[str]) -> None:
         sp = by_id[span_id]
         service = sp.get("service_name")
-        if service and ancestor_service and service != ancestor_service:
-            emit(ancestor_service, service, "Service", sp)
-
         span_kind = str(sp.get("span_kind") or "")
-        if span_kind == "SPAN_KIND_SERVER" and service and sp.get("span_name"):
-            emit(service, sp.get("span_name"), "Endpoint", sp)
+        cross_service = bool(service and ancestor_service and service != ancestor_service)
+        if cross_service:
+            if is_server_span(span_kind) and service and sp.get("span_name"):
+                endpoint_id = build_endpoint_urn(str(service), str(sp.get("span_name")))
+                if endpoint_id:
+                    emit(
+                        ancestor_service,
+                        sp.get("span_name"),
+                        "Endpoint",
+                        sp,
+                        callee_id=endpoint_id,
+                        callee_owner_service=service,
+                    )
+                else:
+                    emit(ancestor_service, service, "Service", sp)
+            else:
+                emit(ancestor_service, service, "Service", sp)
+
+        if is_server_span(span_kind) and service and sp.get("span_name") and not cross_service:
+            endpoint_id = build_endpoint_urn(str(service), str(sp.get("span_name")))
+            emit(
+                service,
+                sp.get("span_name"),
+                "Endpoint",
+                sp,
+                callee_id=endpoint_id,
+                callee_owner_service=service,
+            )
 
         if span_kind == "SPAN_KIND_CLIENT" and service and not children.get(span_id):
             peer = sp.get("peer_service")

@@ -111,6 +111,10 @@ class MappingConfig(BaseModel):
         default=None,
         description="ID of the raw data chunk used as sample for this mapping",
     )
+    sample_chunk_ids_by_type: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Optional sample chunk IDs keyed by chunk type ID",
+    )
 
     field_mappings: List[FieldMapping] = Field(
         default_factory=list,

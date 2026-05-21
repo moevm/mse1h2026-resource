@@ -35,6 +35,7 @@ class MappingUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     sample_chunk_id: Optional[str] = None
+    sample_chunk_ids_by_type: Optional[Dict[str, str]] = None
     field_mappings: Optional[List[FieldMapping]] = None
     conditional_rules: Optional[List[ConditionalRule]] = None
     auto_edge_rules: Optional[List[AutoEdgeRule]] = None
@@ -76,6 +77,18 @@ class DeactivateAndClearResponse(BaseModel):
     sources: List[str] = []
     deleted_nodes: int = 0
     deleted_edges: int = 0
+
+
+async def _normalize_sample_chunk_ids_by_type(mapping: MappingConfig) -> None:
+    sample_map = dict(mapping.sample_chunk_ids_by_type or {})
+    sample_chunk_id = mapping.sample_chunk_id
+    if sample_chunk_id:
+        chunk = await raw_data_repo.get_chunk(sample_chunk_id)
+        if chunk and chunk.get("chunk_type_id") is not None:
+            sample_map.setdefault(str(int(chunk["chunk_type_id"])), sample_chunk_id)
+    for chunk_id in sample_map.values():
+        await raw_data_repo.pin_chunk(chunk_id)
+    mapping.sample_chunk_ids_by_type = sample_map
 
 
 async def replay_mapping_background(mapping_id: str) -> None:
@@ -182,6 +195,7 @@ async def create_mapping(user: CurrentUser, config: MappingConfig):
     # Auto-pin sample chunk so it doesn't expire
     if config.sample_chunk_id:
         await raw_data_repo.pin_chunk(config.sample_chunk_id)
+    await _normalize_sample_chunk_ids_by_type(config)
 
     created = mapping_repo.create(config, user_id=user["user_id"])
     return created
@@ -292,6 +306,7 @@ async def instantiate_mapping_template(
     # Auto-pin the sample chunk so it doesn't expire
     if sample_chunk_id:
         await raw_data_repo.pin_chunk(sample_chunk_id)
+    await _normalize_sample_chunk_ids_by_type(created)
 
     if request.activate:
         mapping_repo.deactivate_all_for_source(created.source_type)
@@ -391,6 +406,7 @@ async def update_mapping(user: CurrentUser, mapping_id: str, updates: MappingUpd
     new_sample_chunk_id = update_data.get("sample_chunk_id")
     if new_sample_chunk_id:
         await raw_data_repo.pin_chunk(new_sample_chunk_id)
+    await _normalize_sample_chunk_ids_by_type(existing)
 
     updated = mapping_repo.update(mapping_id, existing)
     return updated

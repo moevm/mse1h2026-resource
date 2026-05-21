@@ -231,6 +231,10 @@ function TypeSpecificMetrics({ node }: Readonly<{ node: GraphNode }>) {
           {p.method && <InfoRow label="Method" value={s(p.method)} />}
           {p.service_name && <InfoRow label="Service" value={s(p.service_name)} />}
           {p.current_rps != null && <MetricBar label="RPS" value={n(p.current_rps)} max={1000} unit="req/s" />}
+          {p.latency_p99_ms != null && (
+            <InfoRow label="P99 Latency" value={`${n(p.latency_p99_ms).toFixed(1)}ms`} warn={n(p.latency_p99_ms) > 300} />
+          )}
+          {p.error_count_1h != null && <InfoRow label="Errors" value={s(p.error_count_1h)} warn={n(p.error_count_1h) > 0} />}
           {p.timeout_ms != null && <InfoRow label="Timeout" value={`${s(p.timeout_ms)}ms`} />}
           {p.auth_required != null && <InfoRow label="Auth Required" value={p.auth_required ? 'Yes' : 'No'} />}
           {p.is_public != null && <InfoRow label="Public" value={p.is_public ? 'Yes' : 'No'} />}
@@ -394,9 +398,11 @@ function EdgeDetailRow({
   const p = edge.properties;
 
   const hasCallMetrics = edge.type.toUpperCase() === 'CALLS' || edge.type === 'calls';
-  const rps = p.rps == null ? null : Number(p.rps);
-  const latency = p.latency_p99_ms == null ? null : Number(p.latency_p99_ms);
-  const errorRate = p.error_rate_percent == null ? null : Number(p.error_rate_percent);
+  const calls = p.call_count_window ?? p.call_count;
+  const rps = calls == null ? null : Number(calls);
+  const latency = (p.avg_latency_ms_window ?? p.latency_p99_ms) == null ? null : Number(p.avg_latency_ms_window ?? p.latency_p99_ms);
+  const errorCount = (p.error_count_window ?? p.error_count) == null ? null : Number(p.error_count_window ?? p.error_count);
+  const errorRate = rps && errorCount != null ? (errorCount / rps) * 100 : (p.error_rate_percent == null ? null : Number(p.error_rate_percent));
 
   return (
     <div className="space-y-2 rounded-lg border border-slate-700/50 bg-slate-800/60 p-3 transition-all duration-200 hover:border-slate-600/60">
