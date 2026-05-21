@@ -486,7 +486,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         <Sep />
 
         <label className="flex items-center gap-1 text-[10px] text-slate-500">
-          chunks
+          buckets
           <input
             type="number"
             min={2}
@@ -499,7 +499,7 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
           />
         </label>
         <label className="flex items-center gap-1 text-[10px] text-slate-500">
-          bucket(s)
+          seconds in bucket
           <input
             type="number"
             min={1}

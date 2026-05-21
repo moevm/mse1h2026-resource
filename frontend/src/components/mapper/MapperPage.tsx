@@ -31,7 +31,6 @@ interface Application {
 }
 
 type MobilePanel = 'mappings' | 'data' | 'config';
-type MockerAction = 'run' | 'create' | null;
 
 export function MapperPage() {
   const {
@@ -62,8 +61,6 @@ export function MapperPage() {
   const [replayLoading, setReplayLoading] = useState(false);
   const [lastReplayAt, setLastReplayAt] = useState<string | null>(null);
   const [deactivateClearLoading, setDeactivateClearLoading] = useState(false);
-  const [mockerActionLoading, setMockerActionLoading] = useState<MockerAction>(null);
-  const [mockerMessage, setMockerMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const [activePanel, setActivePanel] = useState<MobilePanel>('data');
 
@@ -82,28 +79,6 @@ export function MapperPage() {
 
     return `${baseName} ${index}`;
   }, [availableMappings, selectedAgent]);
-
-  const loadApplicationsData = useCallback(async () => {
-    try {
-      const data = await fetchApplications();
-      setApplications(data);
-      return data;
-    } catch (error) {
-      console.error('Failed to load applications:', error);
-      return [] as Application[];
-    }
-  }, []);
-
-  const loadAgentsData = useCallback(async () => {
-    try {
-      const data = await fetchAgents();
-      setAgents(data);
-      return data;
-    } catch (error) {
-      console.error('Failed to load agents:', error);
-      return [] as Agent[];
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -315,7 +290,7 @@ export function MapperPage() {
     });
     clearPreview();
     setActionMessage(null);
-  }, [buildUniqueMappingName, selectedAgent, selectedChunk, setDraftMapping]);
+  }, [buildUniqueMappingName, selectedChunk, setDraftMapping]);
 
   const ensureDraftMappingId = useCallback(async (): Promise<string | null> => {
     if (!draftMapping) return null;
@@ -422,86 +397,6 @@ export function MapperPage() {
     await loadMappingsForAgent(selectedAgent);
   }, [loadMappingsForAgent, selectedAgent]);
 
-  const handleRunFullMocker = useCallback(async () => {
-    setMockerActionLoading('run');
-    setMockerMessage(null);
-    try {
-      const result = await mapperApi.runMockerFull();
-      setMockerMessage({
-        type: result.success ? 'success' : 'error',
-        text: result.success
-          ? 'Raw data generation completed'
-          : `Raw data generation failed (exit code ${result.exit_code})`,
-      });
-
-      if (result.success) {
-        await loadApplicationsData();
-        const updatedAgents = await loadAgentsData();
-
-        const refreshedSelectedAgent = selectedAgent
-          ? (updatedAgents.find((agent) => agent.agent_id === selectedAgent.agent_id) ?? null)
-          : (updatedAgents[0] ?? null);
-
-        if ((selectedAgent?.agent_id ?? null) !== (refreshedSelectedAgent?.agent_id ?? null)) {
-          setSelectedAgent(refreshedSelectedAgent);
-        }
-
-        await Promise.all([loadChunksForAgent(refreshedSelectedAgent), loadMappingsForAgent(refreshedSelectedAgent)]);
-      }
-    } catch (error) {
-      setMockerMessage({
-        type: 'error',
-        text: error instanceof Error ? error.message : 'Raw data generation failed',
-      });
-    } finally {
-      setMockerActionLoading(null);
-    }
-  }, [loadApplicationsData, loadAgentsData, loadChunksForAgent, loadMappingsForAgent, selectedAgent]);
-
-  const handleCreateMappings = useCallback(async () => {
-    setMockerActionLoading('create');
-    setMockerMessage(null);
-    try {
-      const templates = await mapperApi.listMappingTemplates();
-      let createdCount = 0;
-
-      for (const template of templates.templates) {
-        try {
-          await mapperApi.instantiateMappingTemplate(template.id, {
-            sample_chunk_id: selectedChunk?.id ?? null,
-            activate: true,
-          });
-          createdCount += 1;
-        } catch (error) {
-          const detail =
-            typeof error === 'object' && error !== null && 'response' in error
-              ? (error as { response?: { status?: number } }).response?.status
-              : undefined;
-
-          if (detail !== 409) {
-            throw error;
-          }
-        }
-      }
-
-      setMockerMessage({
-        type: 'success',
-        text:
-          createdCount > 0
-            ? `Installed ${createdCount} built-in mapping templates`
-            : 'Built-in mapping templates already installed',
-      });
-      await Promise.all([refreshMappings(), loadChunksForAgent(selectedAgent)]);
-    } catch (error) {
-      setMockerMessage({
-        type: 'error',
-        text: error instanceof Error ? error.message : 'Built-in mapping installation failed',
-      });
-    } finally {
-      setMockerActionLoading(null);
-    }
-  }, [refreshMappings, loadChunksForAgent, selectedAgent]);
-
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="flex h-full min-h-0 flex-col bg-slate-900">
@@ -576,40 +471,7 @@ export function MapperPage() {
             </div>
           )}
 
-          <div className="ml-auto flex items-center gap-2">
-            <button
-              onClick={() => {
-                void handleRunFullMocker();
-              }}
-              disabled={mockerActionLoading !== null}
-              className="rounded bg-sky-600 px-2.5 py-1 text-xs text-white hover:bg-sky-700 disabled:bg-slate-700 disabled:text-slate-500"
-            >
-              {mockerActionLoading === 'run' ? 'Generating...' : 'Generate mock data'}
-            </button>
-            <button
-              onClick={() => {
-                void handleCreateMappings();
-              }}
-              disabled={mockerActionLoading !== null}
-              className="rounded bg-indigo-600 px-2.5 py-1 text-xs text-white hover:bg-indigo-700 disabled:bg-slate-700 disabled:text-slate-500"
-            >
-              {mockerActionLoading === 'create' ? 'Installing...' : 'Install built-in mappings'}
-            </button>
-          </div>
         </div>
-
-        {mockerMessage && (
-          <div
-            className={[
-              'shrink-0 border-b px-3 py-2 text-xs sm:px-4',
-              mockerMessage.type === 'success'
-                ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                : 'border-red-500/30 bg-red-500/10 text-red-300',
-            ].join(' ')}
-          >
-            {mockerMessage.text}
-          </div>
-        )}
 
         <div className="flex shrink-0 border-b border-slate-700/50 bg-slate-800/30 lg:hidden">
           {(['mappings', 'data', 'config'] as const).map((panel) => (
