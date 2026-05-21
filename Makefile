@@ -32,9 +32,9 @@ up:
 
 down:
 	@echo "Stopping monitoring-demo stack..."
-	@docker compose -f $(MONITORING_COMPOSE) down
+	@docker compose -f $(MONITORING_COMPOSE) down -v
 	@echo "Stopping MSE stack..."
-	@docker compose -f $(MSE_COMPOSE) down
+	@docker compose -f $(MSE_COMPOSE) down -v
 
 build:
 	@echo "Building MSE stack..."

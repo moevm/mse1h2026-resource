@@ -32,8 +32,6 @@ async def lifespan(application: FastAPI):
     user_repo.ensure_user_indexes()
     user_repo.ensure_default_admin()
     neo4j_repo.ensure_activity_indexes()
-<<<<<<< HEAD
-=======
     try:
         cleanup = neo4j_repo.cleanup_deprecated_nodes()
         if cleanup.get("deleted_libraries") or cleanup.get("deleted_ip_nodes"):
@@ -43,7 +41,6 @@ async def lifespan(application: FastAPI):
             )
     except Exception:
         pass
->>>>>>> f81199920d6f71cd1754b6eaad7dfc55c74955f8
     asyncio.create_task(_activity_cleanup_loop())
     yield
     neo4j_driver.close()
