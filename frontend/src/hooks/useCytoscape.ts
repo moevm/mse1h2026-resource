@@ -208,7 +208,7 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
       return Number(w !== undefined && w !== null ? w : (e.data('error_count') ?? 0));
     };
 
-    const CALL_LIKE_TYPES = new Set(['calls', 'reads', 'writes', 'publishesto', 'consumesfrom']);
+    const CALL_LIKE_TYPES = new Set(['calls', 'reads', 'writes', 'publishesto', 'consumesfrom', 'ownedby']);
     const isCallLike = (e: cytoscape.EdgeSingular): boolean => {
       const t = String(e.data('type') ?? '').toLowerCase();
       return CALL_LIKE_TYPES.has(t);

@@ -31,6 +31,12 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 
+def _sample_chunk_scope_key(agent_id: Optional[str], chunk_type_id: Optional[int]) -> Optional[str]:
+    if not agent_id or chunk_type_id is None:
+        return None
+    return f"{agent_id}:{int(chunk_type_id)}"
+
+
 class MappingUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
@@ -81,14 +87,30 @@ class DeactivateAndClearResponse(BaseModel):
 
 async def _normalize_sample_chunk_ids_by_type(mapping: MappingConfig) -> None:
     sample_map = dict(mapping.sample_chunk_ids_by_type or {})
+    normalized_map: Dict[str, str] = {}
     sample_chunk_id = mapping.sample_chunk_id
     if sample_chunk_id:
         chunk = await raw_data_repo.get_chunk(sample_chunk_id)
         if chunk and chunk.get("chunk_type_id") is not None:
-            sample_map.setdefault(str(int(chunk["chunk_type_id"])), sample_chunk_id)
+            type_id = int(chunk["chunk_type_id"])
+            normalized_map.setdefault(str(type_id), sample_chunk_id)
+            scoped_key = _sample_chunk_scope_key(chunk.get("agent_id"), type_id)
+            if scoped_key:
+                normalized_map[scoped_key] = sample_chunk_id
     for chunk_id in sample_map.values():
+        chunk = await raw_data_repo.get_chunk(chunk_id)
+        if chunk and chunk.get("chunk_type_id") is not None:
+            type_id = int(chunk["chunk_type_id"])
+            normalized_map.setdefault(str(type_id), chunk_id)
+            scoped_key = _sample_chunk_scope_key(chunk.get("agent_id"), type_id)
+            if scoped_key:
+                normalized_map[scoped_key] = chunk_id
+        else:
+            for key, value in sample_map.items():
+                if value == chunk_id:
+                    normalized_map.setdefault(key, chunk_id)
         await raw_data_repo.pin_chunk(chunk_id)
-    mapping.sample_chunk_ids_by_type = sample_map
+    mapping.sample_chunk_ids_by_type = normalized_map
 
 
 async def replay_mapping_background(mapping_id: str) -> None:

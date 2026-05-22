@@ -799,7 +799,23 @@ def _read_endpoint_activity_window(
     from_ns = _iso_to_ns(from_time)
     to_ns = _iso_to_ns(to_time)
 
-    conditions = ["s.service_name = endpoint.service_name", "s.span_name = endpoint.span_name"]
+    conditions = [
+        "s.service_name = endpoint.service_name",
+        "("
+        "  s.span_name = endpoint.endpoint_name"
+        "  OR s.operation_name = endpoint.endpoint_name"
+        "  OR ("
+        "    endpoint.method <> '' AND endpoint.path <> ''"
+        "    AND s.http_method = endpoint.method"
+        "    AND ("
+        "      s.http_route = endpoint.path"
+        "      OR s.http_target = endpoint.path"
+        "      OR s.span_name = endpoint.path"
+        "      OR s.operation_name = endpoint.path"
+        "    )"
+        "  )"
+        ")",
+    ]
     params: Dict[str, Any] = {"endpoints": endpoints}
     if from_ns is not None:
         conditions.append("s.start_time_ns >= $from_ns")

@@ -111,9 +111,13 @@ def get_full_graph(
             limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges, as_of=as_of,
         )
 
+    endpoint_activity = _load_endpoint_activity(raw_nodes, window_start, window_end) if raw_nodes else {}
+
     if window_start or window_end:
         _enrich_edges_with_window(raw_edges, window_start, window_end)
-        _enrich_endpoints_with_window(raw_nodes, window_start, window_end)
+        _enrich_endpoints_with_window(raw_nodes, endpoint_activity)
+    if endpoint_activity:
+        _enrich_ownedby_edges_with_endpoint_load(raw_edges, endpoint_activity)
 
     return _build_response(raw_nodes, raw_edges)
 
@@ -160,11 +164,11 @@ def _enrich_edges_with_window(
         )
 
 
-def _enrich_endpoints_with_window(
+def _load_endpoint_activity(
     raw_nodes: List[Dict[str, Any]],
     window_start: Optional[str],
     window_end: Optional[str],
-) -> None:
+) -> Dict[str, Dict[str, float]]:
     endpoint_specs = []
     for node in raw_nodes:
         if node.get("type") != "Endpoint":
@@ -178,18 +182,48 @@ def _enrich_endpoints_with_window(
             {
                 "id": endpoint_id,
                 "service_name": str(service_name),
-                "span_name": str(span_name),
+                "endpoint_name": str(span_name),
+                "path": str(node.get("path") or ""),
+                "method": str(node.get("method") or ""),
             }
         )
 
     if not endpoint_specs:
+        return {}
+
+    return neo4j_repo.get_endpoint_activity_window(endpoint_specs, window_start, window_end)
+
+
+def _enrich_ownedby_edges_with_endpoint_load(
+    raw_edges: List[Dict[str, Any]],
+    endpoint_activity: Dict[str, Dict[str, float]],
+) -> None:
+    if not raw_edges or not endpoint_activity:
         return
 
-    activity = neo4j_repo.get_endpoint_activity_window(endpoint_specs, window_start, window_end)
+    for edge in raw_edges:
+        if str(edge.get("type", "")).lower() != "ownedby":
+            continue
+        endpoint_id = str(edge.get("source_id") or "")
+        cell = endpoint_activity.get(endpoint_id)
+        if not cell:
+            continue
+        edge["call_count_window"] = int(cell["call_count"])
+        edge["error_count_window"] = int(cell["error_count"])
+        edge["avg_latency_ms_window"] = float(cell["latency_p99_ms"])
+
+
+def _enrich_endpoints_with_window(
+    raw_nodes: List[Dict[str, Any]],
+    endpoint_activity: Dict[str, Dict[str, float]],
+) -> None:
+    if not endpoint_activity:
+        return
+
     for node in raw_nodes:
         if node.get("type") != "Endpoint":
             continue
-        cell = activity.get(str(node.get("id")))
+        cell = endpoint_activity.get(str(node.get("id")))
         if not cell:
             node["current_rps"] = 0
             node["error_count_1h"] = 0

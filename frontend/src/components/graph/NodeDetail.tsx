@@ -397,7 +397,8 @@ function EdgeDetailRow({
   const color = getEdgeColor(edge.type);
   const p = edge.properties;
 
-  const hasCallMetrics = edge.type.toUpperCase() === 'CALLS' || edge.type === 'calls';
+  const hasCallMetrics = ['calls', 'ownedby', 'reads', 'writes', 'publishesto', 'consumesfrom']
+    .includes(edge.type.toLowerCase());
   const calls = p.call_count_window ?? p.call_count;
   const rps = calls == null ? null : Number(calls);
   const latency = (p.avg_latency_ms_window ?? p.latency_p99_ms) == null ? null : Number(p.avg_latency_ms_window ?? p.latency_p99_ms);

@@ -10,10 +10,10 @@ from app.api.auth import CurrentUser
 from app.models.mapper.raw_data import RawDataListResponse
 from app.repositories.raw_data_repo import raw_data_repo
 from app.repositories.mapping_repo import mapping_repo
-from app.services.endpoint_identity import build_endpoint_urn
-from app.repositories.neo4j_repo import upsert_nodes, upsert_edges, upsert_trace_span
+from app.repositories.neo4j_repo import delete_edge, upsert_nodes, upsert_edges, upsert_trace_span
 from app.services.mapper_service import mapper_service
 from app.services.trace_service import normalize_span_payload, trace_metrics_from_span
+from app.services.trace_topology import apply_trace_topology_enrichment
 
 router = APIRouter()
 log = logging.getLogger(__name__)
@@ -24,58 +24,6 @@ def _extract_trace_metrics(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     if not span:
         return None
     return trace_metrics_from_span(span)
-
-
-def _looks_like_ip(value: str) -> bool:
-    stripped = value.replace(".", "").replace(":", "")
-    return bool(value) and value[0].isdigit() and stripped.isdigit()
-
-
-def _is_server_span(span_kind: Any) -> bool:
-    kind = str(span_kind or "").upper()
-    return kind in {"SPAN_KIND_SERVER", "SERVER", "2"}
-
-
-def _trace_caller_enrichment(
-    payload: Dict[str, Any],
-) -> Optional[tuple[list[Dict[str, Any]], Dict[str, Any]]]:
-
-    if not isinstance(payload, dict):
-        return None
-    caller = payload.get("caller_service")
-    callee_service = payload.get("service_name")
-    callee_endpoint = payload.get("span_name")
-    if not caller or not callee_service or caller == callee_service:
-        return None
-    if not callee_endpoint or not _is_server_span(payload.get("span_kind")):
-        return None
-    if _looks_like_ip(str(caller)) or _looks_like_ip(str(callee_service)):
-        return None
-    endpoint_id = build_endpoint_urn(str(callee_service), str(callee_endpoint))
-    if not endpoint_id:
-        return None
-
-    caller_node = {
-        "id": f"urn:service:{caller}",
-        "type": "Service",
-        "name": caller,
-        "status": "active",
-    }
-    endpoint_node = {
-        "id": endpoint_id,
-        "type": "Endpoint",
-        "name": str(callee_endpoint),
-        "service_name": str(callee_service),
-        "path": payload.get("http_route") or payload.get("http_target") or str(callee_endpoint),
-        "method": payload.get("http_method"),
-        "status": "active",
-    }
-    edge = {
-        "source_id": f"urn:service:{caller}",
-        "target_id": endpoint_id,
-        "type": "calls",
-    }
-    return [caller_node, endpoint_node], edge
 
 
 @router.post(
@@ -135,17 +83,21 @@ async def receive_raw_data(
                 continue
 
             nodes, edges, unresolved = mapper_service.map_chunk(temp_chunk, mapping)
-
-            # Trace-aware enrichment: when the chunk carries caller_service
-            # (set by tempo-watcher), make sure the upstream Service node and
-            # its calls→callee edge are produced regardless of what the
-            # template's peer.service rules infer. This is the authoritative
-            # signal from the real trace tree.
-            caller_extra = _trace_caller_enrichment(payload)
-            if caller_extra:
-                extra_nodes, caller_edge = caller_extra
-                nodes.extend(extra_nodes)
-                edges.append(caller_edge)
+            topology_enrichment = apply_trace_topology_enrichment(payload, nodes, edges)
+            for edge_to_delete in topology_enrichment.direct_edges_to_delete:
+                try:
+                    delete_edge(
+                        edge_to_delete["source_id"],
+                        edge_to_delete["target_id"],
+                        edge_to_delete["type"],
+                    )
+                except Exception:
+                    log.exception(
+                        "Failed to delete direct edge %s -> %s (%s)",
+                        edge_to_delete["source_id"],
+                        edge_to_delete["target_id"],
+                        edge_to_delete["type"],
+                    )
 
             if nodes:
                 upsert_nodes(nodes, source=agent_name)
