@@ -21,15 +21,15 @@ export function GraphControls() {
   const selectedAppId = useGraphUiStore((s) => s.selectedAppId);
   const { loadFullGraph } = useGraph();
 
-  const [ttlInput, setTtlInput] = useState(String(Math.round(nodeTtlSeconds / 60)));
+  const [ttlInput, setTtlInput] = useState(String(nodeTtlSeconds));
   const [clearLoading, setClearLoading] = useState(false);
 
   useEffect(() => {
-    setTtlInput(String(Math.round(nodeTtlSeconds / 60)));
+    setTtlInput(String(nodeTtlSeconds));
   }, [nodeTtlSeconds]);
 
   useEffect(() => {
-    const id = setInterval(tickNow, 5000);
+    const id = setInterval(tickNow, 1000);
     return () => clearInterval(id);
   }, [tickNow]);
 
@@ -41,13 +41,22 @@ export function GraphControls() {
   }).length;
 
   const commitTtl = () => {
-    const m = parseInt(ttlInput, 10);
-    if (Number.isFinite(m) && m >= 1) {
-      setNodeTtlSeconds(m * 60);
+    const v = parseInt(ttlInput, 10);
+    if (Number.isFinite(v) && v >= 10) {
+      setNodeTtlSeconds(v);
     } else {
-      setTtlInput(String(Math.round(nodeTtlSeconds / 60)));
+      setTtlInput(String(nodeTtlSeconds));
     }
   };
+
+  const ttlLabel = (() => {
+    const v = parseInt(ttlInput, 10);
+    const n = Number.isFinite(v) ? v : nodeTtlSeconds;
+    if (n < 60) return '';
+    const m = Math.floor(n / 60);
+    const s = n % 60;
+    return s === 0 ? `${m}m` : `${m}m ${s}s`;
+  })();
 
   const handleClearStale = async () => {
     setClearLoading(true);
@@ -109,20 +118,21 @@ export function GraphControls() {
           </button>
         </div>
         <div className="mx-1 h-5 w-px bg-slate-700/60" />
-        <label className="flex items-center gap-1 text-[10px] text-slate-400" title="A node is marked unknown after this many minutes without updates">
+        <span className="flex items-center gap-1 text-[10px] text-slate-400" title="A node is marked unknown after this many seconds without updates (≥ 10s)">
           TTL
           <input
             type="number"
-            min={1}
-            max={1440}
+            min={10}
+            max={86400}
+            step={1}
             value={ttlInput}
             onChange={(e) => setTtlInput(e.target.value)}
             onBlur={commitTtl}
             onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
-            className="w-10 rounded bg-slate-800/80 px-1 py-0.5 text-center font-mono text-[10px] text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
+            className="w-14 rounded bg-slate-800/80 px-1 py-0.5 text-center font-mono text-[10px] text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
           />
-          <span className="text-slate-600">min</span>
-        </label>
+          <span className="text-slate-600">s{ttlLabel ? ` (${ttlLabel})` : ''}</span>
+        </span>
         <button
           onClick={handleClearStale}
           disabled={clearLoading || staleCount === 0}

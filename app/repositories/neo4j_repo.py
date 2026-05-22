@@ -50,6 +50,12 @@ def _upsert_nodes_tx(tx: ManagedTransaction, nodes: List[Dict], source: str, now
     for raw in nodes:
         data = _strip_none(raw)
         external_id = data["id"]
+        tombstone = tx.run(
+            "MATCH (t:DeletedTombstone {external_id: $id}) RETURN t LIMIT 1",
+            id=external_id,
+        ).single()
+        if tombstone is not None:
+            continue
         node_type = data["type"]
         name = data.get("name", external_id)
         props = _flatten_values({k: v for k, v in data.items() if k not in _NODE_META_KEYS})
@@ -1328,6 +1334,12 @@ def _delete_node_by_id_tx(tx: ManagedTransaction, node_id: str) -> Dict[str, Any
         id=node_id,
     ).single()
     deleted = int(res["cnt"]) if res else 0
+    if deleted > 0:
+        tx.run(
+            "MERGE (t:DeletedTombstone {external_id: $id}) "
+            "ON CREATE SET t.deleted_at = $now",
+            id=node_id, now=_now_iso(),
+        )
     return {"deleted": deleted > 0, "deleted_edges": edge_count}
 
 
@@ -1345,6 +1357,14 @@ def _delete_older_than_tx(tx: ManagedTransaction, cutoff_iso: str) -> Dict[str, 
     ).single()
     edge_count = int(edges_res["cnt"]) if edges_res else 0
 
+    ids_res = tx.run(
+        "MATCH (r:Resource) "
+        "WHERE r.last_seen_at IS NOT NULL AND r.last_seen_at < $cutoff "
+        "RETURN collect(r.external_id) AS ids",
+        cutoff=cutoff_iso,
+    ).single()
+    stale_ids = list(ids_res["ids"]) if ids_res else []
+
     res = tx.run(
         "MATCH (r:Resource) "
         "WHERE r.last_seen_at IS NOT NULL AND r.last_seen_at < $cutoff "
@@ -1352,10 +1372,17 @@ def _delete_older_than_tx(tx: ManagedTransaction, cutoff_iso: str) -> Dict[str, 
         "RETURN count(*) AS cnt",
         cutoff=cutoff_iso,
     ).single()
-    return {
-        "deleted_nodes": int(res["cnt"]) if res else 0,
-        "deleted_edges": edge_count,
-    }
+    deleted_n = int(res["cnt"]) if res else 0
+
+    if stale_ids:
+        tx.run(
+            "UNWIND $ids AS id "
+            "MERGE (t:DeletedTombstone {external_id: id}) "
+            "ON CREATE SET t.deleted_at = $now",
+            ids=stale_ids, now=_now_iso(),
+        )
+
+    return {"deleted_nodes": deleted_n, "deleted_edges": edge_count}
 
 
 def get_timeline_range() -> Dict[str, Optional[str]]:
