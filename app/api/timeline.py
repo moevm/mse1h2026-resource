@@ -73,6 +73,9 @@ def _build_hops_from_trace(trace: Dict[str, Any]) -> Dict[str, Any]:
                         is_error = True
                 except (TypeError, ValueError):
                     pass
+                otel_status = sp.get("status", {}) or {}
+                if str(otel_status.get("code") or "").upper() in ("STATUS_CODE_ERROR", "ERROR", "2"):
+                    is_error = True
                 spans[sid] = {
                     "span_id": sid,
                     "parent_span_id": _b64_to_hex(sp.get("parentSpanId")),

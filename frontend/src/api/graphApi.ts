@@ -141,3 +141,17 @@ export async function fetchHealth(): Promise<HealthResponse> {
   const { data } = await client.get<HealthResponse>('/health');
   return data;
 }
+
+export async function deleteNode(
+  nodeId: string,
+): Promise<{ deleted: boolean; node_id: string; deleted_edges: number }> {
+  const { data } = await client.delete(`${BASE}/node/${encodeURIComponent(nodeId)}`);
+  return data;
+}
+
+export async function clearStaleNodes(
+  ttlSeconds: number,
+): Promise<{ deleted_nodes: number; deleted_edges: number; cutoff_iso: string }> {
+  const { data } = await client.post(`${BASE}/clear-stale`, { ttl_seconds: ttlSeconds });
+  return data;
+}

@@ -1309,6 +1309,55 @@ def _delete_stale_tx(tx: ManagedTransaction, hours: int) -> int:
     return record["deleted"] if record else 0
 
 
+def delete_node_by_external_id(node_id: str) -> Dict[str, int]:
+    with neo4j_driver.session() as session:
+        return session.execute_write(_delete_node_by_id_tx, node_id)
+
+
+def _delete_node_by_id_tx(tx: ManagedTransaction, node_id: str) -> Dict[str, Any]:
+    edges_res = tx.run(
+        "MATCH (r:Resource {external_id: $id})-[rel]-() RETURN count(rel) AS cnt",
+        id=node_id,
+    ).single()
+    edge_count = int(edges_res["cnt"]) if edges_res else 0
+
+    res = tx.run(
+        "MATCH (r:Resource {external_id: $id}) "
+        "DETACH DELETE r "
+        "RETURN count(*) AS cnt",
+        id=node_id,
+    ).single()
+    deleted = int(res["cnt"]) if res else 0
+    return {"deleted": deleted > 0, "deleted_edges": edge_count}
+
+
+def delete_nodes_older_than(cutoff_iso: str) -> Dict[str, int]:
+    with neo4j_driver.session() as session:
+        return session.execute_write(_delete_older_than_tx, cutoff_iso)
+
+
+def _delete_older_than_tx(tx: ManagedTransaction, cutoff_iso: str) -> Dict[str, int]:
+    edges_res = tx.run(
+        "MATCH (r:Resource)-[rel]-() "
+        "WHERE r.last_seen_at IS NOT NULL AND r.last_seen_at < $cutoff "
+        "RETURN count(DISTINCT rel) AS cnt",
+        cutoff=cutoff_iso,
+    ).single()
+    edge_count = int(edges_res["cnt"]) if edges_res else 0
+
+    res = tx.run(
+        "MATCH (r:Resource) "
+        "WHERE r.last_seen_at IS NOT NULL AND r.last_seen_at < $cutoff "
+        "DETACH DELETE r "
+        "RETURN count(*) AS cnt",
+        cutoff=cutoff_iso,
+    ).single()
+    return {
+        "deleted_nodes": int(res["cnt"]) if res else 0,
+        "deleted_edges": edge_count,
+    }
+
+
 def get_timeline_range() -> Dict[str, Optional[str]]:
     """Return the earliest created_at and latest last_seen_at across all resources."""
     with neo4j_driver.session() as session:

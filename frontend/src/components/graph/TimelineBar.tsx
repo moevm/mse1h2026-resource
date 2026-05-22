@@ -406,19 +406,14 @@ export function TimelineBar({ limit = 500 }: Readonly<{ limit?: number }>) {
         {eventsLoading && (
           <span className="text-[10px] text-slate-500">Loading...</span>
         )}
-        {isLive ? (
-          <span className="ml-auto flex items-center gap-1.5 text-[10px] text-slate-400" title="Showing all known nodes/edges, ignoring time snapshot">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-slate-500" />
-            Full topology
-          </span>
-        ) : currentTime ? (
+        {!isLive && currentTime && (
           <span className="ml-auto font-mono text-[10px] text-slate-400">
             {new Date(currentTime).toLocaleString('ru-RU', {
               day: '2-digit', month: '2-digit', year: '2-digit',
               hour: '2-digit', minute: '2-digit', second: '2-digit',
             })}
           </span>
-        ) : null}
+        )}
       </div>
 
       <div className="flex items-center gap-1.5 px-4 pb-0.5">

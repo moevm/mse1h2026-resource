@@ -152,22 +152,22 @@
     },
     {
       "id": "service-status-code",
-      "source_path": "http_status_code",
+      "source_path": "service_name",
       "target_field": "status",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "'error' if value and int(value) >= 500 else 'active'" }
+      "transform_config": { "expression": "'active'" }
     },
     {
       "id": "service-cpu-seconds",
       "source_path": "metrics.process_cpu_seconds_total",
-      "target_field": "cpu_allocated_cores",
+      "target_field": "cpu_seconds_total",
       "target_node_type": "Service"
     },
     {
       "id": "service-memory-bytes",
       "source_path": "metrics.process_resident_memory_bytes",
-      "target_field": "memory_allocated_mb",
+      "target_field": "memory_mb",
       "target_node_type": "Service",
       "transform_type": "expression",
       "transform_config": { "expression": "int(float(value) / 1048576)" }

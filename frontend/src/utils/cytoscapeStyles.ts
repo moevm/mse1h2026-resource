@@ -84,6 +84,15 @@ export function buildCytoscapeStyles(
     },
 
     {
+      selector: 'node[?stale]',
+      style: {
+        'background-color': '#64748b',
+        'border-color': '#475569',
+        opacity: 0.55,
+      } as unknown as Record<string, string | number>,
+    },
+
+    {
       selector: 'edge',
       style: {
         label: 'data(type)',

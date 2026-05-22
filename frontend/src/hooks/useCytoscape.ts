@@ -195,6 +195,29 @@ export function useCytoscape(containerRef: RefObject<HTMLDivElement | null>) {
     cy.style(style);
   }, [hiddenNodeTypes, hiddenEdgeTypes, filterMode, edgeDisplayMode, cyGen]);
 
+  const nodeTtlSeconds = useGraphUiStore((s) => s.nodeTtlSeconds);
+  const nowMs = useGraphUiStore((s) => s.nowMs);
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!isAlive(cy)) return;
+    const ttlMs = nodeTtlSeconds * 1000;
+    cy.batch(() => {
+      cy.nodes().forEach((n) => {
+        const ls = n.data('last_seen_at');
+        let lastMs: number | null = null;
+        if (typeof ls === 'string') {
+          const t = Date.parse(ls);
+          if (!Number.isNaN(t)) lastMs = t;
+        } else if (typeof ls === 'number') {
+          lastMs = ls;
+        }
+        const stale = lastMs != null && (nowMs - lastMs) > ttlMs;
+        if (stale) n.data('stale', true);
+        else n.removeData('stale');
+      });
+    });
+  }, [nodes, nodeTtlSeconds, nowMs, cyGen]);
+
   useEffect(() => {
     const cy = cyRef.current;
     if (!isAlive(cy)) return;

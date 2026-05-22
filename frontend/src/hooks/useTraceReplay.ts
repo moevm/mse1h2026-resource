@@ -6,9 +6,9 @@ import { useLogStore } from '../store/logStore';
 
 const errMsg = (e: unknown, fallback: string) => (e instanceof Error ? e.message : fallback);
 
-const STEP_MS = 700;
-const HOLD_AFTER_END_MS = 1500;
-const PULSE_FADE_MS = 600;
+const STEP_MS = 350;
+const HOLD_AFTER_END_MS = 600;
+const PULSE_FADE_MS = 300;
 
 export function useTraceReplay() {
   const { cyRef } = useCyContext();

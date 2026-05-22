@@ -18,10 +18,13 @@ log = logging.getLogger(__name__)
 
 def _to_graph_node(raw: Dict[str, Any]) -> GraphNode:
     reserved = {
-        "id", "type", "name", "status", "environment",
-        "source", "created_at", "updated_at", "last_seen_at",
+        "id", "type", "name", "status", "environment", "source", "updated_at",
     }
     props = {k: v for k, v in raw.items() if k not in reserved}
+    for k in ("created_at", "last_seen_at"):
+        v = props.get(k)
+        if v is not None and not isinstance(v, (str, int, float, bool)):
+            props[k] = str(v)
     return GraphNode(
         id=raw["id"],
         type=raw.get("type", "unknown"),

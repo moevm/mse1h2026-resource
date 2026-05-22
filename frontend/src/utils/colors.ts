@@ -69,9 +69,11 @@ export function getStatusColor(status?: string): string {
     case 'down':
     case 'error':
       return '#ef4444';
+    case 'unknown':
+      return '#94a3b8';
     case undefined:
-      return '#64748b';
+      return '#94a3b8';
     default:
-      return '#64748b';
+      return '#94a3b8';
   }
 }

@@ -1,4 +1,7 @@
+import { useState } from 'react';
+import { deleteNode } from '../../api/graphApi';
 import { useGraphDataStore, useGraphUiStore } from '../../features/graph/store';
+import { useGraph } from '../../hooks/useGraph';
 import { formatLabel, formatValue } from '../../lib/utils/format';
 import { InfoRow } from '../../shared/components/InfoRow';
 import { MetricBar } from '../../shared/components/MetricBar';
@@ -53,6 +56,12 @@ export function NodeDetail() {
   const selectedId = useGraphUiStore((s) => s.selectedNodeId);
   const nodes = useGraphDataStore((s) => s.nodes);
   const edges = useGraphDataStore((s) => s.edges);
+  const nodeTtlSeconds = useGraphUiStore((s) => s.nodeTtlSeconds);
+  const nowMs = useGraphUiStore((s) => s.nowMs);
+  const selectedAppId = useGraphUiStore((s) => s.selectedAppId);
+  const selectNode = useGraphUiStore((s) => s.selectNode);
+  const { loadFullGraph } = useGraph();
+  const [deleting, setDeleting] = useState(false);
 
   if (!selectedId) {
     return (
@@ -71,13 +80,41 @@ export function NodeDetail() {
   const incoming = edges.filter((e) => e.target_id === selectedId);
   const outgoing = edges.filter((e) => e.source_id === selectedId);
 
+  const lastSeenRaw = node.properties.last_seen_at;
+  const lastSeenMs = typeof lastSeenRaw === 'string'
+    ? Date.parse(lastSeenRaw)
+    : (typeof lastSeenRaw === 'number' ? lastSeenRaw : NaN);
+  const isStale = Number.isFinite(lastSeenMs) && (nowMs - (lastSeenMs as number)) > nodeTtlSeconds * 1000;
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await deleteNode(node.id);
+      selectNode(null);
+      await loadFullGraph(500, selectedAppId ?? undefined);
+    } catch (e) {
+      console.error('delete node failed', e);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="flex max-h-full flex-col gap-4 overflow-y-auto p-5">
       {/* Node Header */}
       <div className="space-y-2.5">
         <div className="flex items-center gap-2.5">
           <Badge label={node.type} nodeType={node.type} size="md" />
-          <StatusDot status={node.status} showLabel size="sm" />
+          <StatusDot status={isStale ? 'unknown' : node.status} showLabel size="sm" />
+          {isStale && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className="ml-auto rounded-md border border-red-700/60 bg-red-600/20 px-2 py-1 text-[11px] font-semibold text-red-300 transition-colors hover:bg-red-600/40 disabled:opacity-50"
+            >
+              {deleting ? 'Deleting…' : 'Delete node'}
+            </button>
+          )}
         </div>
         <h3 className="text-lg leading-snug font-semibold text-slate-100">{node.name}</h3>
         <p className="font-mono text-xs leading-relaxed break-all text-slate-500">{node.id}</p>
@@ -115,14 +152,16 @@ function TypeSpecificMetrics({ node }: Readonly<{ node: GraphNode }>) {
   switch (node.type) {
     case 'Service': {
       const p = node.properties as ServiceProperties;
+      const rawMem = (p as Record<string, unknown>).memory_mb;
+      const memMb = rawMem == null ? null : (n(rawMem) > 100_000 ? n(rawMem) / 1_048_576 : n(rawMem));
       return (
         <Section title="Service Metrics">
           {p.language && <InfoRow label="Language" value={s(p.language)} />}
           {p.framework && <InfoRow label="Framework" value={s(p.framework)} />}
           {p.version && <InfoRow label="Version" value={s(p.version)} />}
           {p.tier != null && <InfoRow label="Tier" value={`T${s(p.tier)}`} />}
-          {(p as Record<string, unknown>).memory_mb != null && (
-            <MetricBar label="Memory" value={n((p as Record<string, unknown>).memory_mb)} max={2048} unit="MB" decimals={1} />
+          {memMb != null && (
+            <InfoRow label="Memory" value={`${memMb.toFixed(1)} MB`} />
           )}
           {(p as Record<string, unknown>).cpu_seconds_total != null && (
             <InfoRow
@@ -322,6 +361,76 @@ function TypeSpecificMetrics({ node }: Readonly<{ node: GraphNode }>) {
   }
 }
 
+const HIDDEN_PROPERTY_KEYS = new Set([
+  'memory_allocated_mb',
+  'cpu_allocated_cores',
+  'memory_mb',
+  'cpu_seconds_total',
+  'language',
+  'framework',
+  'version',
+  'tier',
+  'engine',
+  'eviction_policy',
+  'hit_rate_target',
+  'keys_count',
+  'connected_clients',
+  'broker',
+  'partitions',
+  'replication_factor',
+  'message_rate',
+  'path',
+  'method',
+  'service_name',
+  'current_rps',
+  'latency_p99_ms',
+  'error_count_1h',
+  'timeout_ms',
+  'auth_required',
+  'is_public',
+  'deprecated',
+  'capacity_gb',
+  'max_connections',
+  'multi_az',
+  'is_managed',
+  'strategy',
+  'namespace',
+  'image_tag',
+  'replicas_desired',
+  'replicas_ready',
+  'phase',
+  'node_name',
+  'restart_count',
+  'cpu_usage_m',
+  'memory_usage_mi',
+  'database_ref',
+  'schema_name',
+  'row_count',
+  'size_bytes',
+  'is_partitioned',
+  'package_manager',
+  'license',
+  'lead_name',
+  'email',
+  'slack_channel',
+  'department',
+  'cost_center',
+  'provider',
+  'algorithm',
+  'is_encrypted',
+  'rotation_interval_days',
+  'vault_path',
+  'base_url',
+  'auth_type',
+  'rate_limit_tier',
+  'sla_percentage',
+  'documentation_url',
+  'metric_name',
+  'target_percentage',
+  'current_value',
+  'violation_count',
+]);
+
 function expandProperties(raw: Record<string, unknown>): Array<[string, unknown]> {
   const merged: Record<string, unknown> = { ...raw };
   const nested = merged.properties;
@@ -343,7 +452,9 @@ function expandProperties(raw: Record<string, unknown>): Array<[string, unknown]
     }
     delete merged.properties;
   }
-  return Object.entries(merged).filter(([, v]) => v !== null && v !== undefined && v !== '');
+  return Object.entries(merged).filter(
+    ([k, v]) => !HIDDEN_PROPERTY_KEYS.has(k) && v !== null && v !== undefined && v !== '',
+  );
 }
 
 function PropertiesSection({ properties }: Readonly<{ properties: Record<string, unknown> }>) {

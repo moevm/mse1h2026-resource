@@ -105,9 +105,7 @@ export function GraphPage() {
       />
 
       <div className="flex shrink-0 items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
+        <FullTopologyButton
           onClick={() => {
             const st = useTimelineStore.getState();
             const win = {
@@ -122,11 +120,7 @@ export function GraphPage() {
               win,
             );
           }}
-          title="Show all known nodes/edges, ignoring time snapshot"
-          className="font-medium hover:bg-slate-800"
-        >
-          Full topology
-        </Button>
+        />
         <Button
           variant="primary"
           size="sm"
@@ -253,5 +247,23 @@ export function GraphPage() {
         </div>
       </CytoscapeProvider>
     </AppLayout>
+  );
+}
+
+function FullTopologyButton({ onClick }: Readonly<{ onClick: () => void }>) {
+  const isLive = useTimelineStore((s) => s.currentTime === null);
+  return (
+    <button
+      onClick={onClick}
+      title="Show all known nodes/edges, ignoring time snapshot"
+      className={[
+        'shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors',
+        isLive
+          ? 'border-emerald-500/60 bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30'
+          : 'border-slate-700 bg-slate-800/80 text-slate-300 hover:bg-slate-700',
+      ].join(' ')}
+    >
+      Full topology
+    </button>
   );
 }

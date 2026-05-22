@@ -1,5 +1,9 @@
+import { useEffect, useState } from 'react';
+
+import { clearStaleNodes } from '../../api/graphApi';
 import { useCyContext } from '../../context/CytoscapeContext';
 import { useGraphDataStore, useGraphUiStore } from '../../features/graph/store';
+import { useGraph } from '../../hooks/useGraph';
 import { Button } from '../common/Button';
 import { IconFit, IconZoomIn, IconZoomOut } from '../icons';
 
@@ -9,7 +13,53 @@ export function GraphControls() {
   const clearVisualFocus = useGraphUiStore((s) => s.clearVisualFocus);
   const edgeDisplayMode = useGraphUiStore((s) => s.edgeDisplayMode);
   const setEdgeDisplayMode = useGraphUiStore((s) => s.setEdgeDisplayMode);
+  const nodeTtlSeconds = useGraphUiStore((s) => s.nodeTtlSeconds);
+  const setNodeTtlSeconds = useGraphUiStore((s) => s.setNodeTtlSeconds);
+  const tickNow = useGraphUiStore((s) => s.tickNow);
+  const nowMs = useGraphUiStore((s) => s.nowMs);
   const nodes = useGraphDataStore((s) => s.nodes);
+  const selectedAppId = useGraphUiStore((s) => s.selectedAppId);
+  const { loadFullGraph } = useGraph();
+
+  const [ttlInput, setTtlInput] = useState(String(Math.round(nodeTtlSeconds / 60)));
+  const [clearLoading, setClearLoading] = useState(false);
+
+  useEffect(() => {
+    setTtlInput(String(Math.round(nodeTtlSeconds / 60)));
+  }, [nodeTtlSeconds]);
+
+  useEffect(() => {
+    const id = setInterval(tickNow, 5000);
+    return () => clearInterval(id);
+  }, [tickNow]);
+
+  const ttlMs = nodeTtlSeconds * 1000;
+  const staleCount = nodes.filter((n) => {
+    const ls = (n.properties as Record<string, unknown>).last_seen_at;
+    const t = typeof ls === 'string' ? Date.parse(ls) : (typeof ls === 'number' ? ls : NaN);
+    return Number.isFinite(t) && nowMs - t > ttlMs;
+  }).length;
+
+  const commitTtl = () => {
+    const m = parseInt(ttlInput, 10);
+    if (Number.isFinite(m) && m >= 1) {
+      setNodeTtlSeconds(m * 60);
+    } else {
+      setTtlInput(String(Math.round(nodeTtlSeconds / 60)));
+    }
+  };
+
+  const handleClearStale = async () => {
+    setClearLoading(true);
+    try {
+      await clearStaleNodes(nodeTtlSeconds);
+      await loadFullGraph(500, selectedAppId ?? undefined);
+    } catch (e) {
+      console.error('clear-stale failed', e);
+    } finally {
+      setClearLoading(false);
+    }
+  };
 
   const typeCounts = new Map<string, number>();
   for (const n of nodes) {
@@ -58,6 +108,35 @@ export function GraphControls() {
             Load
           </button>
         </div>
+        <div className="mx-1 h-5 w-px bg-slate-700/60" />
+        <label className="flex items-center gap-1 text-[10px] text-slate-400" title="A node is marked unknown after this many minutes without updates">
+          TTL
+          <input
+            type="number"
+            min={1}
+            max={1440}
+            value={ttlInput}
+            onChange={(e) => setTtlInput(e.target.value)}
+            onBlur={commitTtl}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+            className="w-10 rounded bg-slate-800/80 px-1 py-0.5 text-center font-mono text-[10px] text-slate-200 outline-none focus:ring-1 focus:ring-blue-500"
+          />
+          <span className="text-slate-600">min</span>
+        </label>
+        <button
+          onClick={handleClearStale}
+          disabled={clearLoading || staleCount === 0}
+          title="Delete all nodes whose last_seen_at is older than TTL"
+          className={[
+            'rounded px-2 py-1 text-[11px] font-medium transition-colors',
+            staleCount > 0
+              ? 'bg-amber-600/30 text-amber-200 hover:bg-amber-600/50'
+              : 'text-slate-600',
+            clearLoading ? 'opacity-50' : '',
+          ].join(' ')}
+        >
+          {clearLoading ? '...' : `Clear unknown (${staleCount})`}
+        </button>
       </div>
 
       {typeEntries.length > 0 && (

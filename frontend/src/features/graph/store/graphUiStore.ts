@@ -16,6 +16,10 @@ interface GraphUiState {
   nodePositions: Record<string, { x: number; y: number }>;
   edgeDisplayMode: EdgeDisplayMode;
   setEdgeDisplayMode: (m: EdgeDisplayMode) => void;
+  nodeTtlSeconds: number;
+  setNodeTtlSeconds: (s: number) => void;
+  nowMs: number;
+  tickNow: () => void;
 
   selectNode: (id: string | null) => void;
   hoverNode: (id: string | null) => void;
@@ -46,6 +50,8 @@ const initialState = {
   backendStatus: 'checking' as const,
   nodePositions: {} as Record<string, { x: number; y: number }>,
   edgeDisplayMode: 'topology' as EdgeDisplayMode,
+  nodeTtlSeconds: 300,
+  nowMs: Date.now(),
 };
 
 export const useGraphUiStore = create<GraphUiState>((set) => ({
@@ -69,5 +75,7 @@ export const useGraphUiStore = create<GraphUiState>((set) => ({
   setNodePositions: (positions) => set({ nodePositions: positions }),
   clearNodePositions: () => set({ nodePositions: {} }),
   setEdgeDisplayMode: (m) => set({ edgeDisplayMode: m }),
+  setNodeTtlSeconds: (s) => set({ nodeTtlSeconds: Math.max(10, Math.min(86400, Math.floor(s))) }),
+  tickNow: () => set({ nowMs: Date.now() }),
   reset: () => set(initialState),
 }));
