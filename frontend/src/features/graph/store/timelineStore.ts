@@ -82,7 +82,8 @@ export const useTimelineStore = create<TimelineState>((set, get) => ({
     const bucketMs = chunkBucketSeconds * 1000;
     const anchorMs = range?.max_time ? new Date(range.max_time).getTime() : Date.now();
     const minMs = range?.min_time ? new Date(range.min_time).getTime() : null;
-    const fetchStartMs = minMs ?? Math.max(0, anchorMs - chunkCount * bucketMs * 4);
+    const lookbackMs = chunkCount * bucketMs * 4;
+    const fetchStartMs = Math.max(minMs ?? 0, anchorMs - lookbackMs);
     set({ eventsLoading: true, eventsError: null });
     try {
       const fromIso = new Date(fetchStartMs).toISOString();

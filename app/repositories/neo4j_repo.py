@@ -1368,7 +1368,10 @@ def _read_timeline_events(
     to_time: Optional[str],
 ) -> List[Dict[str, Any]]:
     conditions = ["r.created_at IS NOT NULL"]
-    params: Dict[str, Any] = {"bucket_seconds": bucket_seconds}
+    params: Dict[str, Any] = {
+        "bucket_seconds": bucket_seconds,
+        "bucket_ms": bucket_seconds * 1000,
+    }
     if from_time:
         conditions.append("r.created_at >= $from_time")
         params["from_time"] = from_time
@@ -1379,50 +1382,37 @@ def _read_timeline_events(
 
     node_query = (
         f"MATCH (r:Resource){where} "
-        "RETURN r.created_at AS created, r.type AS ntype "
-        "ORDER BY created"
+        "WITH toInteger(datetime(toString(r.created_at)).epochMillis / $bucket_ms) * $bucket_ms AS bucket_ts, "
+        "     coalesce(r.type, 'unknown') AS ntype, "
+        "     count(*) AS cnt "
+        "RETURN bucket_ts, collect({type: ntype, count: cnt}) AS type_counts, sum(cnt) AS nodes_added "
+        "ORDER BY bucket_ts"
     )
     node_result = tx.run(node_query, **params)
 
-    bucket_ms = bucket_seconds * 1000
+    bucket_ms = params["bucket_ms"]
     node_buckets: Dict[int, Dict] = {}
 
     for rec in node_result:
-        created_val = rec["created"]
-        ntype = str(rec["ntype"] or "unknown")
-
-        ts_ms: int
-        if isinstance(created_val, (int, float)):
-            ts_ms = int(created_val)
-        elif hasattr(created_val, "to_native"):
-            dt = created_val.to_native()
-            ts_ms = int(dt.timestamp() * 1000)
-        elif isinstance(created_val, str):
-            from datetime import datetime as _dt
-            try:
-                dt = _dt.fromisoformat(created_val.replace("Z", "+00:00"))
-                ts_ms = int(dt.timestamp() * 1000)
-            except Exception:
-                continue
-        else:
-            continue
-
-        bid = ts_ms // bucket_ms
-        if bid not in node_buckets:
-            node_buckets[bid] = {
+        bid = int(rec["bucket_ts"])
+        bucket = node_buckets.setdefault(
+            bid,
+            {
                 "bucket_id": bid,
-                "timestamp": _to_str(created_val),
+                "timestamp": datetime.fromtimestamp(bid / 1000, timezone.utc).isoformat(),
                 "nodes_added": 0,
                 "edges_added": 0,
                 "node_types": {},
-                "_ts_ms": ts_ms,
-            }
-        bucket = node_buckets[bid]
-        bucket["nodes_added"] += 1
-        bucket["node_types"][ntype] = bucket["node_types"].get(ntype, 0) + 1
+            },
+        )
+        bucket["nodes_added"] = int(rec["nodes_added"] or 0)
+        bucket["node_types"] = {
+            str(item["type"] or "unknown"): int(item["count"] or 0)
+            for item in (rec["type_counts"] or [])
+        }
 
     edge_conditions = ["rel.first_seen IS NOT NULL"]
-    edge_params: Dict[str, Any] = {}
+    edge_params: Dict[str, Any] = {"bucket_ms": bucket_ms}
     if from_time:
         edge_conditions.append("rel.first_seen >= $from_time")
         edge_params["from_time"] = from_time
@@ -1433,40 +1423,23 @@ def _read_timeline_events(
 
     edge_query = (
         f"MATCH (:Resource)-[rel]->(:Resource){edge_where} "
-        "RETURN rel.first_seen AS first_seen "
-        "ORDER BY first_seen"
+        "WITH toInteger(datetime(toString(rel.first_seen)).epochMillis / $bucket_ms) * $bucket_ms AS bucket_ts, "
+        "     count(rel) AS edges_added "
+        "RETURN bucket_ts, edges_added "
+        "ORDER BY bucket_ts"
     )
     edge_result = tx.run(edge_query, **edge_params)
     for rec in edge_result:
-        fs_val = rec["first_seen"]
-
-        ts_ms: int
-        if isinstance(fs_val, (int, float)):
-            ts_ms = int(fs_val)
-        elif hasattr(fs_val, "to_native"):
-            dt = fs_val.to_native()
-            ts_ms = int(dt.timestamp() * 1000)
-        elif isinstance(fs_val, str):
-            from datetime import datetime as _dt
-            try:
-                dt = _dt.fromisoformat(fs_val.replace("Z", "+00:00"))
-                ts_ms = int(dt.timestamp() * 1000)
-            except Exception:
-                continue
-        else:
-            continue
-
-        bid = ts_ms // bucket_ms
+        bid = int(rec["bucket_ts"])
         if bid in node_buckets:
-            node_buckets[bid]["edges_added"] += 1
+            node_buckets[bid]["edges_added"] = int(rec["edges_added"] or 0)
         else:
             node_buckets[bid] = {
                 "bucket_id": bid,
-                "timestamp": _to_str(fs_val),
+                "timestamp": datetime.fromtimestamp(bid / 1000, timezone.utc).isoformat(),
                 "nodes_added": 0,
-                "edges_added": 1,
+                "edges_added": int(rec["edges_added"] or 0),
                 "node_types": {},
-                "_ts_ms": ts_ms,
             }
 
     sorted_buckets = sorted(node_buckets.values(), key=lambda b: b["bucket_id"])
@@ -1478,7 +1451,6 @@ def _read_timeline_events(
         running_edges += bucket["edges_added"]
         bucket["running_total_nodes"] = running_nodes
         bucket["running_total_edges"] = running_edges
-        bucket.pop("_ts_ms", None)
 
     return sorted_buckets
 
