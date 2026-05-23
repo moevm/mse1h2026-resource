@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tempo-watcher-config
+  namespace: monitoring-demo
+data:
+  RESOURCE_API_URL: "http://10.128.9.212:8000"
+  TEMPO_URL: "http://tempo:3200"
+  AGENT_NAME: "tempo-watcher"
+  AGENT_TOKEN: "231"
+  AGENT_SOURCE_TYPE: "watcher-otel-traces"
+  POLL_INTERVAL: "15"
+  LAG_SECONDS: "15"
+  MAX_TRACES: "200"
+  ADMIN_EMAIL: "deploy@resource.io"
+  ADMIN_PASSWORD: "deploy2026"

@@ -53,6 +53,19 @@ export async function listMappings(params?: {
   return res.data;
 }
 
+export async function importMappingTemplates(
+  files: File[],
+): Promise<{ saved: { filename: string; path: string }[]; errors: { filename: string; error: string }[]; total_templates: number }> {
+  const formData = new FormData();
+  for (const f of files) {
+    formData.append('files', f);
+  }
+  const res = await client.post('/mapper/templates/import', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return res.data;
+}
+
 export async function listMappingTemplates(): Promise<MappingTemplateListResponse> {
   const res = await client.get('/mapper/templates');
   return res.data;
@@ -183,6 +196,7 @@ export const mapperApi = {
   listMappings,
   listMappingTemplates,
   instantiateMappingTemplate,
+  importMappingTemplates,
   getMapping,
   createMapping,
   updateMapping,

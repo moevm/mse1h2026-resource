@@ -57,5 +57,31 @@ class MappingTemplateRepository:
         self._load_templates()
         return self._summaries.get(template_id)
 
+    def reload(self) -> int:
+        """Force reload templates from disk. Returns count of loaded templates."""
+        self._templates.clear()
+        self._summaries.clear()
+        self._loaded = False
+        self._load_templates()
+        return len(self._templates)
+
+    def save_uploaded_template(self, filename: str, content: bytes) -> str:
+        """Save an uploaded mapping template JSON without overwriting existing files.
+        Returns the path where the file was saved."""
+        TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
+
+        stem = Path(filename).stem
+        suffix = Path(filename).suffix or ".json"
+        dest = TEMPLATES_DIR / filename
+
+        # Avoid overwriting: append -1, -2, etc.
+        counter = 1
+        while dest.exists():
+            dest = TEMPLATES_DIR / f"{stem}-{counter}{suffix}"
+            counter += 1
+
+        dest.write_bytes(content)
+        return str(dest)
+
 
 mapping_template_repo = MappingTemplateRepository()

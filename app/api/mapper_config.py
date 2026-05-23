@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 
 from app.api.auth import CurrentUser
@@ -334,6 +334,42 @@ async def instantiate_mapping_template(
         mapping_repo.deactivate_all_for_source(created.source_type)
 
     return mapping_repo.create(created, user_id=user["user_id"])
+
+
+@router.post(
+    "/templates/import",
+    summary="Import mapping template JSON files",
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_mapping_templates(
+    user: CurrentUser,
+    files: list[UploadFile] = File(..., description="One or more mapping template JSON files"),
+):
+    """Upload mapping template JSON files. Existing files are not overwritten —
+    a numeric suffix is appended instead. After saving, templates are reloaded
+    and returned as a summary list."""
+    import json as _json
+
+    saved: list[dict] = []
+    errors: list[dict] = []
+
+    for f in files:
+        content = await f.read()
+        try:
+            raw = _json.loads(content)
+            # Validate it parses as MappingConfig
+            MappingConfig(**raw)
+        except Exception as exc:
+            errors.append({"filename": f.filename, "error": str(exc)})
+            continue
+
+        path = mapping_template_repo.save_uploaded_template(f.filename or "uploaded.json", content)
+        saved.append({"filename": f.filename, "path": path})
+
+    if saved:
+        mapping_template_repo.reload()
+
+    return {"saved": saved, "errors": errors, "total_templates": len(mapping_template_repo.list())}
 
 
 @router.post(

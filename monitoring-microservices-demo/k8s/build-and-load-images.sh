@@ -13,6 +13,8 @@ declare -A BUILD_DIRS=(
   ["golang-app"]="golang_app"
   ["k8s-watcher"]="k8s-watcher"
   ["otel-watcher"]="otel-watcher"
+  ["tempo-watcher"]="tempo-watcher"
+  ["traffic-generator"]="traffic_generator"
 )
 
 echo "=== Building images ==="

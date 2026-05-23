@@ -152,11 +152,11 @@
     },
     {
       "id": "service-status-code",
-      "source_path": "service_name",
+      "source_path": "http_status_code",
       "target_field": "status",
       "target_node_type": "Service",
       "transform_type": "expression",
-      "transform_config": { "expression": "'active'" }
+      "transform_config": { "expression": "'error' if value and int(value) >= 500 else 'active'" }
     },
     {
       "id": "service-cpu-seconds",

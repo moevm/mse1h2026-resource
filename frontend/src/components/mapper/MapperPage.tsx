@@ -31,7 +31,7 @@ interface Application {
 }
 
 type MobilePanel = 'mappings' | 'data' | 'config';
-type MockerAction = 'create' | null;
+type MockerAction = 'create' | 'import' | null;
 type MockerMessage = {
   type: 'success' | 'error';
   text: string;
@@ -749,13 +749,27 @@ export function MapperPage() {
     await loadMappingsForAgent(selectedAgent);
   }, [loadMappingsForAgent, selectedAgent]);
 
-  const handleCreateMappings = useCallback(async () => {
-    setMockerActionLoading('create');
+  const handleImportMappings = useCallback(async (files: File[]) => {
+    setMockerActionLoading('import');
     setMockerMessage(null);
     try {
+      const result = await mapperApi.importMappingTemplates(files);
+
+      if (result.errors.length > 0 && result.saved.length === 0) {
+        setMockerMessage({
+          type: 'error',
+          text: `Import failed: ${result.errors.map((e) => `${e.filename}: ${e.error}`).join('; ')}`,
+        });
+      } else {
+        const parts: string[] = [];
+        if (result.saved.length > 0) parts.push(`Imported ${result.saved.length} file(s)`);
+        if (result.errors.length > 0) parts.push(`${result.errors.length} error(s)`);
+        setMockerMessage({ type: 'success', text: parts.join(', ') });
+      }
+
+      // Instantiate all templates (including newly imported) as active mappings
       const templates = await mapperApi.listMappingTemplates();
       let createdCount = 0;
-
       for (const template of templates.templates) {
         try {
           await mapperApi.instantiateMappingTemplate(template.id, {
@@ -768,30 +782,29 @@ export function MapperPage() {
             typeof error === 'object' && error !== null && 'response' in error
               ? (error as { response?: { status?: number } }).response?.status
               : undefined;
-
           if (detail !== 409) {
             throw error;
           }
         }
       }
 
-      setMockerMessage({
-        type: 'success',
-        text:
-          createdCount > 0
-            ? `Installed ${createdCount} built-in mapping templates`
-            : 'Built-in mapping templates already installed',
-      });
+      if (createdCount > 0) {
+        setMockerMessage((prev) => ({
+          type: 'success',
+          text: prev ? `${prev.text}; Activated ${createdCount} mapping(s)` : `Activated ${createdCount} mapping(s)`,
+        }));
+      }
+
       await Promise.all([refreshMappings(), loadChunksForAgent(selectedAgent)]);
     } catch (error) {
       setMockerMessage({
         type: 'error',
-        text: error instanceof Error ? error.message : 'Built-in mapping installation failed',
+        text: error instanceof Error ? error.message : 'Mapping import failed',
       });
     } finally {
       setMockerActionLoading(null);
     }
-  }, [refreshMappings, loadChunksForAgent, selectedAgent]);
+  }, [refreshMappings, loadChunksForAgent, selectedAgent, selectedChunk]);
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="flex h-full min-h-0 flex-col bg-slate-900">
@@ -899,12 +912,21 @@ export function MapperPage() {
             )}
             <button
               onClick={() => {
-                void handleCreateMappings();
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.multiple = true;
+                input.accept = '.json';
+                input.onchange = () => {
+                  if (input.files && input.files.length > 0) {
+                    void handleImportMappings(Array.from(input.files));
+                  }
+                };
+                input.click();
               }}
               disabled={mockerActionLoading !== null}
               className="rounded bg-indigo-600 px-2.5 py-1 text-xs text-white hover:bg-indigo-700 disabled:bg-slate-700 disabled:text-slate-500"
             >
-              {mockerActionLoading === 'create' ? 'Installing...' : 'Install built-in mappings'}
+              {mockerActionLoading === 'import' ? 'Importing...' : 'Import mappings'}
             </button>
           </div>
         </div>
