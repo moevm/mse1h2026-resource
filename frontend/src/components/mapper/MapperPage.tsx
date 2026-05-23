@@ -18,7 +18,6 @@ import { TimelineSlider } from './TimelineSlider';
 interface Agent {
   agent_id: string;
   name: string;
-  source_type: string;
   description?: string;
   app_id?: string;
   app_name?: string;
@@ -848,7 +847,7 @@ export function MapperPage() {
                 <option value="">Select Agent...</option>
                 {filteredAgents.map((agent) => (
                   <option key={agent.agent_id} value={agent.agent_id}>
-                    {agent.name} ({agent.source_type})
+                    {agent.name}
                   </option>
                 ))}
               </select>

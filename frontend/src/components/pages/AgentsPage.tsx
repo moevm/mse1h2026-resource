@@ -6,18 +6,7 @@ import { Button } from '../common/Button';
 import { Card } from '../common/Card';
 import { EmptyState } from '../common/EmptyState';
 import { Input } from '../common/Input';
-import { Select } from '../common/Select';
 import { IconAgents, IconClock, IconPlus, IconRefresh, IconX } from '../icons';
-
-const SOURCE_TYPE_OPTIONS = [
-  { value: 'watcher-otel-traces', label: 'OTel Traces Watcher' },
-  { value: 'watcher-kubernetes-objects', label: 'Kubernetes Watcher' },
-  { value: 'otel-collector', label: 'OpenTelemetry Collector' },
-  { value: 'k8s-agent', label: 'Kubernetes Agent' },
-  { value: 'aws-agent', label: 'AWS Agent' },
-  { value: 'mock', label: 'Mock' },
-  { value: 'custom', label: 'Custom' },
-];
 
 export function AgentsPage() {
   const { agents, loading, error, register, reload } = useAgents();
@@ -150,7 +139,6 @@ interface AgentCardProps {
   agent: {
     agent_id: string;
     name: string;
-    source_type: string;
     description?: string;
     registered_at?: string;
     last_seen_at?: string;
@@ -189,7 +177,6 @@ function AgentCard({ agent }: Readonly<AgentCardProps>) {
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-semibold text-slate-100">{agent.name}</span>
-          <Badge label={agent.source_type} color="#6366f1" />
           {agent.app_name && <Badge label={agent.app_name} color="#10b981" />}
         </div>
         {agent.description && <p className="mt-0.5 truncate text-xs text-slate-500">{agent.description}</p>}
@@ -216,7 +203,6 @@ function AgentCard({ agent }: Readonly<AgentCardProps>) {
 
 interface RegisterRequest {
   name: string;
-  source_type: string;
   description?: string;
   token?: string;
   app_token?: string;
@@ -228,7 +214,6 @@ function RegisterForm({
   onSubmit: (req: RegisterRequest) => Promise<void>;
 }>) {
   const [name, setName] = useState('');
-  const [sourceType, setSourceType] = useState('custom');
   const [description, setDescription] = useState('');
   const [agentToken, setAgentToken] = useState('');
   const [appToken, setAppToken] = useState('');
@@ -240,7 +225,6 @@ function RegisterForm({
     try {
       await onSubmit({
         name: name.trim(),
-        source_type: sourceType,
         description: description.trim() || undefined,
         token: agentToken.trim() || undefined,
         app_token: appToken.trim() || undefined,
@@ -258,21 +242,13 @@ function RegisterForm({
         }}
         className="space-y-4"
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Input
-            label="Agent Name"
-            placeholder="my-otel-collector"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-          <Select
-            label="Source Type"
-            value={sourceType}
-            options={SOURCE_TYPE_OPTIONS}
-            onChange={(e) => setSourceType(e.target.value)}
-          />
-        </div>
+        <Input
+          label="Agent Name"
+          placeholder="my-otel-collector"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+        />
         <Input
           label="Agent Token"
           placeholder="Token from watcher config (AGENT_TOKEN). Leave empty to auto-generate."
