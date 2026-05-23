@@ -13,8 +13,6 @@ spec:
       labels:
         app: golang-app
         team: platform
-      annotations:
-        topology.mse.io/depends-libraries: "net/http"
     spec:
       imagePullSecrets:
         - name: dockerhub-secret

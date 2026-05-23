@@ -1,5 +1,6 @@
 ﻿import { useState } from 'react';
 
+import { deleteAgent } from '../../api/agentsApi';
 import { useAgents } from '../../hooks/useAgents';
 import { Badge } from '../common/Badge';
 import { Button } from '../common/Button';
@@ -127,7 +128,13 @@ export function AgentsPage() {
       {!loading && agents.length > 0 && (
         <div className="grid gap-3">
           {agents.map((agent) => (
-            <AgentCard key={agent.agent_id} agent={agent} />
+            <AgentCard
+              key={agent.agent_id}
+              agent={agent}
+              onDeleted={async () => {
+                await reload();
+              }}
+            />
           ))}
         </div>
       )}
@@ -145,6 +152,7 @@ interface AgentCardProps {
     app_id?: string;
     app_name?: string;
   };
+  onDeleted: () => Promise<void>;
 }
 
 function AgentCardSkeleton() {
@@ -167,7 +175,22 @@ function AgentCardSkeleton() {
   );
 }
 
-function AgentCard({ agent }: Readonly<AgentCardProps>) {
+function AgentCard({ agent, onDeleted }: Readonly<AgentCardProps>) {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete agent "${agent.name}"?`)) {
+      return;
+    }
+    setDeleting(true);
+    try {
+      await deleteAgent(agent.agent_id);
+      await onDeleted();
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="flex items-center gap-4 rounded-xl border border-slate-800/80 bg-slate-900 p-4 transition-colors hover:border-slate-700/80">
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-700/60 bg-slate-800 text-slate-400">
@@ -196,6 +219,11 @@ function AgentCard({ agent }: Readonly<AgentCardProps>) {
             Last seen: <span className="text-slate-400">{new Date(agent.last_seen_at).toLocaleString()}</span>
           </p>
         )}
+        <div className="pt-2">
+          <Button variant="danger" size="xs" loading={deleting} onClick={() => { void handleDelete(); }}>
+            Delete
+          </Button>
+        </div>
       </div>
     </div>
   );

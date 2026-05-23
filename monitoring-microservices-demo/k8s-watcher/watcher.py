@@ -29,6 +29,8 @@ AGENT_NAME = os.environ.get("AGENT_NAME", "k8s-watcher")
 WATCH_NAMESPACE = os.environ.get("WATCH_NAMESPACE", "monitoring-demo")
 WATCH_INTERVAL = int(os.environ.get("WATCH_INTERVAL", "30"))
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN")
+SERVICEACCOUNT_TOKEN_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+SERVICEACCOUNT_CA_PATH = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 
 
 def verify_agent_token():
@@ -80,15 +82,39 @@ def push_raw(data: dict):
         log.error(f"Failed to push raw payload: {e}")
 
 
+def build_k8s_clients():
+    """Build Kubernetes API clients with explicit in-cluster auth when available."""
+    host = os.environ.get("KUBERNETES_SERVICE_HOST")
+    port = (
+        os.environ.get("KUBERNETES_SERVICE_PORT_HTTPS")
+        or os.environ.get("KUBERNETES_SERVICE_PORT")
+        or "443"
+    )
+    if host and os.path.exists(SERVICEACCOUNT_TOKEN_PATH):
+        with open(SERVICEACCOUNT_TOKEN_PATH, "r", encoding="utf-8") as f:
+            token = f.read().strip()
+        cfg = client.Configuration()
+        cfg.host = f"https://{host}:{port}"
+        cfg.api_key = {"BearerToken": token}
+        cfg.api_key_prefix = {"BearerToken": "Bearer"}
+        if os.path.exists(SERVICEACCOUNT_CA_PATH):
+            cfg.ssl_ca_cert = SERVICEACCOUNT_CA_PATH
+            cfg.verify_ssl = True
+        else:
+            cfg.verify_ssl = False
+            log.warning("ServiceAccount CA file is missing, TLS verification disabled")
+        api_client = client.ApiClient(cfg)
+        log.info("Using in-cluster Kubernetes auth against %s", cfg.host)
+        return client.CoreV1Api(api_client), client.AppsV1Api(api_client)
+
+    log.warning("In-cluster auth is unavailable, falling back to local kubeconfig")
+    config.load_kube_config()
+    return client.CoreV1Api(), client.AppsV1Api()
+
+
 def collect_and_push():
     """Collect K8s resources and push to resource API."""
-    try:
-        config.load_incluster_config()
-    except config.ConfigException:
-        config.load_kube_config()
-
-    v1 = client.CoreV1Api()
-    apps_v1 = client.AppsV1Api()
+    v1, apps_v1 = build_k8s_clients()
 
     # Nodes
     nodes = v1.list_node()

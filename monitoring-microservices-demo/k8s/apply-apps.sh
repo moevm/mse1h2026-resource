@@ -57,6 +57,19 @@ fi
 echo "=== Deploying otel-watcher ==="
 if [ -d "$DIR/10-otel-watcher" ]; then
   kubectl apply -f "$DIR/10-otel-watcher/"
+  kubectl rollout status deployment/otel-watcher -n "$NS" --timeout=120s
+fi
+
+echo "=== Deploying tempo-watcher ==="
+if [ -d "$DIR/11-tempo-watcher" ]; then
+  kubectl apply -f "$DIR/11-tempo-watcher/"
+  kubectl rollout status deployment/tempo-watcher -n "$NS" --timeout=120s
+fi
+
+echo "=== Deploying traffic-generator ==="
+if [ -d "$DIR/12-traffic-generator" ]; then
+  kubectl apply -f "$DIR/12-traffic-generator/"
+  kubectl rollout status deployment/traffic-generator -n "$NS" --timeout=120s
 fi
 
 echo ""
