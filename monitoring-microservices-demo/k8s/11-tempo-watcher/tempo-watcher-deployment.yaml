@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo-watcher
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tempo-watcher
+  template:
+    metadata:
+      labels:
+        app: tempo-watcher
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-secret
+      containers:
+        - name: tempo-watcher
+          image: rectid/general:tempo-watcher
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8091
+          envFrom:
+            - configMapRef:
+                name: tempo-watcher-config
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi

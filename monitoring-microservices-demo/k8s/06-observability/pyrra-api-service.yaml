@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pyrra-api
+  namespace: monitoring-demo
+spec:
+  type: LoadBalancer
+  selector:
+    app: pyrra-api
+  ports:
+    - name: http
+      port: 9099
+      targetPort: 9099

@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-watcher
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: otel-watcher
+  template:
+    metadata:
+      labels:
+        app: otel-watcher
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-secret
+      containers:
+        - name: otel-watcher
+          image: rectid/general:otel-watcher
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8090
+          envFrom:
+            - configMapRef:
+                name: otel-watcher-config
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

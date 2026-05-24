@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pyrra-api
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pyrra-api
+  template:
+    metadata:
+      labels:
+        app: pyrra-api
+    spec:
+      containers:
+        - name: pyrra-api
+          image: ghcr.io/pyrra-dev/pyrra:v0.7.7
+          args:
+            - api
+            - --prometheus-url=http://prometheus:9090
+            - --prometheus-external-url=http://10.128.9.212:9090
+            - --api-url=http://prometheus:9444
+          ports:
+            - containerPort: 9099
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

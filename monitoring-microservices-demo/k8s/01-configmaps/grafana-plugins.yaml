@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-plugins
+  namespace: monitoring-demo
+data:
+  plugins.yaml: |
+    ---
+    apiVersion: 1
+    apps:
+      - type: grafana-pyroscope-app
+        jsonData:
+          backendUrl: http://pyroscope:4040

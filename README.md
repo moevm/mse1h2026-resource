@@ -1,7 +1,12 @@
 # MSE Анализатор ресурсов и зависимостей распределенных систем  
 
+
+На **итерации 3** проекта развёрнут полноценный кластер Kubernetes, на котором запущены все компоненты системы. Подробная инструкция по развёртыванию кластера, настройке агентов и демонстрации работы на реальных данных находится в **[Guide.md](GUIDE.md)**.
+
 ## Быстрый старт
 
+### Требования к системе:
+установлен docker compose, локально рекомендуем запускать на ubuntu 22.04, ram: 2 gb, свободная память на  устройстве: > 5 gb, ядер: 2 Можно запускать и на хосте с другими характеристиками, лучше на рекомендованных.
 
 ```bash
 # Клонирование репозитория
@@ -14,52 +19,35 @@ cp .env.example .env
 # 1. # Запуск всех сервисов
 docker compose up --build
 ```
-Следующие шаги можно также выполнить в UI во вкладке mapper.
+При первом старте backend автоматически создаёт тестового пользователя:
 
-- Кнопка `Generate mock data` запускает команду:
-	`python -m mocker.run --full --url http://localhost:8000`
-- Кнопка `Create default mappings` запускает команду:
-	`python -m mocker.create_mappings --url http://localhost:8000`
+- email: `admin@example.com`
+- password: `admin`
 
-```bash
-#Заходим в контейнер бэкенда и все команды генерации выполняем внутри
-docker exec -it resource-backend sh
-
-# 2. Сгенерировать данные
-python -m mocker.run --full --url http://localhost:8000
-
-# 3. Создать маппинги (один раз)
-python -m mocker.create_mappings --url http://localhost:8000
-
-```
-
+## Проверка корректности запуска: 
 После запуска доступны:
 
 Frontend: http://localhost:3000
+на фронте высвечивается страница авторизации пользователя, есть возможность перейти на страницу регистрации или залогиниться дефолтным юзером.
 
 Backend API: http://localhost:8000
-
+	
 API Documentation: http://localhost:8000/docs
+доступен сваггер с описанием ручек бэкенда. 
 
 ## Создание маппингов
 
-Маппинги преобразуют raw данные в узлы и рёбра графа. Создаются один раз:
+Маппинг — это конфигурация преобразования сырых данных от агентов в доменную модель графа. Агенты присылают payload'ы в разных форматах: Kubernetes API, OpenTelemetry traces/metrics, Istio logs, Prometheus, Terraform state и т.д. Без маппинга backend сохраняет такой payload как raw chunk, но не знает, какие поля считать сервисом, подом, базой данных, ребром `calls`, `reads`, `deployedon` и т.п.
 
-```bash
-# Создать все маппинги
-python -m mocker.create_mappings --url http://localhost:8000
+Маппинги нужны, чтобы:
 
-# Dry-run (показать что будет создано)
-python -m mocker.create_mappings --dry-run -v
+- извлекать из raw payload'ов узлы графа (`Service`, `Pod`, `Database`, `Endpoint`, `Table` и другие типы);
+- создавать связи между узлами по правилам (`calls`, `reads`, `writes`, `deployedon`, `ownedby`, `dependson` и т.д.);
+- автоматически применять активный mapping к новым raw chunks от агентов;
+- переигрывать исторические raw chunks после изменения mapping-конфигурации;
+- настраивать разные правила преобразования для разных `source_type`.
 
-# Только для конкретного source type
-python -m mocker.create_mappings --source-type kubernetes-api
-
-# Не активировать после создания
-python -m mocker.create_mappings --no-activate
-```
-
-**Доступные source types:** `kubernetes-api`, `opentelemetry-traces`, `opentelemetry-metrics`, `istio-access-logs`, `istio-metrics`, `prometheus`, `terraform-state`, `argocd`, `api-gateway`
+Маппинги создаются и редактируются через UI/REST API `mapper`. Готовые шаблоны лежат в `app/mapping_templates/`.
 
 ## Все API endpoints
 
@@ -135,8 +123,3 @@ python -m mocker.create_mappings --no-activate
 - `POST` — создать edge preset.
 - `PUT /{preset_id}` — обновить edge preset.
 - `DELETE /{preset_id}` — удалить edge preset.
-
-### Mocker (`/api/v1/mocker`)
-
-- `POST /run-full` — запуск `python -m mocker.run --full --url http://localhost:8000`.
-- `POST /create-mappings` — запуск `python -m mocker.create_mappings --url http://localhost:8000`.

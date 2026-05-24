@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: beyla
+  namespace: monitoring-demo
+spec:
+  selector:
+    matchLabels:
+      app: beyla
+  template:
+    metadata:
+      labels:
+        app: beyla
+    spec:
+      serviceAccountName: beyla
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: beyla
+          image: grafana/beyla:2.5.8
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          env:
+            - name: BEYLA_CONFIG_PATH
+              value: /etc/beyla/config.yml
+          ports:
+            - containerPort: 8999
+            - containerPort: 8998
+          volumeMounts:
+            - name: beyla-config
+              mountPath: /etc/beyla/config.yml
+              subPath: config.yml
+            - name: sys-kernel-debug
+              mountPath: /sys/kernel/debug
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+      volumes:
+        - name: beyla-config
+          configMap:
+            name: beyla-config
+        - name: sys-kernel-debug
+          hostPath:
+            path: /sys/kernel/debug
+            type: DirectoryOrCreate

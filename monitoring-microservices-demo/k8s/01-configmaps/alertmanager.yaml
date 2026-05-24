@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: monitoring-demo
+data:
+  config.yml: |
+    route:
+      group_wait: 5s
+      receiver: webhook_receiver
+
+    receivers:
+      - name: webhook_receiver
+        webhook_configs:
+          - url: 'http://webhook-tester:8080/00000000-0000-0000-0000-000000000000'
+            send_resolved: false

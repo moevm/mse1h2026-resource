@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: k8s-watcher
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: k8s-watcher
+  template:
+    metadata:
+      labels:
+        app: k8s-watcher
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-secret
+      serviceAccountName: k8s-watcher
+      containers:
+        - name: k8s-watcher
+          image: rectid/general:k8s-watcher
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: k8s-watcher-config
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi

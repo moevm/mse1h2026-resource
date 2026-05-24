@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook-tester
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: webhook-tester
+  template:
+    metadata:
+      labels:
+        app: webhook-tester
+    spec:
+      containers:
+        - name: webhook-tester
+          image: tarampampam/webhook-tester:1.1.0
+          args: ["serve", "--port", "8080"]
+          ports:
+            - containerPort: 8080
+          env:
+            - name: CREATE_SESSION
+              value: "00000000-0000-0000-0000-000000000000"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
