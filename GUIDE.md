@@ -20,21 +20,6 @@
 
 > Проект: `monitoring-microservices-demo`
 
-```bash
-cd monitoring-microservices-demo/k8s
-
-# 1. Собрать и запушить образы в Docker Hub, поменяйте переменую с указанием проекта
-./build-and-load-images.sh
-
-# 2. Развернуть инфраструктуру (namespace, configmaps, secrets, storage, observability)
-./apply.sh
-
-# 3. Развернуть приложения и observability-стек, поменяйте переменую с указанием проекта
-./apply-apps.sh
-```
-
-Скрипты используют SSH-доступ к ноде `vpa-k8s-server-1.l.postgrespro.ru` (конфиг и ключ из `~/envs/k8s/ssh/`). Неймспейс: `monitoring-demo`.
-
 **Проверка корректности работы:**
 Все поды ищз неймспейсам monitoring-demo должны быть runnung. Можно посмотреть на демо видео к третьей итерации в ветке reports.
 ```bash
