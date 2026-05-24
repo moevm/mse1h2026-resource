@@ -24,30 +24,6 @@ docker compose up --build
 - email: `admin@example.com`
 - password: `admin`
 
-Только для этого пользователя при старте автоматически накатываются тестовые данные и дефолтные маппинги:
-
-- `python -m mocker.run --full --url http://localhost:8000 --auth-token <admin-token>` — создаёт связанный тестовый граф;
-- `python -m mocker.create_mappings --url http://localhost:8000 --auth-token <admin-token>` — создаёт и активирует стандартные mapping-конфигурации.
-
-Для остальных пользователей тестовые данные и маппинги автоматически не создаются. Если нужно повторить генерацию вручную, это можно сделать в UI во вкладке mapper.
-
-- Кнопка `Generate mock data` запускает команду:
-	`python -m mocker.run --full --url http://localhost:8000`
-- Кнопка `Create default mappings` запускает команду:
-	`python -m mocker.create_mappings --url http://localhost:8000`
-
-```bash
-#Заходим в контейнер бэкенда и все команды генерации выполняем внутри
-docker exec -it resource-backend sh
-
-# 2. Сгенерировать данные
-python -m mocker.run --full --url http://localhost:8000
-
-# 3. Создать маппинги (один раз)
-python -m mocker.create_mappings --url http://localhost:8000
-
-```
-
 ## Проверка корректности запуска: 
 После запуска доступны:
 
@@ -71,23 +47,7 @@ API Documentation: http://localhost:8000/docs
 - переигрывать исторические raw chunks после изменения mapping-конфигурации;
 - настраивать разные правила преобразования для разных `source_type`.
 
-При старте проекта дефолтные маппинги автоматически создаются только для пользователя `admin@example.com` / `admin`. Для ручного создания или пересоздания можно выполнить:
-
-```bash
-# Создать все маппинги
-python -m mocker.create_mappings --url http://localhost:8000
-
-# Dry-run (показать что будет создано)
-python -m mocker.create_mappings --dry-run -v
-
-# Только для конкретного source type
-python -m mocker.create_mappings --source-type kubernetes-api
-
-# Не активировать после создания
-python -m mocker.create_mappings --no-activate
-```
-
-**Доступные source types:** `kubernetes-api`, `opentelemetry-traces`, `opentelemetry-metrics`, `istio-access-logs`, `istio-metrics`, `prometheus`, `terraform-state`, `argocd`, `api-gateway`
+Маппинги создаются и редактируются через UI/REST API `mapper`. Готовые шаблоны лежат в `app/mapping_templates/`.
 
 ## Все API endpoints
 
@@ -163,8 +123,3 @@ python -m mocker.create_mappings --no-activate
 - `POST` — создать edge preset.
 - `PUT /{preset_id}` — обновить edge preset.
 - `DELETE /{preset_id}` — удалить edge preset.
-
-### Mocker (`/api/v1/mocker`)
-
-- `POST /run-full` — запуск `python -m mocker.run --full --url http://localhost:8000`.
-- `POST /create-mappings` — запуск `python -m mocker.create_mappings --url http://localhost:8000`.

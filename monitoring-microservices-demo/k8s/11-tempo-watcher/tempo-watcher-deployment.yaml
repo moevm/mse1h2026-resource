@@ -1,36 +1,33 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: golang-app
+  name: tempo-watcher
   namespace: monitoring-demo
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: golang-app
+      app: tempo-watcher
   template:
     metadata:
       labels:
-        app: golang-app
-        team: platform
+        app: tempo-watcher
     spec:
       imagePullSecrets:
         - name: dockerhub-secret
       containers:
-        - name: golang-app
-          image: rectid/general:golang-app
+        - name: tempo-watcher
+          image: rectid/general:tempo-watcher
           imagePullPolicy: Always
           ports:
-            - containerPort: 8002
-          readinessProbe:
-            tcpSocket:
-              port: 8002
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            - containerPort: 8091
+          envFrom:
+            - configMapRef:
+                name: tempo-watcher-config
           resources:
             requests:
               cpu: 50m
               memory: 64Mi
             limits:
-              cpu: 100m
-              memory: 128Mi
+              cpu: 200m
+              memory: 256Mi

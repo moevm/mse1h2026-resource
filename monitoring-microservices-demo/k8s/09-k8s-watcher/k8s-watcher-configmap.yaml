@@ -4,7 +4,7 @@ metadata:
   name: k8s-watcher-config
   namespace: monitoring-demo
 data:
-  RESOURCE_API_URL: "http://10.128.11.196:8000"
+  RESOURCE_API_URL: "http://10.128.9.212:8000"
   AGENT_NAME: "k8s-watcher"
   AGENT_TOKEN: "321"
   WATCH_NAMESPACE: "monitoring-demo"

@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "mcp__web-reader__webReader",
+      "Bash(grep -E \"\\(config|\\\\.json$|\\\\.eslint.*|\\\\.prettier\\)\")",
+      "Bash(npx eslint *)",
+      "Bash(npm run *)",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_wait_for",
+      "mcp__playwright__browser_evaluate"
+    ]
+  }
+}

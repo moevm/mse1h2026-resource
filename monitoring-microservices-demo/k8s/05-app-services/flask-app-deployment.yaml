@@ -13,10 +13,6 @@ spec:
       labels:
         app: flask-app
         team: backend
-      annotations:
-        topology.mse.io/depends-libraries: "flask,requests"
-        topology.mse.io/publishes-to: "user-events"
-        topology.mse.io/consumes-from: "user-events"
     spec:
       imagePullSecrets:
         - name: dockerhub-secret
