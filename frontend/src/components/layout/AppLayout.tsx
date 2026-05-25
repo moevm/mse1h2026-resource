@@ -1,29 +1,29 @@
-import type { ReactNode } from "react";
-import { Sidebar, Header } from "./Sidebar";
-import { MobileNav } from "./MobileNav";
+import React from 'react';
+
+import type { ReactNode } from 'react';
+
+import { MobileNav } from './MobileNav';
+import { Header, Sidebar } from './Sidebar';
 
 interface AppLayoutProps {
-    children: ReactNode;
-    headerContent?: ReactNode;
+  children: ReactNode;
+  headerContent?: ReactNode;
 }
 
-export function AppLayout({ children, headerContent }: Readonly<AppLayoutProps>) {
-    return (
-        <div className="flex h-screen w-screen overflow-hidden bg-slate-950 min-h-0">
-            
-            <MobileNav />
+export const AppLayout: React.FC<AppLayoutProps> = ({ children, headerContent }) => {
+  return (
+    <div className="flex h-screen min-h-0 w-screen overflow-hidden bg-slate-950">
+      <MobileNav />
 
-            
-            <Sidebar />
+      <Sidebar />
 
-            <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
-                <Header>
-                    
-                    <div className="lg:hidden w-10 shrink-0" />
-                    {headerContent}
-                </Header>
-                <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
-            </div>
-        </div>
-    );
-}
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+        <Header>
+          <div className="w-10 shrink-0 lg:hidden" />
+          {headerContent}
+        </Header>
+        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+      </div>
+    </div>
+  );
+};
