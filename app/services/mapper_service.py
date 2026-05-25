@@ -17,6 +17,13 @@ from app.services.transform_service import transform_service
 log = logging.getLogger(__name__)
 
 
+def _looks_like_ip(value: str) -> bool:
+    if not value:
+        return False
+    stripped = value.replace(".", "").replace(":", "")
+    return value[0].isdigit() and stripped.isdigit()
+
+
 class MapperService:
     def map_chunk(
         self,
@@ -111,10 +118,24 @@ class MapperService:
         validation_rules = {
             "Pod": lambda n: n.get("node_name") is not None,
             "Node": lambda n: n.get("zone") is not None or n.get("instance_type") is not None,
-            "Deployment": lambda n: n.get("replicas_desired") is not None,
+            "Deployment": lambda n: (
+                n.get("replicas_desired") is not None
+                or n.get("replicas_ready") is not None
+                or n.get("strategy") is not None
+            ),
             "Service": lambda n: True,
-            "Database": lambda n: n.get("engine") is not None,
-            "Cache": lambda n: n.get("engine") is not None,
+            "Database": lambda n: (
+                n.get("engine") is not None
+                or n.get("storage_gb") is not None
+                or n.get("instance_class") is not None
+                or n.get("owner_service") is not None
+            ),
+            "Cache": lambda n: (
+                n.get("engine") is not None
+                or n.get("cluster_size") is not None
+                or n.get("node_type") is not None
+                or n.get("owner_service") is not None
+            ),
             "QueueTopic": lambda n: (
                 n.get("partitions") is not None or
                 (n.get("publishers") is not None and len(n.get("publishers") if isinstance(n.get("publishers"), list) else []) > 0) or
@@ -205,7 +226,7 @@ class MapperService:
                 node[field_mapping.target_field] = field_mapping.default_value
 
         if "id" not in node:
-            log.debug(f"Skipping node of type {node_type}: missing id field")
+            log.warning(f"Skipping node of type {node_type}: missing id field")
             return None
 
         if not node["id"].startswith("urn:"):
@@ -269,6 +290,7 @@ class MapperService:
         edges: List[Dict[str, Any]] = []
         unresolved: List[UnresolvedReference] = []
         materializable_types = {
+            "Service",
             "TeamOwner",
             "QueueTopic",
             "Cache",
@@ -320,6 +342,8 @@ class MapperService:
                         })
                     elif rule.target_type in materializable_types:
                         target_name = str(value).strip()
+                        if _looks_like_ip(target_name):
+                            continue
                         target_node = {
                             "id": f"urn:{rule.target_type.lower()}:{target_name}",
                             "type": rule.target_type,

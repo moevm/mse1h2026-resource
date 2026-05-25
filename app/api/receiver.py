@@ -10,11 +10,20 @@ from app.api.auth import CurrentUser
 from app.models.mapper.raw_data import RawDataListResponse
 from app.repositories.raw_data_repo import raw_data_repo
 from app.repositories.mapping_repo import mapping_repo
-from app.repositories.neo4j_repo import upsert_nodes, upsert_edges
+from app.repositories.neo4j_repo import delete_edge, upsert_nodes, upsert_edges, upsert_trace_span
 from app.services.mapper_service import mapper_service
+from app.services.trace_service import normalize_span_payload, trace_metrics_from_span
+from app.services.trace_topology import apply_trace_topology_enrichment
 
 router = APIRouter()
 log = logging.getLogger(__name__)
+
+
+def _extract_trace_metrics(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    span = normalize_span_payload(payload)
+    if not span:
+        return None
+    return trace_metrics_from_span(span)
 
 
 @router.post(
@@ -43,6 +52,15 @@ async def receive_raw_data(
     edges_created = 0
     mapping_applied = False
     applied_mapping_name = None
+    mapping_errors: list[dict[str, str]] = []
+    trace_span = normalize_span_payload(payload)
+    trace_result: Optional[Dict[str, Any]] = None
+    if trace_span:
+        try:
+            trace_result = upsert_trace_span(trace_span, source=agent_name)
+        except Exception as e:
+            log.exception("Trace span persistence failed for chunk %s", chunk_id[:8])
+            trace_result = {"stored": False, "reason": str(e)}
 
     from app.models.mapper.raw_data import RawDataChunk
     from datetime import datetime, timezone
@@ -65,10 +83,27 @@ async def receive_raw_data(
                 continue
 
             nodes, edges, unresolved = mapper_service.map_chunk(temp_chunk, mapping)
+            topology_enrichment = apply_trace_topology_enrichment(payload, nodes, edges)
+            for edge_to_delete in topology_enrichment.direct_edges_to_delete:
+                try:
+                    delete_edge(
+                        edge_to_delete["source_id"],
+                        edge_to_delete["target_id"],
+                        edge_to_delete["type"],
+                    )
+                except Exception:
+                    log.exception(
+                        "Failed to delete direct edge %s -> %s (%s)",
+                        edge_to_delete["source_id"],
+                        edge_to_delete["target_id"],
+                        edge_to_delete["type"],
+                    )
 
             if nodes:
                 upsert_nodes(nodes, source=agent_name)
                 nodes_created = len(nodes)
+                if trace_span:
+                    trace_result = upsert_trace_span(trace_span, source=agent_name)
 
             if nodes:
                 new_edges, new_unresolved = mapper_service.recreate_edges_for_nodes(nodes, mapping)
@@ -76,7 +111,8 @@ async def receive_raw_data(
                 unresolved.extend(new_unresolved)
 
             if edges:
-                upsert_edges(edges, source=agent_name)
+                trace_metrics = trace_metrics_from_span(trace_span) if trace_span else None
+                upsert_edges(edges, source=agent_name, trace_metrics=trace_metrics)
                 edges_created = len(edges)
 
             if not nodes and not edges:
@@ -97,7 +133,8 @@ async def receive_raw_data(
             break
 
         except Exception as e:
-            log.error(f"Error trying mapping '{mapping.name}': {e}")
+            mapping_errors.append({"mapping_name": mapping.name, "error": str(e)})
+            log.exception("Error trying mapping '%s'", mapping.name)
             continue
 
     if not mapping_applied:
@@ -110,6 +147,8 @@ async def receive_raw_data(
         "mapping_name": applied_mapping_name,
         "nodes_created": nodes_created,
         "edges_created": edges_created,
+        "trace": trace_result,
+        "mapping_errors": mapping_errors,
         "message": (
             f"Data stored and mapped with '{applied_mapping_name}'."
             if mapping_applied
@@ -126,10 +165,12 @@ async def receive_raw_data(
 async def list_raw_data(
     user: CurrentUser,
     agent_id: Optional[str] = Query(None, description="Filter by agent ID"),
+    chunk_type_id: Optional[int] = Query(None, ge=1, description="Filter by chunk type ID"),
     limit: int = Query(100, ge=1, le=1000, description="Maximum number of chunks to return"),
 ):
     return await raw_data_repo.list_chunks(
         agent_id=agent_id,
+        chunk_type_id=chunk_type_id,
         limit=limit,
     )
 

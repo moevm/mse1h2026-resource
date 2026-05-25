@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated, Optional
+
+from fastapi import APIRouter, Query
 
 from app.api.auth import CurrentUser
 from app.models.topology import GraphResponse
@@ -24,7 +26,6 @@ async def list_presets(user: CurrentUser) -> list[dict]:
 
 @router.post(
     "/execute",
-    response_model=GraphResponse,
     summary="Execute a traversal rule",
     description=(
         "Execute a custom or preset traversal rule against the graph. "
@@ -34,5 +35,9 @@ async def list_presets(user: CurrentUser) -> list[dict]:
         "the starting set for step N+1."
     ),
 )
-async def execute_traversal(user: CurrentUser, body: TraversalRule) -> GraphResponse:
-    return traversal_service.execute_traversal(body)
+async def execute_traversal(
+    user: CurrentUser,
+    body: TraversalRule,
+    app_id: Annotated[Optional[str], Query(description="Filter traversal to one application")] = None,
+) -> GraphResponse:
+    return traversal_service.execute_traversal(body, user_id=user["user_id"], app_id=app_id)

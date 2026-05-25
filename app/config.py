@@ -10,8 +10,6 @@ class Settings(BaseSettings):
     app_version: str = "0.1.0"
     debug: bool = False
 
-    node_ttl_hours: int = 24
-
     redis_host: str = "localhost"
     redis_port: int = 6379
     redis_password: str = ""
@@ -21,9 +19,6 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
-
-    seed_demo_on_startup: bool = True
-    seed_demo_base_url: str = "http://localhost:8000"
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
 

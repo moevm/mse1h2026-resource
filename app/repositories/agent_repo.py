@@ -159,6 +159,24 @@ def get_agent_names_for_user(user_id: str) -> list[str]:
         return [r["name"] for r in result]
 
 
+def delete_agent(agent_id: str, user_id: str) -> bool:
+    with neo4j_driver.session() as session:
+        return session.execute_write(_delete_agent_tx, agent_id, user_id)
+
+
+def _delete_agent_tx(tx: ManagedTransaction, agent_id: str, user_id: str) -> bool:
+    result = tx.run(
+        "MATCH (a:Agent {agent_id: $agent_id, user_id: $user_id}) "
+        "WITH a, count(a) AS matched "
+        "DETACH DELETE a "
+        "RETURN matched > 0 AS deleted",
+        agent_id=agent_id,
+        user_id=user_id,
+    )
+    record = result.single()
+    return bool(record and record["deleted"])
+
+
 def ensure_agent_indexes() -> None:
     with neo4j_driver.session() as session:
         session.run("DROP CONSTRAINT agent_name_unique IF EXISTS")

@@ -1,11 +1,36 @@
 from __future__ import annotations
 from typing import Optional
-from pydantic import BaseModel, Field
+
+from pydantic import BaseModel, Field, field_validator, model_validator
+
+
+VALID_TRAVERSAL_EDGE_TYPES = {
+    "calls",
+    "publishesto",
+    "consumesfrom",
+    "reads",
+    "writes",
+    "dependson",
+    "deployedon",
+    "ownedby",
+    "authenticatesvia",
+    "ratelimitedby",
+    "fails_over_to",
+}
 
 
 class TraversalStep(BaseModel):
+    label: Optional[str] = Field(
+        None,
+        description="Optional display label for this traversal step",
+    )
+    source_node_types: Optional[list[str]] = Field(
+        None,
+        description="Filter: only start this step from nodes of these types",
+    )
     edge_types: list[str] = Field(
         ...,
+        min_length=1,
         description="Edge types to traverse (e.g. ['calls', 'dependson'])",
     )
     direction: str = Field(
@@ -19,6 +44,21 @@ class TraversalStep(BaseModel):
     )
     min_depth: int = Field(1, ge=1, description="Minimum hops for this step")
     max_depth: int = Field(1, ge=1, le=10, description="Maximum hops for this step")
+
+    @field_validator("edge_types")
+    @classmethod
+    def validate_edge_types(cls, value: list[str]) -> list[str]:
+        normalized = [edge_type.lower() for edge_type in value]
+        unknown = sorted(set(normalized) - VALID_TRAVERSAL_EDGE_TYPES)
+        if unknown:
+            raise ValueError(f"Unsupported traversal edge types: {', '.join(unknown)}")
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_depth_range(self) -> "TraversalStep":
+        if self.max_depth < self.min_depth:
+            raise ValueError("max_depth must be greater than or equal to min_depth")
+        return self
 
 
 class TraversalRule(BaseModel):
@@ -43,19 +83,31 @@ class TraversalRule(BaseModel):
 
 PRESET_RULES: list[dict] = [
     {
-        "name": "Service → Downstream → Data Stores",
-        "description": "Follow calls/dependson from a service to its downstream services, then to databases and caches",
+        "name": "Service Downstream Calls",
+        "description": "Follow direct service calls, external calls, endpoints, and failover targets.",
         "start_node_types": ["Service"],
         "steps": [
             {
-                "edge_types": ["calls", "dependson"],
+                "label": "Runtime calls",
+                "source_node_types": ["Service"],
+                "edge_types": ["calls", "fails_over_to"],
                 "direction": "outgoing",
-                "target_node_types": ["Service", "ExternalAPI"],
+                "target_node_types": ["Service", "Endpoint", "ExternalAPI"],
                 "min_depth": 1,
-                "max_depth": 3,
+                "max_depth": 2,
             },
+        ],
+        "limit": 200,
+    },
+    {
+        "name": "Service Data Access",
+        "description": "Show databases, tables, and caches read or written by services.",
+        "start_node_types": ["Service"],
+        "steps": [
             {
-                "edge_types": ["reads", "writes"],
+                "label": "Data resources",
+                "source_node_types": ["Service"],
+                "edge_types": ["reads", "writes", "dependson"],
                 "direction": "outgoing",
                 "target_node_types": ["Database", "Cache", "Table"],
                 "min_depth": 1,
@@ -65,102 +117,123 @@ PRESET_RULES: list[dict] = [
         "limit": 200,
     },
     {
-        "name": "Topic → Consumers → Downstream",
-        "description": "From a Kafka topic, find consumers and their downstream dependencies",
+        "name": "Topic Producers And Consumers",
+        "description": "Find services and deployments that publish to or consume from topics.",
         "start_node_types": ["QueueTopic"],
         "steps": [
             {
-                "edge_types": ["consumesfrom"],
+                "label": "Topic participants",
+                "source_node_types": ["QueueTopic"],
+                "edge_types": ["publishesto", "consumesfrom"],
                 "direction": "incoming",
-                "target_node_types": ["Service"],
+                "target_node_types": ["Service", "Deployment"],
                 "min_depth": 1,
                 "max_depth": 1,
-            },
-            {
-                "edge_types": ["calls", "dependson", "writes", "reads"],
-                "direction": "outgoing",
-                "min_depth": 1,
-                "max_depth": 2,
             },
         ],
         "limit": 200,
     },
     {
-        "name": "Critical Path: Payments",
-        "description": "All resources owned by the Payments team and their dependencies",
-        "start_node_types": ["TeamOwner"],
+        "name": "Topic Consumer Downstream",
+        "description": "Start from topics, find consumers, then follow their immediate downstream dependencies.",
+        "start_node_types": ["QueueTopic"],
         "steps": [
             {
-                "edge_types": ["ownedby"],
+                "label": "Consumers",
+                "source_node_types": ["QueueTopic"],
+                "edge_types": ["consumesfrom"],
                 "direction": "incoming",
-                "target_node_types": ["Service", "Database"],
+                "target_node_types": ["Service", "Deployment"],
                 "min_depth": 1,
                 "max_depth": 1,
             },
             {
-                "edge_types": ["calls", "dependson", "reads", "writes", "publishesto"],
+                "label": "Consumer dependencies",
+                "source_node_types": ["Service", "Deployment"],
+                "edge_types": ["calls", "reads", "writes", "dependson"],
                 "direction": "outgoing",
+                "target_node_types": ["Service", "Endpoint", "ExternalAPI", "Database", "Cache", "Table", "Library"],
                 "min_depth": 1,
-                "max_depth": 2,
+                "max_depth": 1,
             },
         ],
-        "limit": 300,
+        "limit": 250,
     },
     {
-        "name": "Infrastructure: Service → Deploy → Cluster",
-        "description": "Trace from services through deployments and pods to infrastructure nodes",
+        "name": "Service Runtime Footprint",
+        "description": "Trace services to deployments, pods, nodes, and clusters.",
         "start_node_types": ["Service"],
         "steps": [
             {
+                "label": "Deployments",
+                "source_node_types": ["Service"],
                 "edge_types": ["deployedon"],
-                "direction": "incoming",
+                "direction": "outgoing",
                 "target_node_types": ["Deployment"],
                 "min_depth": 1,
                 "max_depth": 1,
             },
             {
+                "label": "Runtime infrastructure",
+                "source_node_types": ["Deployment"],
                 "edge_types": ["deployedon"],
-                "direction": "outgoing",
-                "target_node_types": ["RegionCluster", "Node"],
+                "direction": "any",
+                "target_node_types": ["Pod", "Node", "RegionCluster"],
                 "min_depth": 1,
                 "max_depth": 2,
             },
         ],
-        "limit": 200,
+        "limit": 250,
     },
     {
-        "name": "Security: Auth Chain",
-        "description": "Show how services authenticate — secrets, configs, and auth dependencies",
+        "name": "Ownership Team Assets",
+        "description": "Find resources owned by teams.",
+        "start_node_types": ["TeamOwner"],
+        "steps": [
+            {
+                "label": "Owned resources",
+                "source_node_types": ["TeamOwner"],
+                "edge_types": ["ownedby"],
+                "direction": "incoming",
+                "target_node_types": ["Service", "Deployment", "Database", "Cache", "QueueTopic", "Endpoint", "Table"],
+                "min_depth": 1,
+                "max_depth": 1,
+            },
+        ],
+        "limit": 300,
+    },
+    {
+        "name": "Security Controls",
+        "description": "Show authentication and rate-limit configuration used by runtime resources.",
         "start_node_types": ["Service"],
         "steps": [
             {
-                "edge_types": ["authenticatesvia"],
+                "label": "Security configuration",
+                "source_node_types": ["Service", "Deployment", "Pod", "Endpoint"],
+                "edge_types": ["authenticatesvia", "ratelimitedby"],
                 "direction": "outgoing",
                 "target_node_types": ["SecretConfig"],
                 "min_depth": 1,
                 "max_depth": 1,
             },
         ],
-        "limit": 100,
+        "limit": 200,
     },
     {
-        "name": "Full Dependency Tree",
-        "description": "Recursive downstream dependency tree from a service, including all resource types",
+        "name": "Failover Chain",
+        "description": "Follow service and deployment failover targets.",
+        "start_node_types": ["Service", "Deployment"],
         "steps": [
             {
-                "edge_types": [
-                    "calls",
-                    "dependson",
-                    "reads",
-                    "writes",
-                    "publishesto",
-                    "consumesfrom",
-                ],
+                "label": "Failover targets",
+                "source_node_types": ["Service", "Deployment"],
+                "edge_types": ["fails_over_to"],
                 "direction": "outgoing",
+                "target_node_types": ["Service"],
                 "min_depth": 1,
-                "max_depth": 5,
+                "max_depth": 2,
             },
         ],
-        "limit": 500,
+        "limit": 150,
     },
 ]
