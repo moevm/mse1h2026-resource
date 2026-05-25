@@ -35,7 +35,16 @@ Backend API: http://localhost:8000
 API Documentation: http://localhost:8000/docs
 доступен сваггер с описанием ручек бэкенда. 
 
+
+Запуск демо приложения в докере
+```bash
+cd mse1h2026-resource/monitoring-microservices-demo
+docker compose up --build
+```
+после запуска нужно подождать около минуты для того чтобы логи дошли от вотчеров, далее можно взаимодействовать с графом.
+
 ## Создание маппингов
+
 
 Маппинг — это конфигурация преобразования сырых данных от агентов в доменную модель графа. Агенты присылают payload'ы в разных форматах: Kubernetes API, OpenTelemetry traces/metrics, Istio logs, Prometheus, Terraform state и т.д. Без маппинга backend сохраняет такой payload как raw chunk, но не знает, какие поля считать сервисом, подом, базой данных, ребром `calls`, `reads`, `deployedon` и т.п.
 
