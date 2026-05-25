@@ -16,6 +16,11 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Paths */
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+
     /* Strict type-checking */
     "strict": true,
     "noImplicitReturns": true,
@@ -29,8 +34,9 @@
 
     /* Additional safety */
     "erasableSyntaxOnly": true,
-    "noUncheckedSideEffectImports": true
+    "noUncheckedSideEffectImports": true,
+    "noErrorTruncation": true,
+    "newLine": "lf"
   },
   "include": ["src"]
 }
-

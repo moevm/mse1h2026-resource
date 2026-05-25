@@ -1,12 +1,7 @@
-import { create } from "zustand";
-import type {
-  RawDataChunk,
-  MappingConfig,
-  FieldMapping,
-  RawDataSource,
-  UnresolvedReference,
-} from "../types/mapper";
-import { mapperApi } from "../api/mapperApi";
+import { create } from 'zustand';
+
+import { mapperApi } from '../api/mapperApi';
+import type { FieldMapping, MappingConfig, RawDataChunk, RawDataSource, UnresolvedReference } from '../types/mapper';
 
 export interface MapperState {
   // Raw data
@@ -56,7 +51,7 @@ export interface MapperState {
     nodes: Record<string, unknown>[],
     edges: Record<string, unknown>[],
     warnings: string[],
-    unresolvedReferences: UnresolvedReference[]
+    unresolvedReferences: UnresolvedReference[],
   ) => void;
   setPreviewLoading: (loading: boolean) => void;
   clearPreview: () => void;
@@ -92,7 +87,7 @@ const initialState = {
   selectedSourceType: null as RawDataSource | null,
   expandedJsonPaths: new Set<string>(),
   selectedFieldPath: null,
-  activeNodeTypes: new Set<string>(["Service"]),
+  activeNodeTypes: new Set<string>(['Service']),
 };
 
 export const useMapperStore = create<MapperState>((set, get) => ({
@@ -117,12 +112,11 @@ export const useMapperStore = create<MapperState>((set, get) => ({
       draftMapping: {
         ...state.draftMapping,
         field_mappings: [
-          ...(state.draftMapping?.field_mappings || []).filter(
+          ...(state.draftMapping?.field_mappings ?? []).filter(
             (existing) =>
               !(
-                existing.target_node_type === mapping.target_node_type &&
-                existing.target_field === mapping.target_field
-              )
+                existing.target_node_type === mapping.target_node_type && existing.target_field === mapping.target_field
+              ),
           ),
           mapping,
         ],
@@ -134,9 +128,7 @@ export const useMapperStore = create<MapperState>((set, get) => ({
       draftMapping: {
         ...state.draftMapping,
         field_mappings:
-          state.draftMapping?.field_mappings?.map((fm) =>
-            fm.id === id ? { ...fm, ...updates } : fm
-          ) || [],
+          state.draftMapping?.field_mappings?.map((fm) => (fm.id === id ? { ...fm, ...updates } : fm)) ?? [],
       },
     })),
 
@@ -144,8 +136,7 @@ export const useMapperStore = create<MapperState>((set, get) => ({
     set((state) => ({
       draftMapping: {
         ...state.draftMapping,
-        field_mappings:
-          state.draftMapping?.field_mappings?.filter((fm) => fm.id !== id) || [],
+        field_mappings: state.draftMapping?.field_mappings?.filter((fm) => fm.id !== id) ?? [],
       },
     })),
 
@@ -157,45 +148,46 @@ export const useMapperStore = create<MapperState>((set, get) => ({
     try {
       if (draft.id) {
         // Update existing
-        const updated = await mapperApi.updateMapping(draft.id, draft as MappingConfig);
+        const updated = await mapperApi.updateMapping(draft.id, draft);
         set({ draftMapping: updated, selectedMapping: updated });
       } else {
         // Create new using backend-required shape
         const generatedId =
-          typeof crypto !== "undefined" && "randomUUID" in crypto
+          typeof crypto !== 'undefined' && 'randomUUID' in crypto
             ? crypto.randomUUID()
             : `mapping-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-        const normalizedName = (draft.name ?? "").trim();
-        const fallbackName = `Mapping ${new Date().toISOString().replace("T", " ").slice(0, 19)}`;
+        const normalizedName = (draft.name ?? '').trim();
+        const fallbackName = `Mapping ${new Date().toISOString().replace('T', ' ').slice(0, 19)}`;
 
         const now = new Date().toISOString();
         const createPayload: MappingConfig = {
           id: generatedId,
           name: normalizedName || fallbackName,
-          source_type: draft.source_type ?? "custom",
-          version: draft.version ?? "1.0.0",
+          source_type: draft.source_type ?? 'custom',
+          version: draft.version ?? '1.0.0',
           is_active: draft.is_active ?? false,
           created_at: draft.created_at ?? now,
           updated_at: draft.updated_at ?? now,
-          created_by: draft.created_by ?? "frontend",
+          created_by: draft.created_by ?? 'frontend',
           description: draft.description ?? null,
           sample_chunk_id: draft.sample_chunk_id ?? null,
+          sample_chunk_ids_by_type: draft.sample_chunk_ids_by_type ?? {},
           field_mappings: draft.field_mappings ?? [],
           conditional_rules: draft.conditional_rules ?? [],
           auto_edge_rules: draft.auto_edge_rules ?? [],
-          edge_preset_id: draft.edge_preset_id ?? "default",
+          edge_preset_id: draft.edge_preset_id ?? 'default',
           edge_source_path: draft.edge_source_path ?? null,
           edge_target_path: draft.edge_target_path ?? null,
           edge_type_path: draft.edge_type_path ?? null,
-          edge_type_default: draft.edge_type_default ?? "dependson",
+          edge_type_default: draft.edge_type_default ?? 'dependson',
         };
 
         const created = await mapperApi.createMapping(createPayload);
         set({ draftMapping: created, selectedMapping: created });
       }
     } catch (error) {
-      console.error("Failed to save mapping:", error);
+      console.error('Failed to save mapping:', error);
       throw error;
     } finally {
       set({ savingMapping: false });
@@ -238,8 +230,8 @@ export const useMapperStore = create<MapperState>((set, get) => ({
     if (!data) return;
 
     const allPaths = new Set<string>();
-    const collectPaths = (obj: unknown, prefix: string = "") => {
-      if (typeof obj !== "object" || obj === null) return;
+    const collectPaths = (obj: unknown, prefix: string = '') => {
+      if (typeof obj !== 'object' || obj === null) return;
       if (Array.isArray(obj)) {
         allPaths.add(prefix);
         obj.forEach((item, index) => {
