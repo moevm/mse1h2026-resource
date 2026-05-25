@@ -16,11 +16,10 @@ from app.api.receiver import router as receiver_router
 from app.api.mapper_config import router as mapper_config_router
 from app.api.mapper_preview import router as mapper_preview_router
 from app.api.edge_presets import router as edge_presets_router
-from app.api.mocker import router as mocker_router
+from app.api.timeline import router as timeline_router
 from app.repositories.neo4j_connection import neo4j_driver
-from app.repositories import agent_repo, application_repo, user_repo
+from app.repositories import agent_repo, application_repo, neo4j_repo, user_repo
 from app.repositories.mapping_repo import mapping_repo
-from app.services.startup_seed_service import seed_admin_demo_data_on_startup
 
 
 @asynccontextmanager
@@ -32,9 +31,35 @@ async def lifespan(application: FastAPI):
     mapping_repo.ensure_indexes()
     user_repo.ensure_user_indexes()
     user_repo.ensure_default_admin()
-    asyncio.create_task(seed_admin_demo_data_on_startup())
+    neo4j_repo.ensure_activity_indexes()
+    try:
+        cleanup = neo4j_repo.cleanup_deprecated_nodes()
+        if cleanup.get("deleted_libraries") or cleanup.get("deleted_ip_nodes"):
+            import logging
+            logging.getLogger(__name__).info(
+                "Deprecated node cleanup: %s", cleanup,
+            )
+    except Exception:
+        pass
+    asyncio.create_task(_activity_cleanup_loop())
     yield
     neo4j_driver.close()
+
+
+async def _activity_cleanup_loop() -> None:
+    import logging
+    import os
+    log = logging.getLogger("activity-cleanup")
+    ttl_hours = int(os.environ.get("ACTIVITY_TTL_HOURS", "24"))
+    interval_seconds = int(os.environ.get("ACTIVITY_CLEANUP_INTERVAL_SECONDS", "3600"))
+    while True:
+        try:
+            await asyncio.sleep(interval_seconds)
+            cutoff_ms = int((__import__("time").time() - ttl_hours * 3600) * 1000)
+            res = neo4j_repo.cleanup_activity_older_than(cutoff_ms)
+            log.info("activity cleanup ttl=%dh: %s", ttl_hours, res)
+        except Exception as e:
+            log.warning("activity cleanup failed: %s", e)
 
 
 app = FastAPI(
@@ -62,9 +87,10 @@ app.include_router(receiver_router, prefix="/api/v1/receiver", tags=["Receiver"]
 app.include_router(mapper_config_router, prefix="/api/v1/mapper", tags=["Mapper"])
 app.include_router(mapper_preview_router, prefix="/api/v1/mapper", tags=["Mapper"])
 app.include_router(edge_presets_router, prefix="/api/v1/edge-presets", tags=["EdgePresets"])
-app.include_router(mocker_router, prefix="/api/v1/mocker", tags=["Mocker"])
+app.include_router(timeline_router, prefix="/api/v1/timeline", tags=["Timeline"])
 
 
 @app.get("/health", tags=["Health"])
+@app.get("/api/v1/health", tags=["Health"])
 async def health():
     return {"status": "ok"}

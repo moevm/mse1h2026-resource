@@ -46,7 +46,7 @@ async def register_agent(user: CurrentUser, body: AgentRegisterRequest) -> Agent
         agent_id=data["agent_id"],
         token=data["token"],
         name=data["name"],
-        source_type=data["source_type"],
+        source_type=data.get("source_type"),
         registered_at=datetime.fromisoformat(data["registered_at"]),
     )
 
@@ -64,7 +64,7 @@ async def list_agents(user: CurrentUser) -> List[AgentInfo]:
             AgentInfo(
                 agent_id=a["agent_id"],
                 name=a["name"],
-                source_type=a["source_type"],
+                source_type=a.get("source_type"),
                 description=a.get("description"),
                 registered_at=datetime.fromisoformat(a["registered_at"]) if a.get("registered_at") else None,
                 last_seen_at=datetime.fromisoformat(a["last_seen_at"]) if a.get("last_seen_at") else None,
@@ -73,3 +73,17 @@ async def list_agents(user: CurrentUser) -> List[AgentInfo]:
             )
         )
     return result
+
+
+@router.delete(
+    "/{agent_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Delete a registered agent",
+)
+async def delete_agent(user: CurrentUser, agent_id: str):
+    deleted = agent_repo.delete_agent(agent_id=agent_id, user_id=user["user_id"])
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Agent {agent_id} not found",
+        )

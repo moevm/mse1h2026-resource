@@ -84,7 +84,7 @@ async def get_application(user: CurrentUser, app_id: str) -> ApplicationDetail:
         AgentInfo(
             agent_id=a["agent_id"],
             name=a["name"],
-            source_type=a["source_type"],
+            source_type=a.get("source_type"),
             description=a.get("description"),
             registered_at=datetime.fromisoformat(a["registered_at"]) if a.get("registered_at") else None,
             last_seen_at=datetime.fromisoformat(a["last_seen_at"]) if a.get("last_seen_at") else None,

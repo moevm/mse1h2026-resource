@@ -18,10 +18,13 @@ log = logging.getLogger(__name__)
 
 def _to_graph_node(raw: Dict[str, Any]) -> GraphNode:
     reserved = {
-        "id", "type", "name", "status", "environment",
-        "source", "created_at", "updated_at", "last_seen_at",
+        "id", "type", "name", "status", "environment", "source", "updated_at",
     }
     props = {k: v for k, v in raw.items() if k not in reserved}
+    for k in ("created_at", "last_seen_at"):
+        v = props.get(k)
+        if v is not None and not isinstance(v, (str, int, float, bool)):
+            props[k] = str(v)
     return GraphNode(
         id=raw["id"],
         type=raw.get("type", "unknown"),
@@ -83,6 +86,9 @@ def get_full_graph(
     exclude_node_types: Optional[List[str]] = None,
     exclude_edge_types: Optional[List[str]] = None,
     filter_mode: str = "ghost",
+    as_of: Optional[str] = None,
+    window_start: Optional[str] = None,
+    window_end: Optional[str] = None,
 ) -> GraphResponse:
     ex_nodes = exclude_node_types if filter_mode == "exclude" else None
     ex_edges = exclude_edge_types if filter_mode == "exclude" else None
@@ -93,6 +99,7 @@ def get_full_graph(
             return GraphResponse(nodes=[], edges=[], node_count=0, edge_count=0)
         raw_nodes, raw_edges = neo4j_repo.get_graph_by_sources(
             agent_names, limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
+            as_of=as_of,
         )
     elif user_id:
         agent_names = agent_repo.get_agent_names_for_user(user_id)
@@ -100,12 +107,134 @@ def get_full_graph(
             return GraphResponse(nodes=[], edges=[], node_count=0, edge_count=0)
         raw_nodes, raw_edges = neo4j_repo.get_graph_by_sources(
             agent_names, limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
+            as_of=as_of,
         )
     else:
         raw_nodes, raw_edges = neo4j_repo.get_full_graph(
-            limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges,
+            limit, exclude_node_types=ex_nodes, exclude_edge_types=ex_edges, as_of=as_of,
         )
+
+    endpoint_activity = _load_endpoint_activity(raw_nodes, window_start, window_end) if raw_nodes else {}
+
+    if window_start or window_end:
+        _enrich_edges_with_window(raw_edges, window_start, window_end)
+        _enrich_endpoints_with_window(raw_nodes, endpoint_activity)
+    if endpoint_activity:
+        _enrich_ownedby_edges_with_endpoint_load(raw_edges, endpoint_activity)
+
     return _build_response(raw_nodes, raw_edges)
+
+
+def _enrich_edges_with_window(
+    raw_edges: List[Dict[str, Any]],
+    window_start: Optional[str],
+    window_end: Optional[str],
+) -> None:
+    if not raw_edges:
+        return
+    sigs = []
+    sig_by_edge: Dict[int, str] = {}
+    for i, e in enumerate(raw_edges):
+        src = e.get("source_id")
+        tgt = e.get("target_id")
+        typ = e.get("type")
+        if not (src and tgt and typ):
+            continue
+        sig = f"{src}|{tgt}|{typ.upper()}"
+        sigs.append(sig)
+        sig_by_edge[i] = sig
+
+    if not sigs:
+        return
+
+    activity = neo4j_repo.get_edge_activity_window(sigs, window_start, window_end)
+
+    for i, e in enumerate(raw_edges):
+        sig = sig_by_edge.get(i)
+        if not sig:
+            continue
+        cell = activity.get(sig)
+        if cell is None:
+            e["call_count_window"] = 0
+            e["error_count_window"] = 0
+            e["avg_latency_ms_window"] = 0.0
+            continue
+        spans = cell["span_count"]
+        e["call_count_window"] = spans
+        e["error_count_window"] = cell["error_count"]
+        e["avg_latency_ms_window"] = (
+            (cell["total_duration_ns"] / spans / 1_000_000.0) if spans > 0 else 0.0
+        )
+
+
+def _load_endpoint_activity(
+    raw_nodes: List[Dict[str, Any]],
+    window_start: Optional[str],
+    window_end: Optional[str],
+) -> Dict[str, Dict[str, float]]:
+    endpoint_specs = []
+    for node in raw_nodes:
+        if node.get("type") != "Endpoint":
+            continue
+        endpoint_id = node.get("id")
+        service_name = node.get("service_name")
+        span_name = node.get("name")
+        if not (endpoint_id and service_name and span_name):
+            continue
+        endpoint_specs.append(
+            {
+                "id": endpoint_id,
+                "service_name": str(service_name),
+                "endpoint_name": str(span_name),
+                "path": str(node.get("path") or ""),
+                "method": str(node.get("method") or ""),
+            }
+        )
+
+    if not endpoint_specs:
+        return {}
+
+    return neo4j_repo.get_endpoint_activity_window(endpoint_specs, window_start, window_end)
+
+
+def _enrich_ownedby_edges_with_endpoint_load(
+    raw_edges: List[Dict[str, Any]],
+    endpoint_activity: Dict[str, Dict[str, float]],
+) -> None:
+    if not raw_edges or not endpoint_activity:
+        return
+
+    for edge in raw_edges:
+        if str(edge.get("type", "")).lower() != "ownedby":
+            continue
+        endpoint_id = str(edge.get("source_id") or "")
+        cell = endpoint_activity.get(endpoint_id)
+        if not cell:
+            continue
+        edge["call_count_window"] = int(cell["call_count"])
+        edge["error_count_window"] = int(cell["error_count"])
+        edge["avg_latency_ms_window"] = float(cell["latency_p99_ms"])
+
+
+def _enrich_endpoints_with_window(
+    raw_nodes: List[Dict[str, Any]],
+    endpoint_activity: Dict[str, Dict[str, float]],
+) -> None:
+    if not endpoint_activity:
+        return
+
+    for node in raw_nodes:
+        if node.get("type") != "Endpoint":
+            continue
+        cell = endpoint_activity.get(str(node.get("id")))
+        if not cell:
+            node["current_rps"] = 0
+            node["error_count_1h"] = 0
+            node["latency_p99_ms"] = 0.0
+            continue
+        node["current_rps"] = cell["call_count"]
+        node["error_count_1h"] = int(cell["error_count"])
+        node["latency_p99_ms"] = cell["latency_p99_ms"]
 
 
 def get_subgraph(

@@ -31,6 +31,7 @@ class MappingRepository:
             "created_by": mapping.created_by,
             "description": mapping.description,
             "sample_chunk_id": mapping.sample_chunk_id,
+            "sample_chunk_ids_by_type": json.dumps(mapping.sample_chunk_ids_by_type or {}),
             "field_mappings": json.dumps([
                 self._dump_model_or_dict(fm) for fm in mapping.field_mappings
             ]),
@@ -69,6 +70,7 @@ class MappingRepository:
             created_by=data.get("created_by", "system"),
             description=data.get("description"),
             sample_chunk_id=data.get("sample_chunk_id"),
+            sample_chunk_ids_by_type=json.loads(data.get("sample_chunk_ids_by_type", "{}")),
             field_mappings=field_mappings,
             conditional_rules=conditional_rules,
             auto_edge_rules=auto_edge_rules,

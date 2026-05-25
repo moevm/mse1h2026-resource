@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from app.api.auth import CurrentUser
 from app.models.topology import (
@@ -12,6 +14,7 @@ from app.models.topology import (
     PathRequest,
     SubgraphRequest,
 )
+from app.repositories import neo4j_repo
 from app.services import graph_service
 
 router = APIRouter()
@@ -30,6 +33,9 @@ async def full_graph(
     exclude_node_types: Optional[str] = Query(None, description="Comma-separated node types to exclude"),
     exclude_edge_types: Optional[str] = Query(None, description="Comma-separated edge types to exclude"),
     filter_mode: str = Query("ghost", description="Filter mode: ghost or exclude"),
+    as_of: Optional[str] = Query(None, description="ISO datetime — show graph state at this time"),
+    window_start: Optional[str] = Query(None, description="ISO datetime — start of activity window for per-edge metrics"),
+    window_end: Optional[str] = Query(None, description="ISO datetime — end of activity window for per-edge metrics"),
 ):
     ex_nodes = exclude_node_types.split(",") if exclude_node_types else None
     ex_edges = exclude_edge_types.split(",") if exclude_edge_types else None
@@ -40,6 +46,9 @@ async def full_graph(
         exclude_node_types=ex_nodes,
         exclude_edge_types=ex_edges,
         filter_mode=filter_mode,
+        as_of=as_of,
+        window_start=window_start,
+        window_end=window_end,
     )
 
 
@@ -122,3 +131,49 @@ async def graph_layout(
     layout: Annotated[str, Query(pattern="^(spring|kamada_kawai|circular|shell)$")] = "spring",
 ):
     return graph_service.get_graph_with_layout(limit, layout, user_id=user["user_id"])
+
+
+class DeleteNodeResponse(BaseModel):
+    deleted: bool
+    node_id: str
+    deleted_edges: int
+
+
+class ClearStaleRequest(BaseModel):
+    ttl_seconds: int = 300
+
+
+class ClearStaleResponse(BaseModel):
+    deleted_nodes: int
+    deleted_edges: int
+    cutoff_iso: str
+
+
+@router.delete(
+    "/node/{node_id:path}",
+    response_model=DeleteNodeResponse,
+    summary="Delete a single node (and its edges) by external_id",
+)
+async def delete_node(user: CurrentUser, node_id: str):
+    result = neo4j_repo.delete_node_by_external_id(node_id)
+    if not result["deleted"]:
+        raise HTTPException(status_code=404, detail="Node not found")
+    return DeleteNodeResponse(
+        deleted=True, node_id=node_id, deleted_edges=result["deleted_edges"],
+    )
+
+
+@router.post(
+    "/clear-stale",
+    response_model=ClearStaleResponse,
+    summary="Delete all nodes whose last_seen_at is older than ttl_seconds",
+)
+async def clear_stale_nodes(user: CurrentUser, body: ClearStaleRequest):
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=body.ttl_seconds)
+    cutoff_iso = cutoff.isoformat()
+    result = neo4j_repo.delete_nodes_older_than(cutoff_iso)
+    return ClearStaleResponse(
+        deleted_nodes=result["deleted_nodes"],
+        deleted_edges=result["deleted_edges"],
+        cutoff_iso=cutoff_iso,
+    )

@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 
 from app.api.auth import CurrentUser
@@ -31,10 +31,17 @@ router = APIRouter()
 log = logging.getLogger(__name__)
 
 
+def _sample_chunk_scope_key(agent_id: Optional[str], chunk_type_id: Optional[int]) -> Optional[str]:
+    if not agent_id or chunk_type_id is None:
+        return None
+    return f"{agent_id}:{int(chunk_type_id)}"
+
+
 class MappingUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     sample_chunk_id: Optional[str] = None
+    sample_chunk_ids_by_type: Optional[Dict[str, str]] = None
     field_mappings: Optional[List[FieldMapping]] = None
     conditional_rules: Optional[List[ConditionalRule]] = None
     auto_edge_rules: Optional[List[AutoEdgeRule]] = None
@@ -78,9 +85,35 @@ class DeactivateAndClearResponse(BaseModel):
     deleted_edges: int = 0
 
 
-async def replay_mapping_background(mapping_id: str) -> None:
-    """Background task to replay mapping on all historical data."""
+async def _normalize_sample_chunk_ids_by_type(mapping: MappingConfig) -> None:
+    sample_map = dict(mapping.sample_chunk_ids_by_type or {})
+    normalized_map: Dict[str, str] = {}
+    sample_chunk_id = mapping.sample_chunk_id
+    if sample_chunk_id:
+        chunk = await raw_data_repo.get_chunk(sample_chunk_id)
+        if chunk and chunk.get("chunk_type_id") is not None:
+            type_id = int(chunk["chunk_type_id"])
+            normalized_map.setdefault(str(type_id), sample_chunk_id)
+            scoped_key = _sample_chunk_scope_key(chunk.get("agent_id"), type_id)
+            if scoped_key:
+                normalized_map[scoped_key] = sample_chunk_id
+    for chunk_id in sample_map.values():
+        chunk = await raw_data_repo.get_chunk(chunk_id)
+        if chunk and chunk.get("chunk_type_id") is not None:
+            type_id = int(chunk["chunk_type_id"])
+            normalized_map.setdefault(str(type_id), chunk_id)
+            scoped_key = _sample_chunk_scope_key(chunk.get("agent_id"), type_id)
+            if scoped_key:
+                normalized_map[scoped_key] = chunk_id
+        else:
+            for key, value in sample_map.items():
+                if value == chunk_id:
+                    normalized_map.setdefault(key, chunk_id)
+        await raw_data_repo.pin_chunk(chunk_id)
+    mapping.sample_chunk_ids_by_type = normalized_map
 
+
+async def replay_mapping_background(mapping_id: str) -> None:
     log.info(f"Starting background replay for mapping {mapping_id}")
 
     mapping = mapping_repo.get(mapping_id)
@@ -89,6 +122,8 @@ async def replay_mapping_background(mapping_id: str) -> None:
         return
 
     try:
+        from app.repositories import neo4j_repo
+
         chunks_response = await raw_data_repo.list_chunks(
             limit=10000,
         )
@@ -99,20 +134,31 @@ async def replay_mapping_background(mapping_id: str) -> None:
         total_edges = 0
 
         all_created_nodes: List[Dict[str, Any]] = []
+        produced_node_ids: set = set()
+        produced_edge_keys: set = set()
+        affected_sources: set = set()
 
         for chunk in chunks:
             try:
                 nodes, edges, unresolved = mapper_service.map_chunk(chunk, mapping)
                 agent_name = chunk.metadata.get("agent_name", "replay") if chunk.metadata else "replay"
+                affected_sources.add(agent_name)
 
                 if nodes:
                     upsert_nodes(nodes, source=agent_name)
                     total_nodes += len(nodes)
                     all_created_nodes.extend(nodes)
+                    for n in nodes:
+                        if n.get("id"):
+                            produced_node_ids.add(n["id"])
 
                 if edges:
                     upsert_edges(edges, source=agent_name)
                     total_edges += len(edges)
+                    for e in edges:
+                        src, tgt, t = e.get("source_id"), e.get("target_id"), e.get("type")
+                        if src and tgt and t:
+                            produced_edge_keys.add(f"{src}|{tgt}|{t.upper()}")
 
                 total_processed += 1
 
@@ -128,13 +174,26 @@ async def replay_mapping_background(mapping_id: str) -> None:
                 agent_name = chunks[0].metadata.get("agent_name", "replay") if chunks and chunks[0].metadata else "replay"
                 upsert_edges(new_edges, source=agent_name)
                 total_edges += len(new_edges)
+                for e in new_edges:
+                    src, tgt, t = e.get("source_id"), e.get("target_id"), e.get("type")
+                    if src and tgt and t:
+                        produced_edge_keys.add(f"{src}|{tgt}|{t.upper()}")
                 log.info(f"Created {len(new_edges)} additional edges after all nodes were inserted")
             if new_unresolved:
                 log.info(f"Still unresolved: {len(new_unresolved)} references")
 
+        pruned = {"deleted_nodes": 0, "deleted_edges": 0}
+        if affected_sources and produced_node_ids:
+            pruned = neo4j_repo.prune_unproduced(
+                sources=list(affected_sources),
+                produced_node_ids=list(produced_node_ids),
+                produced_edge_keys=list(produced_edge_keys),
+            )
+
         log.info(
             f"Background replay complete for {mapping_id}: "
-            f"{total_processed} chunks, {total_nodes} nodes, {total_edges} edges"
+            f"{total_processed} chunks, {total_nodes} nodes, {total_edges} edges; "
+            f"pruned: {pruned['deleted_nodes']} nodes, {pruned['deleted_edges']} edges"
         )
 
     except Exception as e:
@@ -158,6 +217,7 @@ async def create_mapping(user: CurrentUser, config: MappingConfig):
     # Auto-pin sample chunk so it doesn't expire
     if config.sample_chunk_id:
         await raw_data_repo.pin_chunk(config.sample_chunk_id)
+    await _normalize_sample_chunk_ids_by_type(config)
 
     created = mapping_repo.create(config, user_id=user["user_id"])
     return created
@@ -246,9 +306,7 @@ async def instantiate_mapping_template(
     # find the first chunk from an agent matching the template's source_type
     sample_chunk_id = request.sample_chunk_id
     if not sample_chunk_id and template.source_type:
-        from app.repositories.agent_repo import agent_repo as _agent_repo
-
-        agents = _agent_repo.list_agents(user_id=user["user_id"])
+        agents = agent_repo.list_agents(user_id=user["user_id"])
         matching_agents = [
             a for a in agents if a.get("source_type") == template.source_type
         ]
@@ -270,11 +328,48 @@ async def instantiate_mapping_template(
     # Auto-pin the sample chunk so it doesn't expire
     if sample_chunk_id:
         await raw_data_repo.pin_chunk(sample_chunk_id)
+    await _normalize_sample_chunk_ids_by_type(created)
 
     if request.activate:
         mapping_repo.deactivate_all_for_source(created.source_type)
 
     return mapping_repo.create(created, user_id=user["user_id"])
+
+
+@router.post(
+    "/templates/import",
+    summary="Import mapping template JSON files",
+    status_code=status.HTTP_201_CREATED,
+)
+async def import_mapping_templates(
+    user: CurrentUser,
+    files: list[UploadFile] = File(..., description="One or more mapping template JSON files"),
+):
+    """Upload mapping template JSON files. Existing files are not overwritten —
+    a numeric suffix is appended instead. After saving, templates are reloaded
+    and returned as a summary list."""
+    import json as _json
+
+    saved: list[dict] = []
+    errors: list[dict] = []
+
+    for f in files:
+        content = await f.read()
+        try:
+            raw = _json.loads(content)
+            # Validate it parses as MappingConfig
+            MappingConfig(**raw)
+        except Exception as exc:
+            errors.append({"filename": f.filename, "error": str(exc)})
+            continue
+
+        path = mapping_template_repo.save_uploaded_template(f.filename or "uploaded.json", content)
+        saved.append({"filename": f.filename, "path": path})
+
+    if saved:
+        mapping_template_repo.reload()
+
+    return {"saved": saved, "errors": errors, "total_templates": len(mapping_template_repo.list())}
 
 
 @router.post(
@@ -369,6 +464,7 @@ async def update_mapping(user: CurrentUser, mapping_id: str, updates: MappingUpd
     new_sample_chunk_id = update_data.get("sample_chunk_id")
     if new_sample_chunk_id:
         await raw_data_repo.pin_chunk(new_sample_chunk_id)
+    await _normalize_sample_chunk_ids_by_type(existing)
 
     updated = mapping_repo.update(mapping_id, existing)
     return updated

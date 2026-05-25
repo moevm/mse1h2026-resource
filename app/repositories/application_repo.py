@@ -187,6 +187,25 @@ def _get_agent_names_tx(tx: ManagedTransaction, app_id: str) -> List[str]:
     return [r["name"] for r in result]
 
 
+def get_agent_names_for_application_and_user(app_id: str, user_id: str) -> List[str]:
+    with neo4j_driver.session() as session:
+        return session.execute_read(_get_agent_names_for_user_app_tx, app_id, user_id)
+
+
+def _get_agent_names_for_user_app_tx(
+    tx: ManagedTransaction,
+    app_id: str,
+    user_id: str,
+) -> List[str]:
+    result = tx.run(
+        "MATCH (app:Application {app_id: $app_id, user_id: $user_id})-[:HAS_AGENT]->(a:Agent {user_id: $user_id}) "
+        "RETURN a.name AS name",
+        app_id=app_id,
+        user_id=user_id,
+    )
+    return [r["name"] for r in result]
+
+
 def ensure_application_indexes() -> None:
     with neo4j_driver.session() as session:
         # Old global name constraint cannot coexist with multi-user applications.
