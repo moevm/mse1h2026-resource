@@ -11,7 +11,7 @@ from app.models.mapper.template import MappingTemplateSummary
 
 BUNDLED_TEMPLATES_DIR = Path(__file__).parent.parent / "mapping_templates"
 UPLOADED_TEMPLATES_DIR = Path(
-    os.environ.get("MAPPING_TEMPLATES_UPLOAD_DIR", "/tmp/mapping_templates")  # nosec B108
+    os.environ.get("MAPPING_TEMPLATES_UPLOAD_DIR", "/tmp/mapping_templates")  # noqa: S108
 )
 
 

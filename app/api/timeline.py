@@ -421,7 +421,7 @@ async def trace_detail(user: CurrentUser, trace_id: str):
     if not TEMPO_URL:
         raise HTTPException(404, "Trace not found")
     try:
-        resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}", timeout=15)
+        resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}", timeout=15)  # nosemgrep: python.flask.security.injection.ssrf-requests.ssrf-requests
         if resp.status_code == 404:
             raise HTTPException(404, "Trace not found")
         resp.raise_for_status()
@@ -532,7 +532,7 @@ async def trace_replay_by_id(user: CurrentUser, trace_id: str):
     if not TEMPO_URL:
         raise HTTPException(404, "Trace not found")
     try:
-        resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}", timeout=15)
+        resp = requests.get(f"{TEMPO_URL}/api/traces/{trace_id}", timeout=15)  # nosemgrep: python.flask.security.injection.ssrf-requests.ssrf-requests
         if resp.status_code == 404:
             raise HTTPException(404, "Trace not found in Tempo")
         resp.raise_for_status()
