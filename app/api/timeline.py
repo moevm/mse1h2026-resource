@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import logging
 import os
+import re
 from typing import Annotated, Any, Dict, List, Optional
 
 import requests
@@ -18,6 +20,14 @@ from app.repositories import neo4j_repo
 from app.services.endpoint_identity import build_endpoint_urn
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+_TRACE_ID_RE = re.compile(r"^[0-9a-fA-F]{16,32}$")
+
+
+def _validate_trace_id(trace_id: str) -> None:
+    if not _TRACE_ID_RE.match(trace_id):
+        raise HTTPException(400, "Invalid trace_id format")
 
 TEMPO_URL = os.environ.get("TEMPO_URL", "").rstrip("/")
 
@@ -404,6 +414,7 @@ async def list_traces(
     summary="Get a full saved trace with spans and replay hops",
 )
 async def trace_detail(user: CurrentUser, trace_id: str):
+    _validate_trace_id(trace_id)
     detail = neo4j_repo.get_trace_detail(trace_id)
     if detail:
         return {**detail, "source": "neo4j"}
@@ -500,7 +511,8 @@ async def trace_replay_latest(
             resp = requests.get(f"{TEMPO_URL}/api/traces/{tid}", timeout=15)
             resp.raise_for_status()
             trace = resp.json()
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to fetch trace %s from Tempo: %s", tid, e)
             continue
         result = _build_hops_from_trace(trace)
         if result["hops"]:
@@ -513,6 +525,7 @@ async def trace_replay_latest(
     summary="Replay a specific trace as ordered caller→callee hops",
 )
 async def trace_replay_by_id(user: CurrentUser, trace_id: str):
+    _validate_trace_id(trace_id)
     detail = neo4j_repo.get_trace_detail(trace_id)
     if detail:
         return {"trace_id": detail["trace_id"], "hops": detail.get("hops", []), "spans": detail.get("spans", []), "source": "neo4j"}
