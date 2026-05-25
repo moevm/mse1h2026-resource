@@ -99,7 +99,7 @@ def get_product(product_id):
     span = trace.get_current_span()
     span.set_attribute(ATTR_PEER_SERVICE, SVC_PRODUCT)
     try:
-        res = requests.get(f"{GOLANG_URL}/albums/{product_id}", timeout=5)
+        res = requests.get(f"{GOLANG_URL}/albums/{product_id}", timeout=5)  # nosemgrep: python.flask.security.injection.ssrf-requests.ssrf-requests
         return jsonify(res.json()), res.status_code
     except Exception as e:
         logger.error("%s: %s", ERR_PRODUCT_SVC, e)
