@@ -13,12 +13,6 @@ spec:
       labels:
         app: fastapi-app
         team: backend
-      annotations:
-        topology.mse.io/depends-libraries: "sqlalchemy,fastapi,uvicorn"
-        topology.mse.io/rate-limited-by: "api-rate-limits"
-        topology.mse.io/fails-over-to: "golang-app"
-        topology.mse.io/reads-cache: "session-cache"
-        topology.mse.io/writes-cache: "session-cache"
     spec:
       imagePullSecrets:
         - name: dockerhub-secret

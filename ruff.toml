@@ -1,7 +1,7 @@
 # Ruff: fast Python linter — focused on real issues, not style nitpicks.
 target-version = "py312"
 line-length = 120
-extend-exclude = [".venv", "node_modules", "frontend", "mocker", "schemas"]
+extend-exclude = [".venv", "node_modules", "frontend", "schemas"]
 
 [lint]
 select = [

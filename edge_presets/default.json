@@ -48,9 +48,6 @@
     {"id": "slo-to-service", "source_type": "SLASLO", "source_field": "service_ref", "target_type": "Service", "target_field": "name", "edge_type": "dependson"},
     {"id": "cache-owner-service", "source_type": "Cache", "source_field": "owner_service", "target_type": "Service", "target_field": "name", "edge_type": "ownedby"},
     {"id": "database-owner-service", "source_type": "Database", "source_field": "owner_service", "target_type": "Service", "target_field": "name", "edge_type": "ownedby"},
-    {"id": "table-owner-service", "source_type": "Table", "source_field": "owner_service", "target_type": "Service", "target_field": "name", "edge_type": "ownedby"},
-    {"id": "secretconfig-to-service", "source_type": "SecretConfig", "source_field": "services", "target_type": "Service", "target_field": "name", "edge_type": "usedby"},
-    {"id": "queue-publishers", "source_type": "QueueTopic", "source_field": "publishers", "target_type": "Service", "target_field": "name", "edge_type": "publishedby"},
-    {"id": "queue-consumers", "source_type": "QueueTopic", "source_field": "consumers", "target_type": "Service", "target_field": "name", "edge_type": "consumedby"}
+    {"id": "table-owner-service", "source_type": "Table", "source_field": "owner_service", "target_type": "Service", "target_field": "name", "edge_type": "ownedby"}
   ]
 }

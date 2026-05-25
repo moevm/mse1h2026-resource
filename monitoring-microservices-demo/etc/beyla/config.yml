@@ -1,6 +1,7 @@
 discovery:
   instrument:
-    - open_ports: 8002
+    - name: golang-app
+      open_ports: 8002
 
 log_level: DEBUG
 
@@ -9,6 +10,8 @@ ebpf:
 
 otel_traces_export:
   endpoint: http://otel-collector:4317
+  resource:
+    service.name: golang-app
 
 prometheus_export:
   port: 8999

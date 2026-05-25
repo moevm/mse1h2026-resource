@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traffic-generator
+  namespace: monitoring-demo
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: traffic-generator
+  template:
+    metadata:
+      labels:
+        app: traffic-generator
+    spec:
+      imagePullSecrets:
+        - name: dockerhub-secret
+      containers:
+        - name: traffic-generator
+          image: rectid/general:traffic-generator
+          imagePullPolicy: Always
+          env:
+            - name: FASTAPI_URL
+              value: "http://fastapi-app:8000"
+            - name: FLASK_URL
+              value: "http://flask-app:8001"
+            - name: GOLANG_URL
+              value: "http://golang-app:8002"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi

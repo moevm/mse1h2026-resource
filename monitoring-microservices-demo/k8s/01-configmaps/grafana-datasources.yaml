@@ -95,7 +95,7 @@ data:
             - matcherRegex: "trace_id"
               matcherType: "label"
               name: Jaeger
-              url: 'http://10.128.8.200:16686/trace/$${__value.raw}'
+              url: 'http://10.128.9.212:16686/trace/$${__value.raw}'
               urlDisplayLabel: 'Jaeger'
         readOnly: false
         editable: true

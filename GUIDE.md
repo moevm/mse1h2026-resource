@@ -20,21 +20,6 @@
 
 > Проект: `monitoring-microservices-demo`
 
-```bash
-cd monitoring-microservices-demo/k8s
-
-# 1. Собрать и запушить образы в Docker Hub, поменяйте переменую с указанием проекта
-./build-and-load-images.sh
-
-# 2. Развернуть инфраструктуру (namespace, configmaps, secrets, storage, observability)
-./apply.sh
-
-# 3. Развернуть приложения и observability-стек, поменяйте переменую с указанием проекта
-./apply-apps.sh
-```
-
-Скрипты используют SSH-доступ к ноде `vpa-k8s-server-1.l.postgrespro.ru` (конфиг и ключ из `~/envs/k8s/ssh/`). Неймспейс: `monitoring-demo`.
-
 **Проверка корректности работы:**
 Все поды ищз неймспейсам monitoring-demo должны быть runnung. Можно посмотреть на демо видео к третьей итерации в ветке reports.
 ```bash
@@ -150,53 +135,11 @@ curl -X POST "http://localhost:8000/api/v1/receiver/raw?source_type=kubernetes-a
 
 ---
 
-## 6. Создание / загрузка дефолтных маппингов
+## 6. Создание и настройка маппингов
 
-Маппинги преобразуют raw-данные от агентов в узлы и рёбра графа. Дефолтные маппинги создаются один раз.
+Маппинги преобразуют raw-данные от агентов в узлы и рёбра графа. Они создаются и редактируются через вкладку **Mapper** или REST API `/api/v1/mapper`. Готовые шаблоны находятся в `app/mapping_templates/`.
 
-### Через UI (рекомендуемый способ)
-
-1. Залогиньтесь → перейдите на вкладку **Mapper** (http://localhost:3000/mapper)
-2. Нажмите **«Create default mappings»** — создаст и активирует все маппинги
-3. Нажмите **«Generate mock data»** — сгенерирует тестовые данные для всех source types
-
-### Через API
-
-```bash
-TOKEN="<access_token>"
-
-# Создать дефолтные маппинги
-curl -X POST http://localhost:8000/api/v1/mocker/create-mappings \
-  -H "Authorization: Bearer $TOKEN"
-
-# Сгенерировать mock-данные
-curl -X POST http://localhost:8000/api/v1/mocker/generate-full \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-### Через CLI (внутри контейнера)
-
-```bash
-# Зайти в контейнер бэкенда
-docker exec -it resource-backend sh
-
-# Сгенерировать mock-данные
-python -m mocker.run --full --url http://localhost:8000
-
-# Создать маппинги
-python -m mocker.create_mappings --url http://localhost:8000
-```
-
-**Опции `create_mappings`:**
-
-```bash
-python -m mocker.create_mappings --dry-run -v          # Предпросмотр без изменений
-python -m mocker.create_mappings --source-type kubernetes-api  # Только один source type
-python -m mocker.create_mappings --no-activate         # Создать без активации
-python -m mocker.create_mappings --skip-data           # Пропустить отправку sample-данных
-```
-
-**Дефолтные маппинги включают:**
+**Поддерживаемые source types:**
 
 | Source type | Описание |
 |-------------|----------|
@@ -223,7 +166,7 @@ docker compose up --build -d
 
 # 2. Зайти на http://localhost:3000 → Register → создать аккаунт
 
-# 3. В UI: Mapper → "Create default mappings" → "Generate mock data"
+# 3. В UI: Mapper → создать или отредактировать mapping под нужный `source_type`
 
 # 4. Перейти на Graph → увидеть граф топологии
 
