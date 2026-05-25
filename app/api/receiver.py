@@ -12,11 +12,60 @@ from app.repositories.raw_data_repo import raw_data_repo
 from app.repositories.mapping_repo import mapping_repo
 from app.repositories.neo4j_repo import delete_edge, upsert_nodes, upsert_edges, upsert_trace_span
 from app.services.mapper_service import mapper_service
+from app.services.endpoint_identity import build_endpoint_urn
 from app.services.trace_service import normalize_span_payload, trace_metrics_from_span
 from app.services.trace_topology import apply_trace_topology_enrichment
 
 router = APIRouter()
 log = logging.getLogger(__name__)
+
+
+def _trace_caller_enrichment(
+    span: Dict[str, Any],
+) -> Optional[tuple[list[Dict[str, Any]], Dict[str, Any]]]:
+    """Build Endpoint node + calls edge for a SERVER span that has a known caller.
+
+    Returns (nodes, edge) or None if the span is not a server span or lacks
+    the required fields.
+    """
+    if span.get("span_kind") != "SPAN_KIND_SERVER":
+        return None
+    service_name: Optional[str] = span.get("service_name")
+    span_name: Optional[str] = span.get("span_name")
+    caller_service: Optional[str] = span.get("caller_service")
+    if not service_name or not span_name or not caller_service:
+        return None
+
+    endpoint_urn = build_endpoint_urn(service_name, span_name)
+    if not endpoint_urn:
+        return None
+
+    endpoint_node: Dict[str, Any] = {
+        "id": endpoint_urn,
+        "type": "Endpoint",
+        "name": span_name,
+        "service_name": service_name,
+    }
+    http_route: Optional[str] = span.get("http_route")
+    http_method: Optional[str] = span.get("http_method")
+    if http_route:
+        endpoint_node["http_route"] = http_route
+    if http_method:
+        endpoint_node["http_method"] = http_method
+
+    service_node: Dict[str, Any] = {
+        "id": f"urn:service:{service_name}",
+        "type": "Service",
+        "name": service_name,
+    }
+
+    edge: Dict[str, Any] = {
+        "source_id": f"urn:service:{caller_service}",
+        "target_id": endpoint_urn,
+        "type": "calls",
+    }
+
+    return [endpoint_node, service_node], edge
 
 
 def _extract_trace_metrics(payload: Dict[str, Any]) -> Optional[Dict[str, Any]]:
