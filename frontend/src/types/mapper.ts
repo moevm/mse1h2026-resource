@@ -1,15 +1,15 @@
 // Raw Data Types
 export type RawDataSource =
-  | "opentelemetry-traces"
-  | "opentelemetry-metrics"
-  | "istio-metrics"
-  | "istio-access-logs"
-  | "kubernetes-api"
-  | "prometheus"
-  | "terraform-state"
-  | "argocd"
-  | "api-gateway"
-  | "custom";
+  | 'opentelemetry-traces'
+  | 'opentelemetry-metrics'
+  | 'istio-metrics'
+  | 'istio-access-logs'
+  | 'kubernetes-api'
+  | 'prometheus'
+  | 'terraform-state'
+  | 'argocd'
+  | 'api-gateway'
+  | 'custom';
 
 export interface RawDataChunk {
   id: string;
@@ -24,6 +24,19 @@ export interface RawDataChunk {
   processed_at: string | null;
   mapping_id: string | null;
   is_pinned: boolean;
+  chunk_type_id: number | null;
+  chunk_type_kind: string | null;
+  chunk_type_label: string | null;
+}
+
+export interface ChunkTypeSummary {
+  id: number;
+  kind: string | null;
+  label: string;
+  paths_count: number;
+  chunks_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
 }
 
 export interface RawDataListResponse {
@@ -31,10 +44,11 @@ export interface RawDataListResponse {
   total: number;
   timeline_min: string | null;
   timeline_max: string | null;
+  chunk_types: ChunkTypeSummary[];
 }
 
 // Mapping Types
-export type TransformType = "direct" | "template" | "conditional" | "expression" | "lookup";
+export type TransformType = 'direct' | 'template' | 'conditional' | 'expression' | 'lookup';
 
 export interface FieldMapping {
   id: string;
@@ -85,6 +99,7 @@ export interface MappingConfig {
   created_by: string;
   description: string | null;
   sample_chunk_id: string | null;
+  sample_chunk_ids_by_type?: Record<string, string>;
   field_mappings: FieldMapping[];
   conditional_rules: ConditionalRule[];
   auto_edge_rules: AutoEdgeRule[];
@@ -176,15 +191,6 @@ export interface ApplyResponse {
   unresolved_references: UnresolvedReference[];
 }
 
-export interface MockerCommandResponse {
-  command: string;
-  success: boolean;
-  exit_code: number;
-  summary: string;
-  stdout: string;
-  stderr: string;
-}
-
 // Schema Types (for SchemaBrowser)
 export interface SchemaField {
   name: string;
@@ -200,30 +206,30 @@ export interface NodeTypeSchema {
 
 // Node types for schema browser
 export const NODE_TYPES: string[] = [
-  "Service",
-  "Endpoint",
-  "Deployment",
-  "Pod",
-  "Node",
-  "Database",
-  "Table",
-  "QueueTopic",
-  "Cache",
-  "ExternalAPI",
-  "SecretConfig",
-  "Library",
-  "TeamOwner",
-  "SLASLO",
-  "RegionCluster",
+  'Service',
+  'Endpoint',
+  'Deployment',
+  'Pod',
+  'Node',
+  'Database',
+  'Table',
+  'QueueTopic',
+  'Cache',
+  'ExternalAPI',
+  'SecretConfig',
+  'Library',
+  'TeamOwner',
+  'SLASLO',
+  'RegionCluster',
 ];
 
 // Common fields for all nodes
 export const NODE_BASE_FIELDS: SchemaField[] = [
-  { name: "id", type: "string", required: true, description: "URN identifier" },
-  { name: "name", type: "string", required: true, description: "Human-readable name" },
-  { name: "type", type: "string", required: true, description: "Node type" },
-  { name: "status", type: "string", required: false, description: "active/inactive/degraded/offline" },
-  { name: "environment", type: "string", required: false, description: "Deployment environment" },
-  { name: "description", type: "string", required: false },
-  { name: "tags", type: "object", required: false, description: "Key-value labels" },
+  { name: 'id', type: 'string', required: true, description: 'URN identifier' },
+  { name: 'name', type: 'string', required: true, description: 'Human-readable name' },
+  { name: 'type', type: 'string', required: true, description: 'Node type' },
+  { name: 'status', type: 'string', required: false, description: 'active/inactive/degraded/offline' },
+  { name: 'environment', type: 'string', required: false, description: 'Deployment environment' },
+  { name: 'description', type: 'string', required: false },
+  { name: 'tags', type: 'object', required: false, description: 'Key-value labels' },
 ];

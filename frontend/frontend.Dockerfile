@@ -3,7 +3,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --if-present || npm install
+RUN npm ci --legacy-peer-deps --if-present || npm install --legacy-peer-deps
 
 COPY . .
 RUN npm run build
