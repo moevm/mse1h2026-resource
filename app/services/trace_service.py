@@ -197,7 +197,7 @@ def build_hops_from_spans(spans: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
                 if endpoint_id:
                     emit(
                         ancestor_service,
-                        sp.get("span_name"),
+                        service,
                         "Endpoint",
                         sp,
                         callee_id=endpoint_id,
