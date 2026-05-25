@@ -10,5 +10,5 @@ RUN go build
 FROM scratch
 COPY --from=builder /app/golang_app /golang_app
 USER 65532:65532
-EXPOSE 8080
+EXPOSE 8002
 ENTRYPOINT ["/golang_app"]
